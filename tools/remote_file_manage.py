@@ -26,6 +26,8 @@ class RemoteFileManager(QThread):
     download_finished = pyqtSignal(str, str, bool, str)
     # source_path, target_path, status, error msg
     copy_finished = pyqtSignal(str, str, bool, str)
+    # 原路径, 新路径, 是否成功, 错误信息
+    rename_finished = pyqtSignal(str, str, bool, str)
 
     def __init__(self, session_info, parent=None, child_key=None):
         super().__init__(parent)
@@ -131,6 +133,12 @@ class RemoteFileManager(QThread):
                                 task['source_path'],
                                 task['target_path'],
                                 task.get('cut', False)
+                            )
+                        elif ttype == 'rename':
+                            self._handle_rename_task(
+                                task['path'],
+                                task['new_name'],
+                                task.get('callback')
                             )
                         else:
                             print(f"Unknown task type: {ttype}")
@@ -242,6 +250,25 @@ class RemoteFileManager(QThread):
     def download_path_async(self, path: str):
         self.mutex.lock()
         self._tasks.append({'type': 'download_files', 'path': path})
+        self.condition.wakeAll()
+        self.mutex.unlock()
+
+    def rename(self, path: str, new_name: str, callback=None):
+        """
+        异步重命名远程文件或目录
+
+        参数:
+            path: str - 远程路径
+            new_name: str - 新的文件名
+            callback: 可选的回调函数，接收(是否成功, 错误信息)参数
+        """
+        self.mutex.lock()
+        self._tasks.append({
+            'type': 'rename',
+            'path': path,
+            'new_name': new_name,
+            'callback': callback
+        })
         self.condition.wakeAll()
         self.mutex.unlock()
 
@@ -494,6 +521,59 @@ class RemoteFileManager(QThread):
     # ---------------------------
     # 内部文件树操作
     # ---------------------------
+
+    def _handle_rename_task(self, path: str, new_name: str, callback=None):
+        """
+        处理重命名任务（内部实现）
+        """
+        if self.sftp is None:
+            error_msg = "SFTP 连接未就绪"
+            print(f"❌ 重命名失败 - {error_msg}: {path} -> {new_name}")
+            self.rename_finished.emit(path, new_name, False, error_msg)
+            if callback:
+                callback(False, error_msg)
+            return
+
+        try:
+            # 检查源路径是否存在
+            try:
+                self.sftp.stat(path)
+            except IOError:
+                error_msg = f"源路径不存在: {path}"
+                print(f"❌ 重命名失败 - {error_msg}")
+                self.rename_finished.emit(path, new_name, False, error_msg)
+                if callback:
+                    callback(False, error_msg)
+                return
+
+            # 构建新路径
+            parent_dir = os.path.dirname(path.rstrip('/'))
+            new_path = f"{parent_dir}/{new_name}" if parent_dir != '/' else f"/{new_name}"
+
+            print(f"🔁 开始重命名: {path} -> {new_path}")
+
+            # 执行重命名
+            self.sftp.rename(path, new_path)
+
+            print(f"✅ 重命名成功: {path} -> {new_path}")
+            self.rename_finished.emit(path, new_path, True, "")
+
+            # 刷新父目录
+            if parent_dir:
+                print(f"🔄 刷新父目录: {parent_dir}")
+                self.refresh_paths([parent_dir])
+
+            if callback:
+                callback(True, "")
+
+        except Exception as e:
+            error_msg = f"重命名过程错误: {str(e)}"
+            print(f"❌ 重命名失败 - {error_msg}")
+            import traceback
+            traceback.print_exc()
+            self.rename_finished.emit(path, new_name, False, error_msg)
+            if callback:
+                callback(False, error_msg)
 
     def _handle_copy_task(self, source_path: str, target_path: str, cut: bool = False):
         """

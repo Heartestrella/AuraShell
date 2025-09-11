@@ -199,6 +199,15 @@ class Window(FramelessWindow):
             else:
                 title = f"粘贴失败"
                 duration = -1
+
+        if type_ == "rename":
+            duration = 2000
+            if status:
+                title = f"重命名成功"
+                msg = f"重命名 {path} 为 {local_path}"
+            else:
+                title = "重命名失败"
+                duration = -1
         InfoBar.info(
             title=title,
             content=msg,
@@ -238,6 +247,10 @@ class Window(FramelessWindow):
                                                self._show_info(remote_path, status, error_msg, "download", child_key, local_path=local_path))
         file_manager.copy_finished.connect(lambda source_path, target_path, status, error_msg:
                                            self._show_info(source_path, status, error_msg, "paste", child_key, target_path))
+        file_manager.rename_finished.connect(lambda source_path, new_path, status, error_msg: self._show_info(
+            path=source_path, status=status, msg=error_msg, local_path=new_path, type_="rename", child_key=child_key
+        ))
+
         session_widget.file_explorer.upload_file.connect(
             lambda path, target_path: self._show_info(type_="start_upload", child_key=child_key, local_path=path, path=target_path))
         session_widget.file_explorer.upload_file.connect(
@@ -308,6 +321,10 @@ class Window(FramelessWindow):
             if full_path and copy_to:
                 print(f"Copy {full_path} to {copy_to} Cut status : {cut}")
                 file_manager.copy_to(full_path, copy_to, cut)
+        elif action_type == "rename":
+            if copy_to:
+                print(f"Rename {full_path} to {copy_to}")
+                file_manager.rename(path=full_path, new_name=copy_to)
 
     def _refresh_paths(self, child_key: str):
         print("刷新页面")

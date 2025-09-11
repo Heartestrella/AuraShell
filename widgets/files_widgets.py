@@ -2,7 +2,7 @@
 from PyQt5.QtWidgets import QApplication, QWidget, QLayout, QSizePolicy, QRubberBand, QScrollArea, QVBoxLayout
 from PyQt5.QtGui import QFont, QPainter, QColor
 from PyQt5.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
-from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF
+from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit
 import os
 from functools import partial
 # ---------------- 全局图标 ----------------
@@ -74,6 +74,7 @@ class FileItem(QWidget):
     WIDTH, HEIGHT = 80, 100
     selected_sign = pyqtSignal(dict)
     action_triggered = pyqtSignal(str, str, str)  # 操作类型, 文件名, 是否目录
+    rename_action = pyqtSignal(str, str, str, str)  # 操作类型, 原文件名, 新文件名，是否目录
 
     def __init__(self, name, is_dir, parent=None, explorer=None, icons=None):
         super().__init__(parent)
@@ -88,6 +89,13 @@ class FileItem(QWidget):
 
         # 设置样式表，根据主题调整文字颜色
         self._update_style()
+        self.rename_edit = LineEdit(self)
+        self.rename_edit.setText(self.name)
+        self.rename_edit.setAlignment(Qt.AlignCenter)
+        self.rename_edit.hide()
+        self.rename_edit.returnPressed.connect(self._apply_rename)
+        self.rename_edit.editingFinished.connect(self._apply_rename)
+        self._rename_applied = False
 
     def _update_style(self):
         """根据主题更新样式"""
@@ -176,7 +184,7 @@ class FileItem(QWidget):
         download_action = Action(FIF.DOWNLOAD, "下载")
         copy_path = Action(FIF.FLAG, "复制路径")
         file_info = Action(FIF.INFO, "详细信息")
-
+        rename = Action(FIF.LABEL, "重命名")
         copy_action.triggered.connect(lambda: self._emit_action('copy'))
         delete_action.triggered.connect(lambda: self._emit_action('delete'))
         cut_action.triggered.connect(lambda: self._emit_action('cut'))
@@ -186,14 +194,41 @@ class FileItem(QWidget):
             lambda: self._emit_action('copy_path'))
         file_info.triggered.connect(
             lambda: self._emit_action('info'))
+        rename.triggered.connect(lambda: self._emit_action('rename'))
         menu.addActions([copy_action, cut_action,
-                        delete_action, download_action, copy_path, file_info])
+                        delete_action, download_action, copy_path, file_info, rename])
         menu.addSeparator()
         menu.exec(e.globalPos())
 
     def _emit_action(self, action_type):
         """发射动作信号"""
-        self.action_triggered.emit(action_type, self.name, str(self.is_dir))
+        if action_type == "rename":
+            self._start_rename()
+        else:
+            self.action_triggered.emit(
+                action_type, self.name, str(self.is_dir))
+
+    def _start_rename(self):
+        """进入重命名模式"""
+        self._rename_applied = False
+        self.rename_edit.setText(self.name)
+        self.rename_edit.setGeometry(5, 70, self.width()-10, 25)
+        self.rename_edit.show()
+        self.rename_edit.setFocus()
+        self.rename_edit.selectAll()
+
+    def _apply_rename(self):
+        """提交重命名"""
+        if self._rename_applied:
+            return
+
+        self._rename_applied = True
+        new_name = self.rename_edit.text().strip()
+        if new_name and new_name != self.name:
+            self.rename_action.emit(
+                "rename", self.name, new_name, str(self.is_dir))
+        self.rename_edit.hide()
+        self.update()
 # ---------------- FileExplorer ----------------
 
 
@@ -301,6 +336,8 @@ class FileExplorer(QWidget):
             item_widget.selected_sign.connect(
                 partial(lambda s, d: self.selected.emit(d), None))
             item_widget.action_triggered.connect(self._handle_file_action)
+            item_widget.rename_action.connect(lambda type_, name, new_name, is_dir: self._handle_file_action(
+                action_type=type_, file_name=name, is_dir_str=is_dir, new_name=new_name))
             # 如果你需要把具体 name 传出去，可以这样：
             # item_widget.selected_sign.connect(partial(self.selected.emit, {name: is_dir}))
             item_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
@@ -329,7 +366,7 @@ class FileExplorer(QWidget):
             item.selected = True
         item.update()
 
-    def _handle_file_action(self, action_type, file_name, is_dir_str):
+    def _handle_file_action(self, action_type, file_name, is_dir_str, new_name=None):
         """处理文件项的动作"""
         if file_name:
             if self.path.endswith('/'):
@@ -339,25 +376,31 @@ class FileExplorer(QWidget):
 
             full_path = os.path.normpath(full_path).replace('\\', '/')
 
-        if action_type == "copy":
-            self.copy_file_path = full_path
-            self.cut_ = False
-        elif action_type == "cut":
-            self.copy_file_path = full_path
-            self.cut_ = True
+        if action_type == "rename":
+            if new_name:
+                self.file_action.emit(action_type, full_path, new_name, False)
+
         else:
 
-            if action_type == "paste":
-                self.file_action.emit(
-                    action_type, self.copy_file_path, self.path, self.cut_)
-                if self.cut_:
-                    # reset
-                    self.cut_ = False
-                    self.copy_file_path = ""
+            if action_type == "copy":
+                self.copy_file_path = full_path
+                self.cut_ = False
+            elif action_type == "cut":
+                self.copy_file_path = full_path
+                self.cut_ = True
             else:
-                print(
-                    f"操作类型: {action_type}, 文件路径: {full_path}, 是否是目录: {is_dir_str}")
-                self.file_action.emit(action_type, full_path, "", False)
+
+                if action_type == "paste":
+                    self.file_action.emit(
+                        action_type, self.copy_file_path, self.path, self.cut_)
+                    if self.cut_:
+                        # reset
+                        self.cut_ = False
+                        self.copy_file_path = ""
+                else:
+                    print(
+                        f"操作类型: {action_type}, 文件路径: {full_path}, 是否是目录: {is_dir_str}")
+                    self.file_action.emit(action_type, full_path, "", False)
 
     # ---------------- 框选逻辑 ----------------
 
