@@ -44,7 +44,20 @@ Includes a **remote file manager** and **integrated terminal**, providing a mode
 Currently, multi-language support is not yet implemented.  
 This feature is planned for the official release, which will include full internationalization support to make PSSH accessible to users worldwide.
 
+## 📝 Source Code
+
+The source code of PSSH is still under development.  
+It has not been fully organized, standardized, or refactored, and inline comments are incomplete.  
+It is undeniable that part of the code has been generated with the help of AI tools.
+
+## ⚠️ Known Issues & Usage Notes
+
+- In the SSH terminal, text selection does not display a visible cursor,  
+  but the text is actually selected and can be copied with `Ctrl+Shift+C` and pasted with `Ctrl+Shift+V`.  
+- Some pages may not display the custom font correctly.  
+- Certain UI elements may not fully match the main window's style.  
 
 > ⚠️ **Beta Version Notice:**  
 > This is a beta release. If you encounter any bugs, please submit the runtime logs along with a brief description of how to reproduce the issue to the [GitHub Issues](https://github.com/Heartestrella/P-SSH/issues).
+
 
