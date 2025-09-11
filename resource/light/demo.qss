@@ -1,0 +1,45 @@
+Widget > QLabel {
+    font: 24px 'Segoe UI', 'Microsoft YaHei';
+}
+
+Widget {
+    border: 1px solid rgb(229, 229, 229);
+    border-right: none;
+    border-bottom: none;
+    border-top-left-radius: 10px;
+    background-color: rgb(249, 249, 249);
+}
+
+Window {
+    background-color: rgb(243, 243, 243);
+}
+
+QLabel {
+    font-size: 14px;
+    font-weight: bold;
+    color: black;
+}
+
+/* 禁用 QListWidget 默认选中背景 */
+QListWidget::item:selected {
+    background: transparent;
+}
+
+/* 卡片默认样式 */
+#SessionItemWidget {
+    background-color: rgba(245, 245, 245, 220);
+    border-radius: 12px;
+    border: 1px solid rgba(200, 200, 200, 60);
+}
+
+/* 鼠标悬停或点击状态 */
+#SessionItemWidget:hover,
+#SessionItemWidget:pressed {
+    background-color: rgba(225, 225, 225, 255);
+    border: 1px solid rgba(180, 180, 180, 100);
+}
+
+/* 去掉焦点虚线 */
+#SessionItemWidget:focus {
+    outline: none;
+}

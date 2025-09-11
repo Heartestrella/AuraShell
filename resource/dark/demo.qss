@@ -1,0 +1,81 @@
+Widget > QLabel {
+    font: 24px 'Segoe UI', 'Microsoft YaHei';
+}
+
+Widget {
+    border: 1px solid rgb(29, 29, 29);
+    border-right: none;
+    border-bottom: none;
+    border-top-left-radius: 10px;
+    background-color: rgb(39, 39, 39);
+}
+
+Window {
+    background-color: rgb(32, 32, 32);
+}
+
+
+MinimizeButton {
+    qproperty-normalColor: white;
+    qproperty-normalBackgroundColor: transparent;
+    qproperty-hoverColor: white;
+    qproperty-hoverBackgroundColor: rgba(255, 255, 255, 26);
+    qproperty-pressedColor: white;
+    qproperty-pressedBackgroundColor: rgba(255, 255, 255, 51)
+}
+
+
+MaximizeButton {
+    qproperty-normalColor: white;
+    qproperty-normalBackgroundColor: transparent;
+    qproperty-hoverColor: white;
+    qproperty-hoverBackgroundColor: rgba(255, 255, 255, 26);
+    qproperty-pressedColor: white;
+    qproperty-pressedBackgroundColor: rgba(255, 255, 255, 51)
+}
+
+CloseButton {
+    qproperty-normalColor: white;
+    qproperty-normalBackgroundColor: transparent;
+}
+
+ScrollArea {
+    border: none;
+    background-color: rgb(32, 32, 32);
+}
+
+QLabel {
+    font-size: 14px;
+    font-weight: bold;
+    color: white;
+    line-height: 20px;
+}
+
+
+ScrollArea > QWidget {
+    background-color: rgb(39, 39, 39);
+}
+
+/* 禁用 QListWidget 默认选中背景 */
+QListWidget::item:selected {
+    background: transparent;
+}
+
+/* 卡片默认样式 */
+#SessionItemWidget {
+    background-color: rgba(45, 45, 45, 180);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 20);
+}
+
+/* 鼠标悬停或点击状态 */
+#SessionItemWidget:hover,
+#SessionItemWidget:pressed {
+    background-color: rgba(60, 60, 60, 200);
+    border: 1px solid rgba(255, 255, 255, 40);
+}
+
+/* 去掉焦点虚线 */
+#SessionItemWidget:focus {
+    outline: none;
+}
