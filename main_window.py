@@ -1,10 +1,10 @@
 # coding:utf-8
 import sys
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap, QPainter
+from PyQt5.QtGui import QPixmap, QPainter, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout
 
-from qfluentwidgets import (NavigationInterface, NavigationItemPosition, InfoBar, FluentTranslator,
+from qfluentwidgets import (NavigationInterface, NavigationItemPosition, InfoBar,
                             isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF)
 from qframelesswindow import FramelessWindow, StandardTitleBar
 from widgets.setting_page import SettingPage
@@ -40,6 +40,9 @@ class Window(FramelessWindow):
         self.setTitleBar(StandardTitleBar(self))
         self._bg_ratio = None
         self.setWindowTitle("RemmoteSSH Beta @su8aru")
+        # icon = QIcon(resource_path("resource/icons/icon.ico"))
+        # self.setWindowIcon(icon)
+        # QApplication.setWindowIcon(icon)
         self.titleBar.raise_()
         self.connect_status_dict = {}
         self.ssh_session = {}
@@ -208,6 +211,39 @@ class Window(FramelessWindow):
             else:
                 title = "重命名失败"
                 duration = -1
+
+        elif type_ == "info":
+            duration = 20000
+            if status:
+                def format_file_info(info: dict) -> str:
+                    if not info:
+                        return "文件信息为空"
+
+                    lines = [
+                        f"路径: {info.get('path')}",
+                        f"文件名: {info.get('filename')}",
+                        f"大小: {info.get('size')}",
+                        f"所有者: {info.get('owner')}",
+                        f"所属组: {info.get('group')}",
+                        f"权限: {info.get('permissions')}",
+                        f"是否可执行: {'是' if info.get('is_executable') else '否'}",
+                        f"最后修改时间: {info.get('last_modified')}",
+                        f"是否目录: {'是' if info.get('is_directory') else '否'}",
+                        f"是否符号链接: {'是' if info.get('is_symlink') else '否'}"
+                    ]
+
+                    # 如果是符号链接，加上目标路径
+                    if info.get('is_symlink'):
+                        lines.append(f"符号链接目标: {info.get('symlink_target')}")
+
+                    return "\n".join(lines)
+
+                title = f"文件 {path} 信息如下: "
+                msg = format_file_info(local_path)
+            else:
+                duration = -1
+                title = f"获取 {path} 详细失败"
+
         InfoBar.info(
             title=title,
             content=msg,
@@ -250,7 +286,8 @@ class Window(FramelessWindow):
         file_manager.rename_finished.connect(lambda source_path, new_path, status, error_msg: self._show_info(
             path=source_path, status=status, msg=error_msg, local_path=new_path, type_="rename", child_key=child_key
         ))
-
+        file_manager.file_info_ready.connect(
+            lambda path, info, status, error_msg: self._show_info(path=path, status=status, child_key=child_key, msg=error_msg, type_="info", local_path=info))
         session_widget.file_explorer.upload_file.connect(
             lambda path, target_path: self._show_info(type_="start_upload", child_key=child_key, local_path=path, path=target_path))
         session_widget.file_explorer.upload_file.connect(
@@ -325,6 +362,8 @@ class Window(FramelessWindow):
             if copy_to:
                 print(f"Rename {full_path} to {copy_to}")
                 file_manager.rename(path=full_path, new_name=copy_to)
+        elif action_type == "info":
+            file_manager.get_file_info(full_path)
 
     def _refresh_paths(self, child_key: str):
         print("刷新页面")
@@ -682,15 +721,10 @@ if __name__ == '__main__':
         main_logger.info("应用程序启动")
         QApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-        # QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-        # QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
+
         QApplication.setAttribute(Qt.AA_UseOpenGLES)
         app = QApplication(sys.argv)
-        # translator = FluentTranslator(
-        #     QLocale(QLocale.English, QLocale.UnitedStates))
-        # app.installTranslator(translator)
-        translator = FluentTranslator()
-        QApplication.instance().installTranslator(translator)
+
         clipboard = app.clipboard()
         w = Window()
         w.show()

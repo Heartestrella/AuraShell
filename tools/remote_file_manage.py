@@ -6,6 +6,34 @@ from typing import Dict, List, Optional
 import stat
 import os
 from typing import Tuple
+from datetime import datetime
+
+if os.name != "nt":
+    import pwd
+    import grp
+else:
+    pwd = None
+    grp = None
+
+
+def get_owner_group(uid, gid):
+    """
+    根据 uid/gid 获取用户名和组名
+    Windows 下直接返回数字字符串
+    """
+    owner = str(uid)
+    group = str(gid)
+
+    if pwd and grp:  # 仅类 Unix 系统可解析
+        try:
+            owner = pwd.getpwuid(uid).pw_name
+        except KeyError:
+            pass
+        try:
+            group = grp.getgrgid(gid).gr_name
+        except KeyError:
+            pass
+    return owner, group
 
 
 class RemoteFileManager(QThread):
@@ -28,6 +56,8 @@ class RemoteFileManager(QThread):
     copy_finished = pyqtSignal(str, str, bool, str)
     # 原路径, 新路径, 是否成功, 错误信息
     rename_finished = pyqtSignal(str, str, bool, str)
+    # path, info(dict), status(bool), error_msg(str)
+    file_info_ready = pyqtSignal(str, dict, bool, str)
 
     def __init__(self, session_info, parent=None, child_key=None):
         super().__init__(parent)
@@ -140,6 +170,11 @@ class RemoteFileManager(QThread):
                                 task['new_name'],
                                 task.get('callback')
                             )
+                        elif ttype == 'file_info':
+                            info = self._get_file_info(task['path'])
+                            print(info)
+                            self.file_info_ready.emit(
+                                task['path'], info[1], info[2], info[3])
                         else:
                             print(f"Unknown task type: {ttype}")
                     except Exception as e:
@@ -176,6 +211,17 @@ class RemoteFileManager(QThread):
     # ---------------------------
     # 公共任务接口
     # ---------------------------
+
+    def get_file_info(self, path: str):
+        """
+        异步获取文件或目录的详细信息
+        返回结果通过 file_info_ready 信号发送
+        """
+        self.mutex.lock()
+        self._tasks.append({'type': 'file_info', 'path': path})
+        self.condition.wakeAll()
+        self.mutex.unlock()
+
     def copy_to(self, source_path: str, target_path: str, cut: bool = False):
         """
         异步复制/移动远程文件或目录，完成后触发 copy_finished 信号
@@ -522,6 +568,57 @@ class RemoteFileManager(QThread):
     # 内部文件树操作
     # ---------------------------
 
+    def _get_file_info(self, path: str):
+        """
+        获取文件/目录信息，跨平台兼容
+        """
+        if self.sftp is None:
+            return None, "", False, "SFTP 未就绪"
+
+        try:
+            attr = self.sftp.lstat(path)
+
+            # 权限 rwxr-xr-x 格式
+            perm = stat.filemode(attr.st_mode)
+
+            # 用户和组（跨平台）
+            owner, group = get_owner_group(attr.st_uid, attr.st_gid)
+
+            # 是否可执行
+            is_executable = bool(attr.st_mode & stat.S_IXUSR)
+
+            # 最后修改时间
+            mtime = datetime.fromtimestamp(
+                attr.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+
+            # 是否符号链接
+            is_symlink = stat.S_ISLNK(attr.st_mode)
+            symlink_target = None
+            if is_symlink:
+                try:
+                    symlink_target = self.sftp.readlink(path)
+                except Exception:
+                    symlink_target = "<unresolved>"
+
+            info = {
+                "path": path,
+                "filename": os.path.basename(path.rstrip('/')),
+                "size": self._human_readable_size(attr.st_size),
+                "owner": owner,
+                "group": group,
+                "permissions": perm,
+                "is_executable": is_executable,
+                "last_modified": mtime,
+                "is_directory": stat.S_ISDIR(attr.st_mode),
+                "is_symlink": is_symlink,
+                "symlink_target": symlink_target
+            }
+
+            return path, info, True, ""
+
+        except Exception as e:
+            return None, False, f"获取文件信息失败: {e}"
+
     def _handle_rename_task(self, path: str, new_name: str, callback=None):
         """
         处理重命名任务（内部实现）
@@ -862,6 +959,17 @@ class RemoteFileManager(QThread):
     # ---------------------------
     # 辅助方法
     # ---------------------------
+
+    def _human_readable_size(self, size_bytes: int) -> str:
+        """将字节数转换为可读的格式"""
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        for unit in ["KB", "MB", "GB", "TB"]:
+            size_bytes /= 1024.0
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.2f} {unit}"
+        return f"{size_bytes:.2f} PB"
+
     def _find_node_by_path(self, path: str) -> Optional[Dict]:
         if not path:
             return None
