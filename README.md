@@ -28,6 +28,23 @@ Includes a **remote file manager** and **integrated terminal**, providing a mode
   - Easy switching between different sessions  
 
 ---
+---
+## 🚀 How to Run
+
+### Running from Source Code
+1. Make sure Python 3.8 is installed.
+2. Install the dependencies:
+```bash pip install -r requirements.txt```
+3. Run the main program:
+```bash python main_window.py```
+
+### Running from Precompiled Version
+1. Download the latest packaged version from the Releases page.
+2. Extract the compressed package.
+3. Run the executable file directly.System requirements: Windows 10 or higher.
+---
+
+
 
 ## 📷 Screenshots
 
