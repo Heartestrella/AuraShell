@@ -516,49 +516,51 @@ class FileExplorer(QWidget):
         item.update()
 
     def _handle_file_action(self, action_type, file_name, is_dir_str=None, new_name=None):
-        """Central handler for all file actions, aggregates selections."""
-        # Handle single-path actions first
+        # Case 1: Paste action, operates on clipboard, not selection.
+        if action_type == "paste":
+            if self.copy_file_path:  # A list of paths copied/cut earlier
+                self.file_action.emit(
+                    action_type, self.copy_file_path, self.path, self.cut_)
+                if self.cut_:
+                    self.cut_ = False
+                    self.copy_file_path = []  # Reset after paste
+            return
+
+        # Case 2: Single-path, single-target actions.
         if action_type in ["rename", "mkdir"]:
-            full_path = self._get_full_path(file_name) if file_name else ""
+            full_path = self._get_full_path(file_name)
             if action_type == "rename" and new_name:
                 self.file_action.emit(action_type, full_path, new_name, False)
             elif action_type == "mkdir" and file_name:
                 self.file_action.emit(action_type, full_path, "", False)
             return
 
-        # For other actions, aggregate all selected paths
+        # Case 3: Actions that can operate on single or multiple items.
+        # First, determine the definitive list of target paths based on selection.
         paths = []
-        if self.view_mode == 'icon' and len(self.selected_items) > 1:
+        if self.view_mode == 'icon' and self.selected_items:
+            # Use selected_items if any are selected in icon view
             paths = [self._get_full_path(item.name)
                      for item in self.selected_items]
-        elif self.view_mode == 'details' and len(self.details_view.selectionModel().selectedRows()) > 1:
-            for index in self.details_view.selectionModel().selectedRows():
-                name = self.details_model.item(index.row(), 0).text()
-                paths.append(self._get_full_path(name))
-        else:
-            # Single selection case for non-rename/mkdir actions
-            if file_name:
-                paths = [self._get_full_path(file_name)]
+        elif self.view_mode == 'details' and self.details_view.selectionModel().hasSelection():
+            # Use selectionModel in details view
+            paths = [self._get_full_path(self.details_model.item(index.row(), 0).text())
+                     for index in self.details_view.selectionModel().selectedRows()]
+        elif file_name:
+            # Fallback to the single item that triggered the action if no selection is detected
+            paths = [self._get_full_path(file_name)]
 
         if not paths:
-            return  # Nothing to do
+            return  # No valid target for the action
 
-        # Process aggregated paths
+        # Now, process the action for the determined list of paths.
         if action_type == "copy":
             self.copy_file_path = paths
             self.cut_ = False
         elif action_type == "cut":
             self.copy_file_path = paths
             self.cut_ = True
-        elif action_type == "paste":
-            # copy_file_path is already a list from copy/cut
-            self.file_action.emit(
-                action_type, self.copy_file_path, self.path, self.cut_)
-            if self.cut_:
-                self.cut_ = False
-                self.copy_file_path = []
-        else:  # e.g., "delete", "download", etc.
-            print(f"Action: {action_type}, Paths: {paths}")
+        else:  # Covers "delete", "download", "info", "copy_path", etc.
             self.file_action.emit(action_type, paths, "", False)
 
     # ---------------- Box selection logic ----------------
