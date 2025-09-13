@@ -18,6 +18,7 @@ from tools.icons import My_Icons
 from tools.remote_file_manage import RemoteFileManager
 from tools.setting_config import SCM
 import os
+import subprocess
 font_ = font_config()
 
 
@@ -148,8 +149,10 @@ class Window(FramelessWindow):
         except Exception as e:
             print(e)
 
-    def _show_info(self, path: str = None, status: bool = None, msg: str = None, type_: str = None, child_key: str = None, local_path: str = None):
+    def _show_info(self, path: str = None, status: bool = None, msg: str = None, type_: str = None, child_key: str = None, local_path: str = None, open_it: bool = False):
         # print(f"_show_info type : {type_}")
+        no_refresh_types = ["download",
+                            "start_upload", "start_download", "info"]
         if type_ == "upload":
             duration = 10000
             if status:
@@ -182,6 +185,15 @@ class Window(FramelessWindow):
             if status:
                 title = self.tr(f"Downloaded {path} successfully")
                 msg = self.tr(f"Successfully downloaded to {local_path}")
+                if open_it:
+                    if sys.platform.startswith('darwin'):   # macOS
+                        subprocess.call(('open', local_path),
+                                        start_new_session=True)
+                    elif os.name == 'nt':  # Windows
+                        subprocess.Popen(['rundll32', 'shell32.dll,OpenAs_RunDLL', local_path], creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+                                         close_fds=True)
+                    elif os.name == 'posix':  # Linux
+                        subprocess.call(('xdg-open', local_path))
             else:
                 title = self.tr(f"Failed to download {path}\n")
                 duration = -1
@@ -248,7 +260,8 @@ class Window(FramelessWindow):
             duration=duration,
             parent=self.window()
         )
-        self._refresh_paths(child_key)
+        if type_ not in no_refresh_types and child_key:
+            self._refresh_paths(child_key)
 
     def _start_ssh_connect(self, session, child_key):
 
@@ -272,13 +285,15 @@ class Window(FramelessWindow):
                                              self._show_info(path, status, msg, "delete", child_key))
         file_manager.upload_finished.connect(lambda path, status, msg:
                                              self._show_info(path, status, msg, "upload", child_key))
-        file_manager.download_finished.connect(lambda remote_path, local_path, status, error_msg:
-                                               self._show_info(remote_path, status, error_msg, "download", child_key, local_path=local_path))
+        file_manager.download_finished.connect(lambda remote_path, local_path, status, error_msg, open_it:
+                                               self._show_info(remote_path, status, error_msg, "download", child_key, local_path=local_path, open_it=open_it))
         file_manager.copy_finished.connect(lambda source_path, target_path, status, error_msg:
                                            self._show_info(source_path, status, error_msg, "paste", child_key, target_path))
         file_manager.rename_finished.connect(lambda source_path, new_path, status, error_msg: self._show_info(
             path=source_path, status=status, msg=error_msg, local_path=new_path, type_="rename", child_key=child_key
         ))
+        file_manager.file_type_ready.connect(
+            lambda path, type_: self._open_server_files(path, type_, child_key))
         file_manager.file_info_ready.connect(
             lambda path, info, status, error_msg: self._show_info(path=path, status=status, child_key=child_key, msg=error_msg, type_="info", local_path=info))
         session_widget.file_explorer.upload_file.connect(
@@ -333,6 +348,28 @@ class Window(FramelessWindow):
         session_widget.disk_storage.refresh.triggered.connect(
             lambda checked, ck=child_key: self._refresh_paths(ck)
         )
+
+    def _open_server_files(self, path: str, type_: str, child_key: str):
+        file_manager: RemoteFileManager = self.file_tree_object[child_key]
+        duration = 2000
+        title = self.tr(f"File: {path} Type: {type_}\n")
+        msg = self.tr(
+            f"Start to download it and open with default program")
+        if type_ == "executable":
+            title = self.tr(f"{path} is an executable won't start downloading")
+            msg = ""
+
+        InfoBar.info(
+            title=title,
+            content=msg,
+            orient=Qt.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.BOTTOM_RIGHT,
+            duration=duration,
+            parent=self.window()
+        )
+        if type_ != "executable":
+            file_manager.download_path_async(path, True)
 
     def _handle_files(self, action_type, full_path, copy_to, cut, child_key):
         file_manager: RemoteFileManager = self.file_tree_object[child_key]

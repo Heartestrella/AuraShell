@@ -7,7 +7,7 @@ import stat
 import os
 from typing import Tuple
 from datetime import datetime
-
+import shlex
 if os.name != "nt":
     import pwd
     import grp
@@ -38,26 +38,29 @@ def get_owner_group(uid, gid):
 
 class RemoteFileManager(QThread):
     """
-    远程文件管理器，负责构建和维护远程文件树
-    通过 SSH 执行 ls 命令获取目录内容
+    Remote file manager, responsible for building and maintaining remote file trees
     """
     file_tree_updated = pyqtSignal(dict, str)  # file tree , path
     error_occurred = pyqtSignal(str)
     sftp_ready = pyqtSignal()
-    upload_progress = pyqtSignal(str, int)  # 文件路径, 进度百分比
-    upload_finished = pyqtSignal(str, bool, str)  # 文件路径, 是否成功, 错误信息
-    delete_finished = pyqtSignal(str, bool, str)  # 路径, 是否成功, 错误信息
+    upload_progress = pyqtSignal(str, int)  # File path, progress percentage
+    # File path, success, error message
+    upload_finished = pyqtSignal(str, bool, str)
+    # Path, success, error message
+    delete_finished = pyqtSignal(str, bool, str)
     list_dir_finished = pyqtSignal(str, dict)  # path, result
     # path, result (e.g. "directory"/"file"/False)
     path_check_result = pyqtSignal(str, object)
-    # remote_path , local_path , status , error msg
-    download_finished = pyqtSignal(str, str, bool, str)
+    # remote_path , local_path , status , error msg,open it
+    download_finished = pyqtSignal(str, str, bool, str, bool)
     # source_path, target_path, status, error msg
     copy_finished = pyqtSignal(str, str, bool, str)
-    # 原路径, 新路径, 是否成功, 错误信息
+    # Original path, new path, success, error message
     rename_finished = pyqtSignal(str, str, bool, str)
     # path, info(dict), status(bool), error_msg(str)
     file_info_ready = pyqtSignal(str, dict, bool, str)
+    # path , type
+    file_type_ready = pyqtSignal(str, str)
 
     def __init__(self, session_info, parent=None, child_key=None):
         super().__init__(parent)
@@ -69,25 +72,23 @@ class RemoteFileManager(QThread):
         self.auth_type = session_info.auth_type
         self.key_path = session_info.key_path
 
-        # SSH / SFTP 连接
         self.conn = None
         self.sftp = None
 
-        # 文件树结构
+        # File_tree
         self.file_tree: Dict = {}
 
-        # 线程控制
+        # Thread Control
         self.mutex = QMutex()
         self.condition = QWaitCondition()
         self._is_running = True
         self._tasks = []
 
     # ---------------------------
-    # 主线程循环
+    # Main thread loop
     # ---------------------------
     def run(self):
         try:
-            # 建立 SSH 连接
             self.conn = paramiko.SSHClient()
             self.conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             if self.auth_type == "password":
@@ -109,11 +110,9 @@ class RemoteFileManager(QThread):
                     banner_timeout=30
                 )
 
-            # 建立 SFTP 连接
             self.sftp = self.conn.open_sftp()
             self.sftp_ready.emit()
 
-            # 主循环
             while self._is_running:
                 self.mutex.lock()
                 if not self._tasks:
@@ -142,12 +141,13 @@ class RemoteFileManager(QThread):
                                 task.get('callback')
                             )
                         elif ttype == "download_files":
-                            self._download_files(task['path'])
+                            self._download_files(
+                                task['path'], openit=task["open_it"])
                         elif ttype == 'list_dir':
-                            print(f"处理：{[task['path']]}")
+                            print(f"Handle:{[task['path']]}")
                             result = self.list_dir_simple(task['path'])
 
-                            print(f"list dir : {result}")
+                            print(f"List dir : {result}")
                             self.list_dir_finished.emit(
                                 task['path'], result or {})
                         elif ttype == 'check_path':
@@ -175,21 +175,24 @@ class RemoteFileManager(QThread):
                             print(info)
                             self.file_info_ready.emit(
                                 task['path'], info[1], info[2], info[3])
+                        elif ttype == 'file_type':
+                            self.classify_file_type_using_file(task['path'])
                         else:
                             print(f"Unknown task type: {ttype}")
                     except Exception as e:
-                        self.error_occurred.emit(f"执行任务时出错: {e}")
+                        self.error_occurred.emit(
+                            f"Error while executing task: {e}")
                 else:
                     self.mutex.unlock()
 
         except Exception as e:
             tb = traceback.format_exc()
-            self.error_occurred.emit(f"远程文件管理器错误: {e}\n{tb}")
+            self.error_occurred.emit(f"Remote File Manager Error: {e}\n{tb}")
         finally:
             self._cleanup()
 
     # ---------------------------
-    # 线程控制 & 清理
+    # Thread Control & Cleanup
     # ---------------------------
     def stop(self):
         self._is_running = False
@@ -209,13 +212,17 @@ class RemoteFileManager(QThread):
             pass
 
     # ---------------------------
-    # 公共任务接口
+    # Public task API
     # ---------------------------
+    def get_file_type(self, path: str):
+        self.mutex.lock()
+        self._tasks.append({'type': 'file_type', 'path': path})
+        self.condition.wakeAll()
+        self.mutex.unlock()
 
     def get_file_info(self, path: str):
         """
-        异步获取文件或目录的详细信息
-        返回结果通过 file_info_ready 信号发送
+        The result is sent via the file_info_ready signal.
         """
         self.mutex.lock()
         self._tasks.append({'type': 'file_info', 'path': path})
@@ -224,11 +231,24 @@ class RemoteFileManager(QThread):
 
     def copy_to(self, source_path: str, target_path: str, cut: bool = False):
         """
-        异步复制/移动远程文件或目录，完成后触发 copy_finished 信号
-        参数:
-            source_path: 源路径
-            target_path: 目标路径
-            cut: True 表示移动（复制后删除源路径）
+    Asynchronously copies or moves a remote file or directory.
+
+    This method queues a copy or move task to be executed in the background.
+    When the operation is complete, the `copy_finished` signal is emitted.
+
+    Args:
+        source_path (str): The source path of the file or directory to copy/move.
+        target_path (str): The destination path where the file or directory will be copied/moved.
+        cut (bool, optional): If True, moves the file or directory (deletes the source after copying).
+                              If False, copies the file or directory without deleting the source.
+                              Defaults to False.
+
+    Signals:
+        copy_finished (str, str, bool, str): Emitted upon completion with parameters:
+            - source_path (str): The original source path.
+            - target_path (str): The target path.
+            - success (bool): True if the operation succeeded, False otherwise.
+            - error_msg (str): Error message if the operation failed, empty string otherwise.
         """
         self.mutex.lock()
         self._tasks.append({
@@ -242,12 +262,25 @@ class RemoteFileManager(QThread):
 
     def delete_path(self, path: str, callback=None):
         """
-        删除远程路径（文件或目录）
+        Asynchronously deletes a remote file or directory.
 
-        参数:
-            path: str - 远程路径
-            callback: 可选的回调函数，接收(是否成功, 错误信息)参数
+        This method queues a delete task to be executed in the background.
+        Upon completion, the `delete_finished` signal is emitted.
+
+        Args:
+            path (str): The remote path of the file or directory to delete.
+            callback (callable, optional): A function to be called when the deletion
+                is complete. The callback receives two arguments:
+                - success (bool): True if deletion succeeded, False otherwise.
+                - error_msg (str): Error message if deletion failed, empty string otherwise.
+
+        Signals:
+            delete_finished (str, bool, str): Emitted upon completion with parameters:
+                - path (str): The path that was deleted.
+                - success (bool): True if deletion succeeded, False otherwise.
+                - error_msg (str): Error message if deletion failed, empty string otherwise.
         """
+
         self.mutex.lock()
         self._tasks.append({
             'type': 'delete',
@@ -271,7 +304,7 @@ class RemoteFileManager(QThread):
         self.mutex.unlock()
 
     def refresh_paths(self, paths: Optional[List[str]] = None):
-        """刷新指定路径或所有目录"""
+        """Refresh the specified path or all directories if paths is None"""
         self.mutex.lock()
         self._tasks.append({'type': 'refresh', 'paths': paths})
         self.condition.wakeAll()
@@ -284,7 +317,7 @@ class RemoteFileManager(QThread):
         self.mutex.unlock()
 
     def list_dir_async(self, path: str):
-        """异步列出目录"""
+        """List a directory"""
         self.mutex.lock()
         if any(t.get('type') == 'list_dir' and t.get('path') == path for t in self._tasks):
             self.mutex.unlock()
@@ -293,21 +326,36 @@ class RemoteFileManager(QThread):
         self.condition.wakeAll()
         self.mutex.unlock()
 
-    def download_path_async(self, path: str):
+    def download_path_async(self, path: str, open_it: bool = False):
         self.mutex.lock()
-        self._tasks.append({'type': 'download_files', 'path': path})
+        self._tasks.append(
+            {'type': 'download_files', 'path': path, "open_it": open_it})
         self.condition.wakeAll()
         self.mutex.unlock()
 
     def rename(self, path: str, new_name: str, callback=None):
         """
-        异步重命名远程文件或目录
+        Asynchronously renames a remote file or directory.
 
-        参数:
-            path: str - 远程路径
-            new_name: str - 新的文件名
-            callback: 可选的回调函数，接收(是否成功, 错误信息)参数
+        This method queues a rename task to be executed in the background.
+        Upon completion, the `rename_finished` signal is emitted.
+
+        Args:
+            path (str): The remote path of the file or directory to rename.
+            new_name (str): The new name for the file or directory.
+            callback (callable, optional): A function to be called when the rename
+                is complete. The callback receives two arguments:
+                - success (bool): True if rename succeeded, False otherwise.
+                - error_msg (str): Error message if rename failed, empty string otherwise.
+
+        Signals:
+            rename_finished (str, str, bool, str): Emitted upon completion with parameters:
+                - original_path (str): The original path.
+                - new_path (str): The new path after renaming.
+                - success (bool): True if rename succeeded, False otherwise.
+                - error_msg (str): Error message if rename failed, empty string otherwise.
         """
+
         self.mutex.lock()
         self._tasks.append({
             'type': 'rename',
@@ -320,13 +368,26 @@ class RemoteFileManager(QThread):
 
     def upload_file(self, local_path: str, remote_path: str, callback=None):
         """
-        上传文件到远程服务器
+        Uploads a local file to the remote server asynchronously.
 
-        参数:
-            local_path: 本地文件路径
-            remote_path: 远程目标路径
-            callback: 可选的回调函数，接收(是否成功, 错误信息)参数
+        This method queues an upload task to be executed in the background.
+        Upon completion, the `upload_finished` signal is emitted.
+
+        Args:
+            local_path (str): Path to the local file to upload.
+            remote_path (str): Target path on the remote server.
+            callback (callable, optional): Function to call when upload is complete.
+                Receives two arguments:
+                - success (bool): True if upload succeeded, False otherwise.
+                - error_msg (str): Error message if upload failed, empty string otherwise.
+
+        Signals:
+            upload_finished (str, bool, str): Emitted upon completion with parameters:
+                - local_path (str): The local file path.
+                - success (bool): True if upload succeeded, False otherwise.
+                - error_msg (str): Error message if upload failed, empty string otherwise.
         """
+
         self.mutex.lock()
         self._tasks.append({
             'type': 'upload_file',
@@ -336,47 +397,141 @@ class RemoteFileManager(QThread):
         })
         self.condition.wakeAll()
         self.mutex.unlock()
-    # ---------------------------
-    # 文件上传实现
-    # ---------------------------
+
+    def classify_file_type_using_file(self, path: str) -> str:
+        """
+        Use remote `file` command to detect a simplified file type and emit the result.
+
+        Returns one of:
+        - "image/video"
+        - "text"
+        - "executable"
+        - "unknown"
+
+        Emits: file_type_ready(path, type)
+        """
+        # safety: ensure conn exists
+        if self.conn is None:
+            self.file_type_ready.emit(path, "unknown")
+            return "unknown"
+
+        # quote path for shell safety
+        safe_path = shlex.quote(path)
+
+        try:
+            # 1) Try MIME type first (follow symlink with -L)
+            cmd_mime = f"file -b --mime-type -L {safe_path}"
+            stdin, stdout, stderr = self.conn.exec_command(cmd_mime)
+            exit_status = stdout.channel.recv_exit_status()
+            mime_out = stdout.read().decode('utf-8', errors='ignore').strip().lower()
+            _err = stderr.read().decode('utf-8', errors='ignore').strip()
+
+            if exit_status == 0 and mime_out:
+                # image/video by MIME
+                if mime_out.startswith("image") or mime_out.startswith("video"):
+                    self.file_type_ready.emit(path, "image/video")
+                    return "image/video"
+
+                # text-like MIME (text/* or some application types that are textual)
+                if (mime_out.startswith("text")
+                    or mime_out in {"application/json", "application/xml", "application/javascript"}
+                        or mime_out.endswith("+xml") or mime_out.endswith("+json")):
+                    self.file_type_ready.emit(path, "text")
+                    return "text"
+
+                # common executable-related MIME strings
+                if ("executable" in mime_out
+                    or "x-executable" in mime_out
+                    or mime_out.startswith("application/x-sharedlib")
+                    or "x-mach-binary" in mime_out
+                    or "pe" in mime_out  # covers various PE-like mimes
+                    ):
+                    self.file_type_ready.emit(path, "executable")
+                    return "executable"
+
+            # 2) Fallback: use human-readable `file -b -L` output
+            cmd_hr = f"file -b -L {safe_path}"
+            stdin, stdout, stderr = self.conn.exec_command(cmd_hr)
+            exit_status2 = stdout.channel.recv_exit_status()
+            hr_out = stdout.read().decode('utf-8', errors='ignore').lower()
+            _err2 = stderr.read().decode('utf-8', errors='ignore').strip()
+
+            if exit_status2 == 0 and hr_out:
+                # executable indicators
+                if ("executable" in hr_out
+                    or "elf" in hr_out
+                    or "pe32" in hr_out
+                    or "ms-dos" in hr_out
+                        or "mach-o" in hr_out):
+                    self.file_type_ready.emit(path, "executable")
+                    return "executable"
+
+                # image/video indicators
+                if ("png" in hr_out or "jpeg" in hr_out or "jpg" in hr_out
+                    or "gif" in hr_out or "bitmap" in hr_out
+                    or "svg" in hr_out or "png image" in hr_out
+                        or "video" in hr_out or "matroska" in hr_out or "mp4" in hr_out):
+                    self.file_type_ready.emit(path, "image/video")
+                    return "image/video"
+
+                # text indicators
+                if ("text" in hr_out or "ascii" in hr_out or "utf-8" in hr_out
+                        or "script" in hr_out or "json" in hr_out or "xml" in hr_out):
+                    self.file_type_ready.emit(path, "text")
+                    return "text"
+
+            # 3) 最后兜底：检查执行权限（远端 stat via sftp）
+            try:
+                attr = self.sftp.lstat(path)
+                if bool(attr.st_mode & stat.S_IXUSR):
+                    self.file_type_ready.emit(path, "executable")
+                    return "executable"
+            except Exception:
+                # ignore stat errors here
+                pass
+
+            # default
+            self.file_type_ready.emit(path, "unknown")
+            return "unknown"
+
+        except Exception as e:
+            print(f"Failed to run remote file command for {path}: {e}")
+            self.file_type_ready.emit(path, "unknown")
+            return "unknown"
 
     def _handle_upload_task(self, local_path: str, remote_path: str, callback=None):
-        """
-        处理文件上传任务（内部实现）- 支持文件和目录
-        """
         if self.sftp is None:
-            error_msg = "SFTP 连接未就绪"
-            print(f"❌ 上传失败 - {error_msg}: {local_path} -> {remote_path}")
+            error_msg = "SFTP connection not ready"
+            print(
+                f"❌ Upload failed - {error_msg}: {local_path} -> {remote_path}")
             self.upload_finished.emit(local_path, False, error_msg)
             if callback:
                 callback(False, error_msg)
             return
 
         try:
-            # 检查本地路径是否存在
             if not os.path.exists(local_path):
-                error_msg = f"本地路径不存在: {local_path}"
-                print(f"❌ 上传失败 - {error_msg}")
+                error_msg = f"The local path does not exist: {local_path}"
+                print(f"❌ Upload failed - {error_msg}")
                 self.upload_finished.emit(local_path, False, error_msg)
                 if callback:
                     callback(False, error_msg)
                 return
 
-            # 判断是文件还是目录
             if os.path.isfile(local_path):
                 self._upload_file(local_path, remote_path, callback)
             elif os.path.isdir(local_path):
                 self._upload_directory(local_path, remote_path, callback)
             else:
-                error_msg = f"路径不是文件也不是目录: {local_path}"
-                print(f"❌ 上传失败 - {error_msg}")
+                error_msg = f"Path is neither a file nor a directory: {local_path}"
+                print(f"❌ Upload failed - {error_msg}")
                 self.upload_finished.emit(local_path, False, error_msg)
                 if callback:
                     callback(False, error_msg)
 
         except Exception as e:
-            error_msg = f"上传过程错误: {str(e)}"
-            print(f"❌ 上传失败 - {error_msg}")
+            error_msg = f"Error during upload: {str(e)}"
+            print(f"❌ Upload failed - {error_msg}")
             import traceback
             traceback.print_exc()
             self.upload_finished.emit(local_path, False, error_msg)
@@ -384,47 +539,43 @@ class RemoteFileManager(QThread):
                 callback(False, error_msg)
 
     def _upload_file(self, local_path: str, remote_path: str, callback=None):
-        """上传单个文件"""
+        """Uploading a single file"""
         try:
-            # 获取文件信息用于调试
             file_size = os.path.getsize(local_path)
-            print(f"📁 文件信息: {local_path}, 大小: {file_size} bytes")
+            print(f"📁 File Info: {local_path}, Size: {file_size} bytes")
 
-            # 构建完整的远程文件路径
             remote_filename = os.path.basename(local_path)
             full_remote_path = f"{remote_path.rstrip('/')}/{remote_filename}"
-            print(f"🎯 目标路径: {full_remote_path}")
+            print(f"🎯 Target Path : {full_remote_path}")
 
-            # 确保远程目录存在
             remote_dir = os.path.dirname(full_remote_path)
-            print(f"📁 确保远程目录存在: {remote_dir}")
+            print(f"📁 Make sure the remote directory exists: {remote_dir}")
             dir_status, error = self._ensure_remote_directory_exists(
                 remote_dir)
             if remote_dir and not dir_status:
-                error_msg = f"无法创建远程目录: {remote_dir}\n{error}"
-                print(f"❌ 上传失败 - {error_msg}")
+                error_msg = f"Unable to create remote directory: {remote_dir}\n{error}"
+                print(f"❌ Upload failed - {error_msg}")
                 self.upload_finished.emit(local_path, False, error_msg)
                 if callback:
                     callback(False, error_msg)
                 return
 
-            # 检查远程文件是否已存在
             try:
                 self.sftp.stat(full_remote_path)
-                print(f"⚠️  远程文件已存在: {full_remote_path}")
+                print(
+                    f"⚠️  The remote file already exists: {full_remote_path}")
             except IOError:
-                print("✅ 远程文件不存在，可以上传")
+                print("✅ The remote file does not exist and can be uploaded")
 
-            # 自定义回调函数用于进度报告
             def progress_callback(bytes_so_far, total_bytes):
                 if total_bytes > 0:
                     progress = int((bytes_so_far / total_bytes) * 100)
                     self.upload_progress.emit(local_path, progress)
                     if progress % 10 == 0:
-                        print(f"📊 上传进度: {progress}%")
+                        print(f"📊 Upload progress: {progress}%")
 
-            # 执行上传
-            print(f"🚀 开始上传文件: {local_path} -> {full_remote_path}")
+            print(
+                f"🚀 Start uploading files: {local_path} -> {full_remote_path}")
 
             self.sftp.put(
                 local_path,
@@ -432,44 +583,43 @@ class RemoteFileManager(QThread):
                 callback=progress_callback
             )
 
-            print(f"✅ 文件上传成功: {local_path} -> {full_remote_path}")
+            print(
+                f"✅ File uploaded successfully: {local_path} -> {full_remote_path}")
             self.upload_finished.emit(local_path, True, "")
             if callback:
                 callback(True, "")
 
-            # 上传完成后刷新远程目录
             if remote_dir:
-                print("🔄 刷新远程目录...")
+                print("🔄 Refresh remote directory...")
                 self.refresh_paths([remote_dir])
 
         except Exception as upload_error:
-            error_msg = f"文件上传错误: {str(upload_error)}"
-            print(f"❌ 文件上传失败: {error_msg}")
-            import traceback
+            error_msg = f"File upload error: {str(upload_error)}"
+            print(f"❌ File upload failed: {error_msg}")
             traceback.print_exc()
             self.upload_finished.emit(local_path, False, error_msg)
             if callback:
                 callback(False, error_msg)
 
     def _upload_directory(self, local_dir: str, remote_dir: str, callback=None):
-        """递归上传整个目录"""
+        """Recursively upload an entire directory"""
         try:
             dir_name = os.path.basename(local_dir)
             target_remote_dir = f"{remote_dir.rstrip('/')}/{dir_name}"
 
-            print(f"📁 开始上传目录: {local_dir} -> {target_remote_dir}")
+            print(
+                f"📁 Start uploading directory: {local_dir} -> {target_remote_dir}")
 
             dir_status, error = self._ensure_remote_directory_exists(
                 target_remote_dir)
             if not dir_status:
-                error_msg = f"无法创建远程目录: {target_remote_dir}"
-                print(f"❌ 目录上传失败 - {error_msg}\n{error}")
+                error_msg = f"Unable to create remote directory: {target_remote_dir}"
+                print(f"❌ Directory upload failed - {error_msg}\n{error}")
                 self.upload_finished.emit(local_dir, False, error_msg)
                 if callback:
                     callback(False, error_msg)
                 return
 
-            # 统计目录内容
             total_files = 0
             total_size = 0
             for root, dirs, files in os.walk(local_dir):
@@ -478,14 +628,13 @@ class RemoteFileManager(QThread):
                     file_path = os.path.join(root, file)
                     total_size += os.path.getsize(file_path)
 
-            print(f"📊 目录统计: {total_files} 个文件, 总大小: {total_size} bytes")
+            print(
+                f"📊 Directory statistics: {total_files} files, total size: {total_size} bytes")
 
-            # 递归上传所有文件
             uploaded_files = 0
             uploaded_size = 0
 
             for root, dirs, files in os.walk(local_dir):
-                # 创建对应的远程目录
                 relative_path = os.path.relpath(root, local_dir)
                 if relative_path == '.':
                     current_remote_dir = target_remote_dir
@@ -494,10 +643,9 @@ class RemoteFileManager(QThread):
                 dir_status, error = self._ensure_remote_directory_exists(
                     current_remote_dir)
                 if not dir_status:
-                    print(f"⚠️  跳过创建目录: {current_remote_dir}")
+                    print(f"⚠️  Skip creating directory: {current_remote_dir}")
                     continue
 
-                # 上传当前目录下的所有文件
                 for file in files:
                     local_file_path = os.path.join(root, file)
                     remote_file_path = f"{current_remote_dir}/{file}"
@@ -515,26 +663,28 @@ class RemoteFileManager(QThread):
 
                         if uploaded_files % 10 == 0 or progress % 10 == 0:
                             print(
-                                f"📊 目录上传进度: {progress}% ({uploaded_files}/{total_files} 文件)")
+                                f"📊 Directory upload progress: {progress}% ({uploaded_files}/{total_files} files)")
 
                     except Exception as file_error:
-                        print(f"⚠️  文件上传失败 {local_file_path}: {file_error}")
-                        # 继续上传其他文件
+                        print(
+                            f"⚠️  File upload failed {local_file_path}: {file_error}")
 
-            print(f"✅ 目录上传完成: {local_dir} -> {target_remote_dir}")
-            print(f"📊 上传结果: {uploaded_files}/{total_files} 个文件成功")
+            print(
+                f"✅Directory upload completed: {local_dir} -> {target_remote_dir}")
+            print(
+                f"📊 Upload result: {uploaded_files}/{total_files} files successfully uploaded")
 
             self.upload_finished.emit(
-                local_dir, True, f"成功上传 {uploaded_files}/{total_files} 个文件")
+                local_dir, True, f"Successfully uploaded {uploaded_files}/{total_files} files")
             if callback:
-                callback(True, f"成功上传 {uploaded_files}/{total_files} 个文件")
+                callback(
+                    True, f"Successfully uploaded {uploaded_files}/{total_files} files")
 
-            # 刷新远程目录
             self.refresh_paths([remote_dir])
 
         except Exception as dir_error:
-            error_msg = f"目录上传错误: {str(dir_error)}"
-            print(f"❌ 目录上传失败: {error_msg}")
+            error_msg = f"Directory upload error: {str(dir_error)}"
+            print(f"❌ Directory upload failed: {error_msg}")
             import traceback
             traceback.print_exc()
             self.upload_finished.emit(local_dir, False, error_msg)
@@ -737,7 +887,7 @@ class RemoteFileManager(QThread):
             traceback.print_exc()
             self.copy_finished.emit(source_path, target_path, False, error_msg)
 
-    def _download_files(self, remote_path: str, local_base: str = "_ssh_download"):
+    def _download_files(self, remote_path: str, local_base: str = "_ssh_download", openit: bool = False):
         """
         同步下载文件或目录，完成后触发信号。
         返回: (local_path, status)
@@ -783,12 +933,13 @@ class RemoteFileManager(QThread):
             else:
                 status = _download_file(remote_path, local_target)
 
-            self.download_finished.emit(remote_path, local_target, status, "")
+            self.download_finished.emit(
+                remote_path, local_target, status, "", openit)
             return local_target, status
 
         except Exception as e:
             print(f"下载失败 {remote_path}: {e}")
-            self.download_finished.emit(remote_path, "", False, e)
+            self.download_finished.emit(remote_path, "", False, e, openit)
             return "", False
 
     def _add_path_to_tree(self, path: str, update_tree_sign: bool = True):

@@ -1,6 +1,6 @@
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QFrame,  QHBoxLayout, QLabel, QWidget, QVBoxLayout, QSizePolicy, QSplitter
-from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF
+from PyQt5.QtWidgets import QFrame,  QHBoxLayout, QLabel, QWidget, QVBoxLayout, QSizePolicy, QSplitter, QSpacerItem
+from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, ProgressRing
 from widgets.system_resources_widget import ProcessTable
 from widgets.task_widget import Tasks
 from tools.ssh_webterm import WebTerminal
@@ -190,10 +190,14 @@ class Widget(QWidget):
         # print(f"选中了: {path_dict}")
         name = next(iter(path_dict.keys()))
         is_dir = next(iter(path_dict.values()))
-
+        new_path = self.file_explorer.path + "/" + name
         if is_dir:
-            new_path = self.file_explorer.path + "/" + name
+
             self._set_file_bar(new_path)
+        else:
+            if self.file_manager:
+                print(f"get file type for: {new_path}")
+                self.file_manager.get_file_type(new_path)
 
     def _update_file_explorer(self, path: str = None):
         if path:
