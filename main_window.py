@@ -592,7 +592,7 @@ class Window(FramelessWindow):
         self.navigationInterface.addWidget(
             routeKey='about',
             widget=NavigationAvatarWidget(
-                'su8aru', 'resource/icons/avatar.jpg'),
+                'su8aru', resource_path('resource/icons/avatar.jpg')),
             onClick=self._open_github,
             position=NavigationItemPosition.BOTTOM,
         )
