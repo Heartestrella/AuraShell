@@ -1292,9 +1292,20 @@ class RemoteFileManager(QThread):
         try:
             for attr in self.sftp.listdir_attr(path):
                 owner, group = self._get_owner_group(attr.st_uid, attr.st_gid)
+                is_dir = stat.S_ISDIR(attr.st_mode)
+                if stat.S_ISLNK(attr.st_mode):
+                    try:
+                        full_path = f"{path.rstrip('/')}/{attr.filename}"
+                        target_attr = self.sftp.stat(full_path)
+                        if stat.S_ISDIR(target_attr.st_mode):
+                            is_dir = True
+                    except Exception as e:
+                        print(
+                            f"Could not stat symlink target for {attr.filename}: {e}")
+
                 detailed_result.append({
                     "name": attr.filename,
-                    "is_dir": stat.S_ISDIR(attr.st_mode),
+                    "is_dir": is_dir,
                     "size": attr.st_size,
                     "mtime": datetime.fromtimestamp(attr.st_mtime).strftime('%Y/%m/%d %H:%M'),
                     "perms": stat.filemode(attr.st_mode),

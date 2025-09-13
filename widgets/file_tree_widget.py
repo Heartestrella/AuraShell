@@ -1,6 +1,6 @@
-from qfluentwidgets import BreadcrumbBar
+from qfluentwidgets import BreadcrumbBar, LineEdit
 from typing import Dict, Optional
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTreeWidgetItem, QStyle
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QStyle
 from PyQt5.QtCore import Qt, pyqtSignal
 from qfluentwidgets import TreeWidget, RoundMenu, Action, FluentIcon as FIF
 from typing import Optional, Dict, Set
@@ -26,27 +26,61 @@ class File_Navigation_Bar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.send_signal = True
+        self.current_path = "/"
+        self._is_submitting = False
+
         self.breadcrumbBar = BreadcrumbBar(self)
-        self.breadcrumbBar.currentItemChanged.connect(
-            self.updatePathLabel)
-        self.vBoxLayout = QVBoxLayout(self)
-        self.vBoxLayout.setContentsMargins(20, 20, 20, 20)
-        self.vBoxLayout.addWidget(self.breadcrumbBar)
+        self.path_edit = LineEdit(self)
+        self.path_edit.hide()
+
+        self.hBoxLayout = QHBoxLayout(self)
+        self.hBoxLayout.setContentsMargins(10, 5, 10, 5)
+        self.hBoxLayout.addWidget(self.breadcrumbBar)
+        self.hBoxLayout.addWidget(self.path_edit)
+
+        self.breadcrumbBar.currentItemChanged.connect(self.updatePathLabel)
+        self.path_edit.returnPressed.connect(self._submit_path_from_edit)
+        self.path_edit.editingFinished.connect(self._submit_path_from_edit)
+
+    def mousePressEvent(self, event):
+        if not self.path_edit.isVisible() and self.breadcrumbBar.geometry().contains(event.pos()):
+            self.path_edit.setText(self.current_path)
+            self.breadcrumbBar.hide()
+            self.path_edit.show()
+            self.path_edit.setFocus()
+            self.path_edit.selectAll()
+        super().mousePressEvent(event)
+
+    def _submit_path_from_edit(self):
+        if self._is_submitting:
+            return
+        self._is_submitting = True
+        new_path = self.path_edit.text().strip()
+        if new_path:
+            self.current_path = new_path
+            self.bar_path_changed.emit(new_path)
+        self._hide_path_edit()
+        self._is_submitting = False
+
+    def _hide_path_edit(self):
+        self.path_edit.hide()
+        self.breadcrumbBar.show()
 
     def updatePathLabel(self, *_):
-
         if self.send_signal:
-            print("updatePathLabel")
             currentIndex = self.breadcrumbBar.currentIndex()
-            items = self.breadcrumbBar.items  # items is a list of BreadcrumbItem objects
+            items = self.breadcrumbBar.items
             path_list = [item.text for item in items[:currentIndex + 1]]
             path = "/" + \
-                "/".join(path_list[1:]
-                         ) if len(path_list) > 1 else path_list[0]  # Stitching Path
-            # print("Path Bar 当前路径:", path)
+                "/".join(path_list[1:]) if len(path_list) > 1 else (
+                    path_list[0] if path_list else "/")
+            if path == "//":
+                path = "/"
+            self.current_path = path
             self.bar_path_changed.emit(path)
-        else:
-            print("not send_signal")
+
+    def set_path(self, path: str):
+        self.current_path = path
 
 
 class FileTreeWidget(QWidget):

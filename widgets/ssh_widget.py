@@ -250,6 +250,7 @@ class Widget(QWidget):
         except Exception:
             pass
 
+        self.file_bar.set_path(path)
         self.file_bar.breadcrumbBar.clear()
         for p in path_list:
             self.file_bar.breadcrumbBar.addItem(p, p)
@@ -258,6 +259,8 @@ class Widget(QWidget):
             self.file_bar.breadcrumbBar.blockSignals(False)
         except Exception:
             pass
+
+        self.file_bar._hide_path_edit()
 
         # ensure explorer.path updated and only refresh once
         self.file_explorer.path = path
