@@ -578,7 +578,9 @@ class FileExplorer(QWidget):
     def _show_details_view_context_menu(self, pos):
         index = self.details_view.indexAt(pos)
         if not index.isValid():
-            self.contextMenuEvent(self.details_view.mapToGlobal(pos))
+            # Clicked on empty space, show the general context menu
+            menu = self._create_general_context_menu()
+            menu.exec_(self.details_view.viewport().mapToGlobal(pos))
             return
 
         selection_model = self.details_view.selectionModel()
@@ -666,27 +668,29 @@ class FileExplorer(QWidget):
             self.upload_file.emit(path, self.path)
         event.acceptProposedAction()
 
-    def contextMenuEvent(self, e) -> None:
+    def _create_general_context_menu(self):
+        """Creates the context menu for empty space."""
         menu = RoundMenu(parent=self)
-
         refresh_action = Action(FIF.UPDATE, self.tr('Refresh the page'))
-        details_view_action = Action(
-            FIF.VIEW, self.tr('Details View'))
-        icon_view_action = Action(
-            FIF.APPLICATION, self.tr('Icon View'))
+        details_view_action = Action(FIF.VIEW, self.tr('Details View'))
+        icon_view_action = Action(FIF.APPLICATION, self.tr('Icon View'))
 
-        refresh_action.triggered.connect(
-            lambda checked: self.refresh_action.emit())
+        refresh_action.triggered.connect(lambda: self.refresh_action.emit())
         details_view_action.triggered.connect(
             lambda: self.switch_view("details"))
-        icon_view_action.triggered.connect(
-            lambda: self.switch_view("icon"))
+        icon_view_action.triggered.connect(lambda: self.switch_view("icon"))
 
         menu.addActions([refresh_action, self.paste, self.make_dir])
         menu.addSeparator()
         menu.addActions([details_view_action, icon_view_action])
-        menu.addSeparator()
-        menu.exec(e.globalPos())
+        return menu
+
+    def contextMenuEvent(self, e):
+        # This event now only handles the icon view's empty space.
+        # Details view empty space is handled in _show_details_view_context_menu.
+        if self.view_mode == 'icon':
+            menu = self._create_general_context_menu()
+            menu.exec_(e.globalPos())
 
     def _get_full_path(self, file_name):
         path = os.path.join(self.path, file_name)
