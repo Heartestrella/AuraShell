@@ -52,9 +52,11 @@ bash python main_window.py
 
 ## 📷 Screenshots
 
-<img width="1557" height="780" alt="2fd06349e71c266d6e154124fb468eea" src="https://github.com/user-attachments/assets/8d5fa40d-7783-4cf2-9467-36c6f76c735b" />
-<img width="1557" height="780" alt="07eaa1154efbc5ac496323983e92fe7e" src="https://github.com/user-attachments/assets/41c15ef4-b3bb-4cb8-b08b-454b0aa32ced" />
-<img width="1557" height="780" alt="99804f59c816008c0647800ac79a0f8e" src="https://github.com/user-attachments/assets/115abcc7-c140-484a-bc67-38e82f2636a8" />
+<img width="1624" height="913" alt="image" src="https://github.com/user-attachments/assets/f45dd0da-fac0-4a40-a005-72e1207224d0" />
+<img width="1624" height="913" alt="image" src="https://github.com/user-attachments/assets/38e18a59-39a1-4590-81c9-cf1bd4e30cf1" />
+<img width="1624" height="913" alt="image" src="https://github.com/user-attachments/assets/ab3b947e-f4fd-42da-a706-eaa160a148fd" />
+
+
 
 
 ---
