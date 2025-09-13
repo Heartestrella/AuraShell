@@ -6,6 +6,10 @@ import os
 
 class SCM:
     def __init__(self):
+        config_dir = Path.home() / ".config"
+        if not os.path.exists(config_dir):
+            os.makedirs(config_dir)
+
         self.default_config = {
             "bg_color": "Dark",  # Dark or Light
             "bg_pic": None,  # Path or None

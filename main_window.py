@@ -65,7 +65,25 @@ class Window(FramelessWindow):
         self.MainInterface.sessionClicked.connect(self._on_session_selected)
 
         self.sycn_widget = SycnWidget(self)
-
+        self.sycn_widget.sync_finished.connect(
+            lambda status, msg: InfoBar.success(
+                title=msg if status == "success" else self.tr("Error"),
+                content="",
+                orient=Qt.Vertical,
+                isClosable=True,
+                position=InfoBarPosition.TOP_RIGHT,
+                duration=5000 if status == "success" else -1,
+                parent=self
+            ) if status == "success" else InfoBar.error(
+                title=self.tr("Error"),
+                content=msg,
+                orient=Qt.Vertical,
+                isClosable=True,
+                position=InfoBarPosition.TOP_RIGHT,
+                duration=-1,
+                parent=self
+            )
+        )
         self.sessions = Widget(
             self.tr('No conversation selected yet'), True, self)
 
