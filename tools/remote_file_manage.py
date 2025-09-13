@@ -8,34 +8,6 @@ import os
 from typing import Tuple
 from datetime import datetime
 import shlex
-if os.name != "nt":
-    import pwd
-    import grp
-else:
-    pwd = None
-    grp = None
-
-
-def get_owner_group(uid, gid):
-    """
-    根据 uid/gid 获取用户名和组名
-    Windows 下直接返回数字字符串
-    """
-    owner = str(uid)
-    group = str(gid)
-
-    if pwd and grp:  # 仅类 Unix 系统可解析
-        try:
-            owner = pwd.getpwuid(uid).pw_name
-        except KeyError:
-            pass
-        try:
-            group = grp.getgrgid(gid).gr_name
-        except KeyError:
-            pass
-    return owner, group
-
-
 class RemoteFileManager(QThread):
     """
     Remote file manager, responsible for building and maintaining remote file trees
@@ -48,7 +20,7 @@ class RemoteFileManager(QThread):
     upload_finished = pyqtSignal(str, bool, str)
     # Path, success, error message
     delete_finished = pyqtSignal(str, bool, str)
-    list_dir_finished = pyqtSignal(str, dict)  # path, result
+    list_dir_finished = pyqtSignal(str, list)  # path, result
     # path, result (e.g. "directory"/"file"/False)
     path_check_result = pyqtSignal(str, object)
     # remote_path , local_path , status , error msg,open it
@@ -79,6 +51,10 @@ class RemoteFileManager(QThread):
 
         # File_tree
         self.file_tree: Dict = {}
+
+        # UID/GID Caching
+        self.uid_map: Dict[int, str] = {}
+        self.gid_map: Dict[int, str] = {}
 
         # Thread Control
         self.mutex = QMutex()
@@ -114,7 +90,7 @@ class RemoteFileManager(QThread):
 
             self.sftp = self.conn.open_sftp()
             self.sftp_ready.emit()
-
+            self._fetch_user_group_maps()
             while self._is_running:
                 self.mutex.lock()
                 if not self._tasks:
@@ -147,11 +123,10 @@ class RemoteFileManager(QThread):
                                 task['path'], openit=task["open_it"])
                         elif ttype == 'list_dir':
                             print(f"Handle:{[task['path']]}")
-                            result = self.list_dir_simple(task['path'])
-
+                            result = self.list_dir_detailed(task['path'])
                             print(f"List dir : {result}")
                             self.list_dir_finished.emit(
-                                task['path'], result or {})
+                                task['path'], result or [])
                         elif ttype == 'check_path':
                             path_to_check = task['path']
                             try:
@@ -1271,6 +1246,63 @@ class RemoteFileManager(QThread):
             return result
         except Exception as e:
             print(f"list_dir_simple 获取目录内容时出错: {e}")
+            return None
+
+    def _fetch_user_group_maps(self):
+        """
+        Fetch and parse /etc/passwd and /etc/group to cache UID/GID mappings.
+        """
+        if self.conn is None:
+            return
+
+        # Fetch /etc/passwd
+        try:
+            stdin, stdout, stderr = self.conn.exec_command("cat /etc/passwd")
+            passwd_content = stdout.read().decode('utf-8', errors='ignore')
+            for line in passwd_content.strip().split('\n'):
+                parts = line.split(':')
+                if len(parts) >= 3:
+                    username, _, uid = parts[0], parts[1], parts[2]
+                    self.uid_map[int(uid)] = username
+        except Exception as e:
+            print(f"Could not fetch or parse /etc/passwd: {e}")
+
+        # Fetch /etc/group
+        try:
+            stdin, stdout, stderr = self.conn.exec_command("cat /etc/group")
+            group_content = stdout.read().decode('utf-8', errors='ignore')
+            for line in group_content.strip().split('\n'):
+                parts = line.split(':')
+                if len(parts) >= 3:
+                    groupname, _, gid = parts[0], parts[1], parts[2]
+                    self.gid_map[int(gid)] = groupname
+        except Exception as e:
+            print(f"Could not fetch or parse /etc/group: {e}")
+
+    def _get_owner_group(self, uid, gid):
+        owner = self.uid_map.get(uid, str(uid))
+        group = self.gid_map.get(gid, str(gid))
+        return owner, group
+
+    def list_dir_detailed(self, path: str) -> Optional[List[dict]]:
+        if self.sftp is None:
+            print("list_dir_detailed: sftp not ready")
+            return None
+        detailed_result = []
+        try:
+            for attr in self.sftp.listdir_attr(path):
+                owner, group = self._get_owner_group(attr.st_uid, attr.st_gid)
+                detailed_result.append({
+                    "name": attr.filename,
+                    "is_dir": stat.S_ISDIR(attr.st_mode),
+                    "size": attr.st_size,
+                    "mtime": datetime.fromtimestamp(attr.st_mtime).strftime('%Y/%m/%d %H:%M'),
+                    "perms": stat.filemode(attr.st_mode),
+                    "owner": f"{owner}/{group}"
+                })
+            return detailed_result
+        except Exception as e:
+            print(f"list_dir_detailed error when getting directory contents: {e}")
             return None
 
     # ---------------------------
