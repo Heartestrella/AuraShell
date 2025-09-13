@@ -83,8 +83,8 @@ It is undeniable that part of the code has been generated with the help of AI to
 > ⚠️ **Beta Version Notice:**  
 > This is a beta release. If you encounter any bugs, please submit the runtime logs along with a brief description of how to reproduce the issue to the [GitHub Issues](https://github.com/Heartestrella/P-SSH/issues).
 > Unimplemented Features
-- 1. Display file upload/download progress
-- 2. Terminate file upload/download progress
-- 3. Monitor open text file saves and automatically upload them
-- 4. Built-in notepad
+- Display file upload/download progress
+- Terminate file upload/download progress
+- Monitor open text file saves and automatically upload them
+- Built-in notepad
 
