@@ -6,6 +6,9 @@ import os
 
 class SCM:
     def __init__(self):
+        config_dir = Path.home() / ".config"
+        config_dir.mkdir(exist_ok=True)
+
         self.config_path = Path.home() / ".config" / "setting-config.json"
         if not os.path.exists(self.config_path):
             self.init_config("Dark", None, "12", True,
@@ -14,19 +17,6 @@ class SCM:
 
     def write_config(self, config_data):
         """写入配置文件"""
-        config_dir = os.path.dirname(self.config_path)
-
-        if not os.path.exists(config_dir):
-            try:
-                os.makedirs(config_dir, exist_ok=True)
-                print(f"Created config directory: {config_dir}")
-            except Exception as e:
-                print(f"Failed to create config directory: {e}")
-                self.config_path = os.path.join(
-                    os.getcwd(), 'setting-config.json')
-                config_dir = os.path.dirname(self.config_path)
-                os.makedirs(config_dir, exist_ok=True)
-
         try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(config_data, f, ensure_ascii=False, indent=4)

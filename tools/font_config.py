@@ -9,6 +9,8 @@ import sys
 class font_config:
     def __init__(self):
         self.config_path = Path.home() / ".config" / "font-config.json"
+        if not self.config_path.exists():
+            self.init_config()
 
     def init_config(self):
         config_dict = {
@@ -44,18 +46,16 @@ class font_config:
             with open(self.config_path, mode="w", encoding="utf-8") as f:
                 json.dump(config_dict, f, ensure_ascii=False, indent=2)
 
-        except (FileNotFoundError, json.JSONDecodeError):
-            self.init_config()
-            sys.exit()
+        except Exception as e:
+            print(f"Error write font config: {e}")
 
     def read_font(self):
         try:
             with open(self.config_path, mode="r", encoding="utf-8") as f:
                 config_dict = json.load(f)
             return (config_dict["family"], config_dict["size"])
-        except (FileNotFoundError, json.JSONDecodeError):
-            self.init_config()
-            sys.exit()
+        except Exception as e:
+            print(f"Error reading font config: {e}")
 
     def get_font(self) -> QFont:
         path, size = self.read_font()

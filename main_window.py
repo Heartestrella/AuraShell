@@ -19,7 +19,6 @@ from tools.remote_file_manage import RemoteFileManager
 from tools.setting_config import SCM
 import os
 font_ = font_config()
-configer = SCM()
 
 
 def resource_path(relative_path):
@@ -718,6 +717,7 @@ def language_code_to_locale(code: str) -> str:
 
 if __name__ == '__main__':
     try:
+        configer = SCM()
 
         setup_global_logging()
         main_logger.info("Application Startup")
@@ -735,7 +735,7 @@ if __name__ == '__main__':
         translator_1 = FluentTranslator()
         if lang == "en_US":
             pass
-        elif translator.load(f"resource/i18n/pssh_{lang}.qm"):
+        elif translator.load(resource_path(f"resource/i18n/pssh_{lang}.qm")):
             app.installTranslator(translator)
         else:
             print("Translation file loading failed")
