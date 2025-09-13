@@ -198,6 +198,10 @@ class FileItem(QWidget):
         return menu
 
     def contextMenuEvent(self, e):
+        # Ensure the item is selected before showing the context menu
+        if not self.selected:
+            self.parent_explorer.select_item(self)
+
         menu = self._create_context_menu()
         menu.exec(e.globalPos())
 
@@ -205,6 +209,7 @@ class FileItem(QWidget):
         if action_type == "rename":
             self._start_rename()
         else:
+            # Always emit for the source item only. The explorer will handle multi-select.
             self.action_triggered.emit(
                 action_type, self.name, str(self.is_dir))
 
@@ -241,7 +246,7 @@ class FileItem(QWidget):
 class FileExplorer(QWidget):
     selected = pyqtSignal(dict)
     # action type , path , copy_to path , cut?
-    file_action = pyqtSignal(str, str, str, bool)
+    file_action = pyqtSignal(str, object, str, bool)
     upload_file = pyqtSignal(str, str)  # Source path , Target path
     refresh_action = pyqtSignal()
 
@@ -269,6 +274,7 @@ class FileExplorer(QWidget):
         self.details_view.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.details_view.setEditTriggers(QTableView.NoEditTriggers)
         self.details_view.setSelectionBehavior(QTableView.SelectRows)
+        self.details_view.setSelectionMode(QTableView.ExtendedSelection)
         self.details_view.setContextMenuPolicy(Qt.CustomContextMenu)
         self.details_view.customContextMenuRequested.connect(
             self._show_details_view_context_menu)
@@ -510,45 +516,50 @@ class FileExplorer(QWidget):
         item.update()
 
     def _handle_file_action(self, action_type, file_name, is_dir_str=None, new_name=None):
-        """Actions for processing file items"""
-        print(action_type)
-        if file_name:
-            if self.path.endswith('/'):
-                full_path = self.path + file_name
-            else:
-                full_path = self.path + '/' + file_name
-
-            full_path = os.path.normpath(full_path).replace('\\', '/')
-
-        if action_type == "rename":
-            print(action_type, full_path, new_name)
-            if new_name:
+        """Central handler for all file actions, aggregates selections."""
+        # Handle single-path actions first
+        if action_type in ["rename", "mkdir"]:
+            full_path = self._get_full_path(file_name) if file_name else ""
+            if action_type == "rename" and new_name:
                 self.file_action.emit(action_type, full_path, new_name, False)
-        elif action_type == "mkdir":
-            print(action_type, full_path)
-            if file_name:
+            elif action_type == "mkdir" and file_name:
                 self.file_action.emit(action_type, full_path, "", False)
+            return
+
+        # For other actions, aggregate all selected paths
+        paths = []
+        if self.view_mode == 'icon' and len(self.selected_items) > 1:
+            paths = [self._get_full_path(item.name)
+                     for item in self.selected_items]
+        elif self.view_mode == 'details' and len(self.details_view.selectionModel().selectedRows()) > 1:
+            for index in self.details_view.selectionModel().selectedRows():
+                name = self.details_model.item(index.row(), 0).text()
+                paths.append(self._get_full_path(name))
         else:
+            # Single selection case for non-rename/mkdir actions
+            if file_name:
+                paths = [self._get_full_path(file_name)]
 
-            if action_type == "copy":
-                self.copy_file_path = full_path
+        if not paths:
+            return  # Nothing to do
+
+        # Process aggregated paths
+        if action_type == "copy":
+            self.copy_file_path = paths
+            self.cut_ = False
+        elif action_type == "cut":
+            self.copy_file_path = paths
+            self.cut_ = True
+        elif action_type == "paste":
+            # copy_file_path is already a list from copy/cut
+            self.file_action.emit(
+                action_type, self.copy_file_path, self.path, self.cut_)
+            if self.cut_:
                 self.cut_ = False
-            elif action_type == "cut":
-                self.copy_file_path = full_path
-                self.cut_ = True
-            else:
-
-                if action_type == "paste":
-                    self.file_action.emit(
-                        action_type, self.copy_file_path, self.path, self.cut_)
-                    if self.cut_:
-                        # reset
-                        self.cut_ = False
-                        self.copy_file_path = ""
-                else:
-                    print(
-                        f"Action type: {action_type}, File path: {full_path}, Is it a directory: {is_dir_str}")
-                    self.file_action.emit(action_type, full_path, "", False)
+                self.copy_file_path = []
+        else:  # e.g., "delete", "download", etc.
+            print(f"Action: {action_type}, Paths: {paths}")
+            self.file_action.emit(action_type, paths, "", False)
 
     # ---------------- Box selection logic ----------------
 
@@ -568,20 +579,25 @@ class FileExplorer(QWidget):
             self.contextMenuEvent(self.details_view.mapToGlobal(pos))
             return
 
-        self.details_view.selectionModel().clear()
-        self.details_view.selectionModel().select(
-            index.sibling(index.row(), 0),
-            self.details_view.selectionModel().Select | self.details_view.selectionModel().Rows
-        )
+        selection_model = self.details_view.selectionModel()
+        # If the clicked item is not already part of the selection,
+        # clear the previous selection and select only the clicked item.
+        if not selection_model.isSelected(index):
+            selection_model.clearSelection()
+            selection_model.select(
+                index, self.details_view.selectionModel().Select | self.details_view.selectionModel().Rows)
 
+        # Now the selection is correct, proceed to show the menu.
         name_item = self.details_model.item(index.row(), 0)
         file_name = name_item.text()
         is_dir = name_item.data(Qt.UserRole)
 
         # Create a temporary FileItem to generate and show the context menu
-        # This avoids the error and reuses the menu logic
+        # This reuses the menu logic and now _emit_action handles multi-select
         temp_item = FileItem(
             file_name, is_dir, explorer=self, icons=self.icons)
+        # Connect the signal from the temporary item to the actual handler
+        temp_item.action_triggered.connect(self._handle_file_action)
         menu = temp_item._create_context_menu()
         menu.exec_(self.details_view.viewport().mapToGlobal(pos))
 
@@ -670,10 +686,24 @@ class FileExplorer(QWidget):
         menu.addSeparator()
         menu.exec(e.globalPos())
 
+    def _get_full_path(self, file_name):
+        path = os.path.join(self.path, file_name)
+        return os.path.normpath(path).replace('\\', '/')
+
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_F2:
-            if self.selected_items:
+        if event.key() == Qt.Key_Delete:
+            # Call the handler directly. Pass a dummy file_name as it will be ignored
+            # in multi-select scenarios and is not needed for single-select delete.
+            self._handle_file_action('delete', '')
+
+        elif event.key() == Qt.Key_F2:
+            # F2 rename should only work for a single selection
+            if self.view_mode == 'icon' and len(self.selected_items) == 1:
                 item = list(self.selected_items)[0]
                 item._start_rename()
+            elif self.view_mode == 'details' and len(self.details_view.selectionModel().selectedRows()) == 1:
+                # This part is complex because FileItem handles the LineEdit.
+                # A more robust solution would be needed to trigger rename from here.
+                print("F2 rename in details view needs a dedicated implementation.")
         else:
             super().keyPressEvent(event)

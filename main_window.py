@@ -408,15 +408,23 @@ class Window(FramelessWindow):
         if action_type == "delete":
             file_manager.delete_path(full_path)
         elif action_type == "copy_path":
-            clipboard.setText(full_path)
+            paths_to_copy = full_path if isinstance(
+                full_path, list) else [full_path]
+            clipboard.setText('\n'.join(paths_to_copy))
         elif action_type == "download":
-            self._show_info(path=full_path, child_key=child_key,
-                            type_="start_download")
-            file_manager.download_path_async(full_path)
+            paths_to_download = full_path if isinstance(
+                full_path, list) else [full_path]
+            for path in paths_to_download:
+                self._show_info(path=path, child_key=child_key,
+                                type_="start_download")
+                file_manager.download_path_async(path)
         elif action_type == "paste":
-            if full_path and copy_to:
-                print(f"Copy {full_path} to {copy_to} Cut status : {cut}")
-                file_manager.copy_to(full_path, copy_to, cut)
+            source_paths = full_path if isinstance(
+                full_path, list) else [full_path]
+            for source_path in source_paths:
+                if source_path and copy_to:
+                    print(f"Copy {source_path} to {copy_to} Cut status : {cut}")
+                    file_manager.copy_to(source_path, copy_to, cut)
         elif action_type == "rename":
             if copy_to:
                 print(f"Rename {full_path} to {copy_to}")
