@@ -6,54 +6,45 @@ import os
 
 class SCM:
     def __init__(self):
-        config_dir = Path.home() / ".config"
-        config_dir.mkdir(exist_ok=True)
-
+        self.default_config = {
+            "bg_color": "Dark",  # Dark or Light
+            "bg_pic": None,  # Path or None
+            "font_size": 12,  # 12-30
+            "locked_ratio": True,  # Bool
+            "ssh_widget_text_color": "#FFFFFF",  # color code
+            "background_opacity": 100,  # int 0-100
+            "window_last_width": 720,  # int
+            "window_last_height": 680,  # int
+            "follow_cd": False,  # bool
+            "language": "system"  # system, EN, CN, JP, RU
+        }
         self.config_path = Path.home() / ".config" / "setting-config.json"
         if not os.path.exists(self.config_path):
-            self.init_config("Dark", None, "12", True,
-                             "#FFFFFF", 100, 720, 680, False, "system")
+            self.init_config()
             print("Config file created at:", self.config_path)
+        else:
+            self._check_and_repair_config(self.read_config())
 
     def write_config(self, config_data):
-        """写入配置文件"""
         try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(config_data, f, ensure_ascii=False, indent=4)
         except Exception as e:
             print(f"Failed to write config file: {e}")
 
-    def init_config(self, *parameter):
-        '''
-        Parameter order: Sets the order of page options.
+    def _check_and_repair_config(self, config: dict) -> dict:
 
-        0 -> bg_color: Background color ("Dark" or "Light")
+        repaired = False
+        for key in self.default_config:
+            if key not in config:
+                config[key] = self.default_config[key]
+                repaired = True
+        if repaired:
+            self.write_config(config)
+        return config
 
-        1 -> bg_pic: Background image path (Path or None)
-
-        2 -> font_size: Font size (int 12-30)
-
-        3 -> locked_ratio: Whether to lock the aspect ratio (Bool)
-
-        4 -> ssh_widget_text_color: SSH session page font color
-
-        5 -> background_opacity: Background image opacity
-
-        8 -> follow_cd: The file manager follows the new directory after using cd.
-        '''
-        config = {
-            "bg_color": parameter[0],  # Dark or Light
-            "bg_pic": parameter[1],  # Path or None
-            "font_size": parameter[2],  # 12-30
-            "locked_ratio": parameter[3],  # Bool
-            "ssh_widget_text_color": parameter[4],  # color code
-            "background_opacity": parameter[5],  # int 0-100
-            "window_last_width": parameter[6],  # int
-            "window_last_height": parameter[7],  # int
-            "follow_cd": parameter[8],  # bool
-            "language": parameter[9]  # system, EN, CN, JP, RU
-        }
-        self.write_config(config)
+    def init_config(self):
+        self.write_config(self.default_config)
 
     def revise_config(self, key, value):
         config = self.read_config()
