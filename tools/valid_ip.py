@@ -5,13 +5,13 @@ from typing import Union
 
 def is_valid_address(addr: str) -> Union[bool, str]:
     """
-    自动判断并严格验证 IPv4、IPv6 地址或域名是否合法
+    Automatically determine and strictly validate whether an IPv4, IPv6 address or domain name is valid.
 
     Args:
-        addr: 要验证的地址字符串
+        addr: The address string to validate
 
     Returns:
-        Union[bool, str]: 如果地址合法返回类型字符串("IPv4"/"IPv6"/"Domain")，否则返回False
+        Union[bool, str]: Returns the type string ("IPv4"/"IPv6"/"Domain") if the address is valid, otherwise returns False
     """
     if not isinstance(addr, str):
         return False
@@ -20,22 +20,22 @@ def is_valid_address(addr: str) -> Union[bool, str]:
     if not addr:
         return False
 
-    # 移除可能的端口号（可选）
-    if ':' in addr and ']' not in addr:  # 不是IPv6地址
-        if addr.count(':') == 1:  # 可能是IPv4:port或hostname:port
+    # Remove possible port number (optional)
+    if ':' in addr and ']' not in addr:  # Not an IPv6 address
+        if addr.count(':') == 1:  # Could be IPv4:port or hostname:port
             host, port = addr.rsplit(':', 1)
             if port.isdigit() and 0 <= int(port) <= 65535:
-                addr = host  # 只验证主机部分
+                addr = host  # Only validate the host part
 
-    # 首先尝试验证 IPv4（最严格的检查）
+    # First try IPv4 (strict check)
     if _is_valid_ipv4(addr):
         return True
 
-    # 然后尝试验证 IPv6
+    # Then try IPv6
     if _is_valid_ipv6(addr):
         return True
 
-    # 最后验证域名
+    # Finally, validate domain name
     if _is_valid_domain(addr):
         return True
 
@@ -43,8 +43,8 @@ def is_valid_address(addr: str) -> Union[bool, str]:
 
 
 def _is_valid_ipv4(addr: str) -> bool:
-    """严格验证 IPv4 地址"""
-    # 基本格式检查
+    """Strictly validate IPv4 address"""
+    # Basic format check
     if addr.count('.') != 3:
         return False
 
@@ -53,15 +53,15 @@ def _is_valid_ipv4(addr: str) -> bool:
         return False
 
     for part in parts:
-        # 检查是否为数字
+        # Check if it's a number
         if not part.isdigit():
             return False
 
-        # 检查前导零（除了单独的0）
+        # Check for leading zeros (except single 0)
         if len(part) > 1 and part[0] == '0':
             return False
 
-        # 检查数值范围
+        # Check numeric range
         try:
             num = int(part)
             if not 0 <= num <= 255:
@@ -73,12 +73,12 @@ def _is_valid_ipv4(addr: str) -> bool:
 
 
 def _is_valid_ipv6(addr: str) -> bool:
-    """严格验证 IPv6 地址"""
+    """Strictly validate IPv6 address"""
     try:
-        # 使用 ipaddress 库进行严格验证
+        # Use ipaddress module for strict validation
         ip = ipaddress.IPv6Address(addr)
 
-        # 可选：排除一些特殊地址
+        # Optional: exclude some special addresses
         if ip.is_unspecified or ip.is_loopback:
             return False
 
@@ -89,88 +89,87 @@ def _is_valid_ipv6(addr: str) -> bool:
 
 
 def _is_valid_domain(addr: str) -> bool:
-    """严格验证域名"""
-    # 长度检查
+    """Strictly validate domain name"""
+    # Length check
     if len(addr) > 253:
         return False
 
-    # 不能以点开头或结尾
+    # Cannot start or end with a dot
     if addr.startswith('.') or addr.endswith('.'):
         return False
 
-    # 分割标签
+    # Split labels
     labels = addr.split('.')
-    if len(labels) < 2:  # 至少要有顶级域和二级域
+    if len(labels) < 2:  # Must have at least second-level domain and TLD
         return False
 
-    # 检查每个标签
+    # Check each label
     for label in labels:
-        # 标签不能为空
+        # Label cannot be empty
         if not label:
             return False
 
-        # 标签长度限制
+        # Label length limit
         if len(label) > 63:
             return False
 
-        # 标签格式检查（字母、数字、连字符）
+        # Label format check (letters, digits, hyphen)
         if not re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$', label):
             return False
 
-        # 首尾不能是连字符
+        # Cannot start or end with hyphen
         if label.startswith('-') or label.endswith('-'):
             return False
 
-    # 顶级域检查（必须至少2个字符且主要为字母）
+    # Top-level domain check (at least 2 characters and must contain letters)
     tld = labels[-1]
     if len(tld) < 2 or not any(c.isalpha() for c in tld):
         return False
 
-    # 检查常见无效模式
-    if re.search(r'\.\.', addr):  # 连续的点
+    # Check common invalid patterns
+    if re.search(r'\.\.', addr):  # Consecutive dots
         return False
 
     return True
 
-# 测试函数
 
-
+# Test function
 def test_address_validation():
-    """测试地址验证函数"""
+    """Test the address validation function"""
     test_cases = [
-        # 合法 IPv4
+        # Valid IPv4
         ("192.168.1.1", "IPv4"),
         ("8.8.8.8", "IPv4"),
         ("255.255.255.255", "IPv4"),
         ("0.0.0.0", "IPv4"),
 
-        # 非法 IPv4
+        # Invalid IPv4
         ("192.168.01.1", False),
         ("256.0.0.1", False),
         ("1234.132.1", False),
         ("192.168.1", False),
 
-        # 合法 IPv6
+        # Valid IPv6
         ("2001:0db8:85a3:0000:0000:8a2e:0370:7334", "IPv6"),
         ("2001::1", "IPv6"),
         ("::1", "IPv6"),
 
-        # 非法 IPv6
+        # Invalid IPv6
         ("2001::1::1", False),
         (":::", False),
 
-        # 合法域名
+        # Valid domain
         ("example.com", "Domain"),
         ("sub-domain.example.com", "Domain"),
         ("google.com", "Domain"),
 
-        # 非法域名
+        # Invalid domain
         ("-bad.example.com", False),
         ("bad-.example.com", False),
         ("too..many.dots.com", False),
         ("test.c", False),
 
-        # 你的测试用例
+        # Additional test cases
         ("1234.132.1", False),
         ("192.168.01.1", False),
         ("256.0.0.1", False),
@@ -183,7 +182,7 @@ def test_address_validation():
         ("123.456.78.90", False)
     ]
 
-    print("测试结果:")
+    print("Test Results:")
     print("=" * 60)
     all_passed = True
 
@@ -193,12 +192,16 @@ def test_address_validation():
         if result != expected:
             all_passed = False
 
-        print(f"{status} {addr:<45} -> 期望: {expected:<8} 实际: {result}")
+        print(f"{status} {addr:<45} -> Expected: {expected:<8} Actual: {result}")
 
     print("\n" + "=" * 60)
     if all_passed:
-        print("✓ 所有测试用例通过！")
+        print("✓ All test cases passed!")
     else:
-        print("✗ 有些测试用例未通过！")
+        print("✗ Some test cases failed!")
 
     return all_passed
+
+
+if __name__ == "__main__":
+    test_address_validation()

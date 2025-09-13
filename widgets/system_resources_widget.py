@@ -1,7 +1,6 @@
-from PyQt5.QtCore import Qt, QTimer, QRectF
+from PyQt5.QtCore import Qt,  QRectF
 from PyQt5.QtGui import QPainter, QColor, QBrush, QLinearGradient, QFont
 from PyQt5.QtWidgets import QFrame
-import random
 
 
 class ProcessTable(QFrame):
@@ -31,7 +30,6 @@ class ProcessTable(QFrame):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # 计算矩形区域
         total_width = self.width() - 20
         total_height = self.height() - 20
         rect_height = total_height / 2 - 5
@@ -42,12 +40,11 @@ class ProcessTable(QFrame):
         }
 
         for name, rect in rects.items():
-            # 背景灰色圆角
             painter.setPen(Qt.NoPen)
             painter.setBrush(QColor(100, 100, 100, 50))
             painter.drawRoundedRect(rect, 8, 8)
 
-            # 填充进度渐变
+            # Fill progress gradient
             fill_width = rect.width() * self.progress[name] / 100.0
             fill_rect = QRectF(rect.left() + 1, rect.top() + 1,
                                fill_width - 2, rect.height() - 2)
@@ -63,7 +60,7 @@ class ProcessTable(QFrame):
             painter.setBrush(QBrush(grad))
             painter.drawRoundedRect(fill_rect, 6, 6)
 
-            # 绘制文字
+            # Draw text
             painter.setPen(QColor(255, 255, 255, 200))
             font = QFont()
             font.setPointSize(10)

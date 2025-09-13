@@ -18,10 +18,10 @@ class Widget(QWidget):
         self.setObjectName(text)
         self.child_key = text
         self.parent_state = parent_state
-        # 保证这个页面在 QStackedWidget 中能正确撑满区域
+        # Ensure that this page can correctly fill the area in QStackedWidget
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        # 主水平布局：左 30% (index 0)、右 70% (index 1)
+        # Main horizontal layout: left 30% (index 0), right 70% (index 1)
         self.mainLayout = QHBoxLayout(self)
         self.mainLayout.setContentsMargins(0, 0, 0, 0)
         self.mainLayout.setSpacing(8)
@@ -33,7 +33,7 @@ class Widget(QWidget):
         else:
             config = configer.read_config()
             self.file_manager = None
-            # --------- 左列：sys_resources + disk_storage（垂直堆叠） ---------
+            # --------- Left column: sys_resources + disk_storage (stacked vertically) ---------
             leftContainer = QFrame(self)
             leftContainer.setObjectName("leftContainer")
             leftContainer.setSizePolicy(
@@ -43,7 +43,7 @@ class Widget(QWidget):
             leftLayout.setContentsMargins(0, 0, 0, 0)
             leftLayout.setSpacing(0)
 
-            # sys_resources（上）
+            # sys_resources (UP)
             self.sys_resources = ProcessTable(leftContainer)
             self.sys_resources.setObjectName("sys_resources")
             self.sys_resources.setMinimumHeight(80)
@@ -56,7 +56,7 @@ class Widget(QWidget):
                     border-radius: 6px;
                 }
             """)
-            # Task (中)
+            # Task (MID)
             self.task = Tasks(leftContainer)
 
             self.task.set_text_color(config["ssh_widget_text_color"])
@@ -71,7 +71,7 @@ class Widget(QWidget):
                     border-radius: 6px;
                 }
             """)
-            # disk_storage（下）
+            # disk_storage（DOWN）
             self.disk_storage = FileTreeWidget(leftContainer)
             self.disk_storage.setObjectName("disk_storage")
             self.disk_storage.setMinimumHeight(80)
@@ -86,11 +86,12 @@ class Widget(QWidget):
                 }
             """)
 
-            leftLayout.addWidget(self.sys_resources, 2)   # 上下比例可调（这里是 3:2）
+            # Adjustable up/down ratio (here is 3:2)
+            leftLayout.addWidget(self.sys_resources, 2)
             leftLayout.addWidget(self.task, 3)
             leftLayout.addWidget(self.disk_storage, 5)
 
-            # --------- 右列：ssh_widget + file_manage（可拉伸，垂直分割） ---------
+            # --------- Right column: ssh_widget + file_manage (stretchable, vertically split) ---------
             rightContainer = QFrame(self)
             rightContainer.setObjectName("rightContainer")
             rightContainer.setSizePolicy(
@@ -99,9 +100,9 @@ class Widget(QWidget):
             rightLayout.setContentsMargins(0, 0, 0, 0)
             rightLayout.setSpacing(0)
 
-            # 使用 QSplitter 让上/下两区域可拖拽改变高度
             splitter = QSplitter(Qt.Vertical, rightContainer)
-            splitter.setChildrenCollapsible(False)  # 防止折叠成 0 高
+            # Prevent folding to 0 height
+            splitter.setChildrenCollapsible(False)
             splitter.setHandleWidth(6)
             splitter.setStyleSheet("""
     QSplitter::handle:vertical {
@@ -113,7 +114,7 @@ class Widget(QWidget):
         background-color: #999999;
     }
 """)
-            # ssh_widget（上）
+            # ssh_widget（UP）
             self.ssh_widget = WebTerminal(
                 splitter, font_name=font_name, user_name=user_name, text_color=config["ssh_widget_text_color"])
             self.ssh_widget.directoryChanged.connect(self._set_file_bar)
@@ -131,18 +132,17 @@ class Widget(QWidget):
                 "window.getComputedStyle(document.body).backgroundColor", print)
             col = self.ssh_widget.view.page().backgroundColor()
             print("page.bg alpha:", col.alpha())
-            # file_manage（下）
+            # file_manage（DOWN）
             self.file_manage = QWidget(splitter)
             self.file_manage.setObjectName("file_manage")
             self.file_manage.setSizePolicy(
                 QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-            # 创建垂直布局来分割上下两部分
             file_manage_layout = QVBoxLayout(self.file_manage)
             file_manage_layout.setContentsMargins(0, 0, 0, 0)
             file_manage_layout.setSpacing(0)
 
-            # 上半部分：导航栏（固定50px）
+            # Upper part: Navigation bar (fixed 50px)
             self.file_bar = File_Navigation_Bar(self.file_manage)
             self.file_bar.bar_path_changed.connect(self._update_file_explorer)
             self.file_bar.setObjectName("file_bar")
@@ -155,7 +155,7 @@ class Widget(QWidget):
                 }
             """)
 
-            # 下半部分：文件树（占据剩余空间）
+            # Lower part: File tree (occupies the remaining space)
 
             self.file_explorer = FileExplorer(
                 self.file_manage, icons=self._get_icons())
@@ -171,18 +171,11 @@ class Widget(QWidget):
                 }
             """)
 
-            # 添加到布局
             file_manage_layout.addWidget(self.file_bar)
-            file_manage_layout.addWidget(self.file_explorer, 1)  # 1表示占据剩余空间
-
-            # 把 splitter 放到右布局
+            file_manage_layout.addWidget(self.file_explorer, 1)
             rightLayout.addWidget(splitter)
-
-            # --------- 把左右两列加入 mainLayout，并设置 stretch 实现 30/70 比例 ---------
-            self.mainLayout.addWidget(leftContainer, 20)   # 30%
-            self.mainLayout.addWidget(rightContainer, 80)  # 70%
-
-            # 设置 splitter 初始比例（例如 60% 上，40% 下）
+            self.mainLayout.addWidget(leftContainer, 20)
+            self.mainLayout.addWidget(rightContainer, 80)
             total_h = max(200, self.height())
             splitter.setSizes([int(total_h * 0.6), int(total_h * 0.4)])
 
@@ -206,13 +199,13 @@ class Widget(QWidget):
         if path:
             self.file_explorer.path = path
         else:
-            path = self.file_explorer.path  # 刷新原有目录
+            path = self.file_explorer.path  # Refresh the original directory
 
         if not self.file_manager:
             parent = self.parent()
             while parent:
                 if hasattr(parent, 'file_tree_object'):
-                    # 传递正确的参数：route_key，而不是parent
+                    # Pass the correct parameter: route_key, not parent
                     self.file_manager = parent.file_tree_object[self.child_key]
                     break
                 parent = parent.parent()
@@ -226,7 +219,6 @@ class Widget(QWidget):
         # if path != self.file_explorer.path:
         #     return
 
-        # 更新 UI（add_files 是主线程函数）
         try:
             self.file_explorer.add_files(file_dict)
             # self.file_manager._add_path_to_tree(path, False)
@@ -271,8 +263,8 @@ class Widget(QWidget):
     def contextMenuEvent(self, e) -> None:
         menu = RoundMenu(parent=self)
         if not self.parent_state:
-            copy_action = Action(FIF.COPY, '复制会话')
-            delete_action = Action(FIF.DELETE, '删除会话')
+            copy_action = Action(FIF.COPY, self.tr('Copy session'))
+            delete_action = Action(FIF.DELETE, self.tr('Delete session'))
             copy_action.triggered.connect(self._on_copy)
             delete_action.triggered.connect(self._on_delete)
 
@@ -280,7 +272,8 @@ class Widget(QWidget):
             menu.addSeparator()
             menu.exec(e.globalPos())
         elif self.parent_state:
-            close_action = Action(FIF.CLOSE, '关闭所有子会话')
+            close_action = Action(
+                FIF.CLOSE, self.tr('Close all child sessions'))
             close_action.triggered.connect(self._on_close)
             menu.addAction(close_action)
             menu.exec(e.globalPos())
@@ -289,14 +282,12 @@ class Widget(QWidget):
         parent = self.parent()
         while parent:
             if hasattr(parent, 'remove_sub_interface'):
-                # 传递正确的参数：route_key，而不是parent
                 parent.remove_sub_interface(self, close_sub_all=True)
                 return
             parent = parent.parent()
-        print("无法找到父级窗口或删除方法")
+        print("Unable to find parent window or delete method")
 
     def _on_copy(self):
-        """复制会话"""
         parent = self.parent()
         parent_key = self.child_key.split("-")[0].strip()
         while parent:
@@ -305,7 +296,7 @@ class Widget(QWidget):
                 parent._on_session_selected(parent_key=parent_key)
                 return
             parent = parent.parent()
-        print("无法找到父级窗口或删除方法")
+        print("Unable to find parent window or delete method")
 
     def _on_delete(self):
         parent = self.parent()
@@ -318,4 +309,4 @@ class Widget(QWidget):
                 parent.remove_sub_interface(self)
                 return
             parent = parent.parent()
-        print("无法找到父级窗口或删除方法")
+        print("Unable to find parent window or delete method")

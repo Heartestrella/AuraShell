@@ -1,7 +1,7 @@
 # setting_page.py
 import logging
 
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QCoreApplication
 from PyQt5.QtGui import QFontDatabase, QFont, QColor, QPalette, QKeySequence
 from PyQt5.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout,
@@ -26,13 +26,36 @@ configer = SCM()
 
 
 class Config(QConfig):
-    # 跟随系统设置不知道怎么实现捏
     background_color = OptionsConfigItem(
-        "MainWindow", "Color", "跟随系统设置", OptionsValidator(["浅色", "暗色", "跟随系统设置"]), restart=True)
+        "MainWindow", "Color",
+        QCoreApplication.translate("Config", "Follow system settings"),
+        OptionsValidator([
+            QCoreApplication.translate("Config", "Light"),
+            QCoreApplication.translate("Config", "Dark"),
+            QCoreApplication.translate("Config", "Follow system settings")
+        ]),
+        restart=True
+    )
     sizes = OptionsConfigItem(
-        "MainWindow", "Sizes", "15", OptionsValidator([str(i) for i in range(12, 31)]), restart=True)
+        "MainWindow", "Sizes", "15",
+        OptionsValidator([str(i) for i in range(12, 31)]),
+        restart=True
+    )
     opacity = RangeConfigItem("MainWindow", "Opacity",
                               100, RangeValidator(0, 100))
+
+    language = OptionsConfigItem(
+        "MainWindow", "Language",
+        QCoreApplication.translate("Config", "English"),
+        OptionsValidator([
+            QCoreApplication.translate("Config", "English"),
+            QCoreApplication.translate("Config", "简体中文"),
+            QCoreApplication.translate("Config", "繁體中文"),
+            QCoreApplication.translate("Config", "日本語"),
+            QCoreApplication.translate("Config", "Русский")
+        ]),
+        restart=True
+    )
 
 
 class FontSelectorDialog(QDialog):
@@ -43,7 +66,10 @@ class FontSelectorDialog(QDialog):
     """
     fontSelected = pyqtSignal(str)
 
-    def __init__(self, parent=None, title="选择字体", prompt="选择系统字体"):
+    def __init__(self, parent=None,
+                 title=QCoreApplication.translate(
+                     "FontSelectorDialog", "Select Font"),
+                 prompt=QCoreApplication.translate("FontSelectorDialog", "Choose a system font")):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.selected_font = None
@@ -112,7 +138,7 @@ class FontSelectorDialog(QDialog):
         except Exception:
             # LineEdit imported in your module header earlier
             self.search_box = LineEdit(self.content)
-            self.search_box.setPlaceholderText("搜索字体...")
+            self.search_box.setPlaceholderText(self.tr("Search fonts..."))
 
         self.search_box.setFixedHeight(36)
         # enforce background/placeholder/text visibility
@@ -168,7 +194,7 @@ class FontSelectorDialog(QDialog):
         preview_layout.setContentsMargins(8, 8, 8, 8)
         preview_layout.setSpacing(8)
 
-        preview_label_title = QLabel("预览", preview_frame)
+        preview_label_title = QLabel(self.tr("Preview"), preview_frame)
         preview_label_title.setAlignment(Qt.AlignCenter)
         preview_layout.addWidget(preview_label_title)
 
@@ -182,7 +208,7 @@ class FontSelectorDialog(QDialog):
             "color: #000000; background: transparent;")
         preview_layout.addWidget(self.preview_label, 1)
 
-        self.size_label = QLabel("预览字号: 14", preview_frame)
+        self.size_label = QLabel(self.tr("Preview size: 14"), preview_frame)
         self.size_label.setStyleSheet("color: #000000;")
         preview_layout.addWidget(self.size_label)
         hbox.addWidget(preview_frame, 2)
@@ -199,7 +225,7 @@ class FontSelectorDialog(QDialog):
 
         # OK circular button
         self.ok_btn = QPushButton("✓", bottom_widget)
-        self.ok_btn.setToolTip("确定 (Enter)")
+        self.ok_btn.setToolTip(self.tr("OK (Enter)"))
         self.ok_btn.setCursor(Qt.PointingHandCursor)
         self.ok_btn.clicked.connect(self._on_ok)
         self.ok_btn.setDefault(True)
@@ -219,7 +245,7 @@ class FontSelectorDialog(QDialog):
 
         # Cancel circular button
         self.cancel_btn = QPushButton("✕", bottom_widget)
-        self.cancel_btn.setToolTip("取消 (Esc)")
+        self.cancel_btn.setToolTip(self.tr("Cancel (Esc)"))
         self.cancel_btn.setCursor(Qt.PointingHandCursor)
         self.cancel_btn.clicked.connect(self._on_cancel)
         self.cancel_btn.setFixedSize(48, 48)
@@ -301,7 +327,8 @@ class FontSelectorDialog(QDialog):
         try:
             font = QFont(family, self._preview_size)
             self.preview_label.setFont(font)
-            self.size_label.setText(f"预览字号: {self._preview_size}")
+            self.size_label.setText(
+                self.tr(f"Preview font size: {self._preview_size}"))
         except Exception:
             pass
 
@@ -330,7 +357,7 @@ class FontSelectorDialog(QDialog):
 
 
 class SettingPage(ScrollArea):
-    themeChanged = pyqtSignal(str)  # 发出选项变化信号
+    themeChanged = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -345,65 +372,90 @@ class SettingPage(ScrollArea):
         layout = QVBoxLayout(container)
         layout.setAlignment(Qt.AlignTop)
         self.init_window_size = False
+
+        self.language_card = ComboBoxSettingCard(
+            configItem=self.cfg.language,
+            icon=FluentIcon.GLOBE,
+            title=self.tr("Language"),
+            content=self.tr("Change application language (need to restart)"),
+            texts=[
+                self.tr("System Default"),
+                "English",
+                "简体中文",
+                "日本語",
+                "Русский"
+            ]
+        )
+        self.language_card.comboBox.currentIndexChanged.connect(
+            self._change_language)
+        layout.addWidget(self.language_card)
+
         self.Color_card = ComboBoxSettingCard(
             configItem=self.cfg.background_color,
             icon=FluentIcon.BRUSH,
-            title="背景色调整",
-            content="调整背景颜色",
-            texts=["浅色", "暗色", "跟随系统设置"]
+            title=self.tr("Background Color"),
+            content=self.tr("Adjust background color"),
+            texts=[self.tr("Light"), self.tr("Dark"),
+                   self.tr("Follow system settings")]
         )
         layout.addWidget(self.Color_card)
 
         self.bgCard = PushSettingCard(
-            "选择背景图片",
+            self.tr("Choose Background Image"),
             FluentIcon.PHOTO,
-            "自定义背景",
-            "设置自定义背景图片",
+            self.tr("Custom Background"),
+            self.tr("Set a custom background image"),
         )
+
         self.bgCard.clicked.connect(self._pick_bg)
         layout.addWidget(self.bgCard)
 
         self.opacityEdit = RangeSettingCard(
             self.cfg.opacity,
             FluentIcon.TRANSPARENT,
-            title="背景不透明度",
-            content="修改背景图片的不透明度"
+            title=self.tr("Background Opacity"),
+            content=self.tr("Adjust background image opacity")
         )
+
         self.opacityEdit.valueChanged.connect(self._save_opacity_value)
         layout.addWidget(self.opacityEdit)
 
         self.clearBgCard = PushSettingCard(
-            "清除背景",
+            self.tr("Clear Background"),
             FluentIcon.DELETE,
-            "清除自定义背景",
-            "恢复默认主题背景",
+            self.tr("Remove Custom Background"),
+            self.tr("Restore default theme background"),
         )
+
         self.clearBgCard.clicked.connect(
             self.parent_class.clear_global_background)
         self.clearBgCard.clicked.connect(self._clear_bg_pic_to_config)
         layout.addWidget(self.clearBgCard)
+
         self.lock_ratio_card = SwitchSettingCard(
-            icon=FluentIcon.LINK,              # 可以换成合适的图标
-            title="锁定横纵比",
-            content="生效于图片的比例",
+            icon=FluentIcon.LINK,
+            title=self.tr("Lock Aspect Ratio"),
+            content=self.tr("Affects the proportion of background image"),
             parent=self
         )
+
         self.lock_ratio_card.checkedChanged.connect(self.on_lock_ratio_changed)
         layout.addWidget(self.lock_ratio_card)
 
         self.cd_follow = SwitchSettingCard(
             icon=FluentIcon.ACCEPT,
-            title="CD跟随目录",
-            content="开启后文件管理器会跟随CD到的新目录 (Beta)",
+            title=self.tr("Follow CD Directory"),
+            content=self.tr(
+                "When enabled, file manager follows new CD directory (Beta)"),
             parent=self
         )
         self.cd_follow.checkedChanged.connect(self._set_cd_follow)
         layout.addWidget(self.cd_follow)
 
         self.font_select = PushSettingCard(
-            "设置字体",
+            self.tr("Set Font"),
             FluentIcon.FONT,
-            "修改终端字体 (需要重启软件)"
+            self.tr("Change terminal font (requires restart)"),
         )
         self.font_select.clicked.connect(self._select_font)
         layout.addWidget(self.font_select)
@@ -411,8 +463,8 @@ class SettingPage(ScrollArea):
         self.font_size = ComboBoxSettingCard(
             configItem=self.cfg.sizes,
             icon=FluentIcon.FONT_SIZE,
-            title="设置字体大小",
-            content="修改终端字体大小 (需要重启软件)",
+            title=self.tr("Font Size"),
+            content=self.tr("Change terminal font size (requires restart)"),
             texts=[str(i) for i in range(12, 31)]
         )
         self.font_size.comboBox.currentIndexChanged.connect(
@@ -426,18 +478,18 @@ class SettingPage(ScrollArea):
         self.cfg.background_color.valueChanged.connect(self._on_card_changed)
 
         self.choose_color = PushSettingCard(
-            "打开取色器",
+            self.tr("Open Color Picker"),
             FluentIcon.PENCIL_INK,
-            "设置字体颜色",
-            "设置SSH会话字体颜色(全局)"
+            self.tr("Set Font Color"),
+            self.tr("Set SSH session font color (global)")
         )
         self.choose_color.clicked.connect(self._open_color_dialog)
         layout.addWidget(self.choose_color)
 
         self.unbelievable_button = PushSettingCard(
-            "点我延迟开学",
+            self.tr("Click me to delay school"),
             FluentIcon.FONT,
-            "字面意思"
+            self.tr("Literal meaning")
         )
         self.unbelievable_button.clicked.connect(self._unbelievable)
         layout.addWidget(self.unbelievable_button)
@@ -449,14 +501,31 @@ class SettingPage(ScrollArea):
 
     def _unbelievable(self):
         InfoBar.error(
-            title='想啥呢',
-            content=f'''设置时间失败 \n date.set(month=7,day=1) \n Permissions error:Insufficient permissions''',
+            title=self.tr('What are you thinking'),
+            content=self.tr(
+                "Failed to set date \n date.set(month=7,day=1) \n Permissions error: Insufficient permissions"
+            ),
             orient=Qt.Horizontal,
             isClosable=True,
             position=InfoBarPosition.TOP_RIGHT,
             duration=10000,
             parent=self
         )
+
+    def _change_language(self, lang: str):
+        if lang == 0:
+            lang = "system"
+        elif lang == 1:
+            lang = "EN"
+        elif lang == 2:
+            lang = "CN"
+        elif lang == 3:
+            lang = "JP"
+        elif lang == 4:
+            lang = "RU"
+
+        print(f"Selected language: {lang}")
+        configer.revise_config("language", lang)
 
     def _set_cd_follow(self):
         self.follow_ = self.cd_follow.switchButton.isChecked()
@@ -469,18 +538,27 @@ class SettingPage(ScrollArea):
         self._lock_ratio = self.lock_ratio_card.switchButton.isChecked()
         configer.revise_config("locked_ratio", self._lock_ratio)
 
+    def _get_language_from_config(self):
+        lang = self.config["language"]
+        if lang == "system":
+            return 0
+        elif lang == "EN":
+            return 1
+        elif lang == "CN":
+            return 2
+        elif lang == "JP":
+            return 3
+        elif lang == "RU":
+            return 4
+        else:
+            return 0
+
     def _restore_saved_settings(self):
 
         # Change interface value
-
-        if self.config["bg_color"] == "Dark":
-            color = "暗色"
-        elif self.config["bg_color"] == "Light":
-            color = "浅色"
-        else:
-            color = "跟随系统设置"
-
-        self.cfg.background_color.value = color
+        self.language_card.comboBox.setCurrentIndex(
+            self._get_language_from_config())
+        self.cfg.background_color.value = self.config["bg_color"]
         self.cfg.sizes.value = self.config["font_size"]
         self.lock_ratio_card.setChecked(self.config["locked_ratio"])
         self.cd_follow.setChecked(self.config["follow_cd"])
@@ -510,7 +588,7 @@ class SettingPage(ScrollArea):
             parent = parent.parent()
         configer.revise_config("ssh_widget_text_color", color)
         InfoBar.success(
-            title='颜色变更成功',
+            title=self.tr('Color changed successfully'),
             content='',
             orient=Qt.Horizontal,
             isClosable=True,
@@ -520,18 +598,15 @@ class SettingPage(ScrollArea):
         )
 
     def _open_color_dialog(self):
-        dlg = ColorDialog(QColor(0, 255, 255), "选择颜色",
-                          self, enableAlpha=False)
+        dlg = ColorDialog(QColor(0, 255, 255), self.tr("Choose Color"),
+                          self.window(), enableAlpha=False)
+
         dlg.colorChanged.connect(lambda color: self._set_color(color.name()))
         dlg.exec_()
 
     def _on_card_changed(self, value):
+        print(value)
         self.themeChanged.emit(value)
-        value = (
-            "Light" if value == "浅色" else
-            "Dark" if value == "暗色" else
-            value
-        )
         configer.revise_config("bg_color", value)
 
     def _set_font_size(self, index: int):
@@ -541,13 +616,13 @@ class SettingPage(ScrollArea):
         configer.revise_config("font_size", str(size))
 
     def _pick_bg(self):
-        """选择背景图片"""
-
         path, _ = QFileDialog.getOpenFileName(
-            self, "选择背景图片", "",
-            "图片文件 (*.png *.jpg *.jpeg *.bmp *.gif)"
+            self,
+            self.tr("Select a background image"),
+            "",
+            self.tr("Image files (*.png *.jpg *.jpeg *.bmp *.gif)")
         )
-        print(f"已选择背景文件：{path}")
+        print(f"Background file selected: {path}")
         if not path:
             return
         else:
@@ -555,14 +630,12 @@ class SettingPage(ScrollArea):
             self.parent_class.set_global_background(path)
 
     def _select_font(self):
-        """打开文件资源管理器选择字体文件并保存配置"""
         font_dialog = FontSelectorDialog(self)
         font_dialog.fontSelected.connect(self.on_font_selected)
         font_dialog.exec_()
 
     def on_font_selected(self, font_name):
-        """处理字体选择信号"""
-        print(f"选择的字体: {font_name}")
+        print(f"Selected font: {font_name}")
         self.font_.write_font(font_path=font_name)
 
     def save_window_size(self, sizes: tuple):

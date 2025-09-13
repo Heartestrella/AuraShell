@@ -1,11 +1,11 @@
 # coding:utf-8
 import sys
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap, QPainter, QIcon
+from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale
+from PyQt5.QtGui import QPixmap, QPainter
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout
 
 from qfluentwidgets import (NavigationInterface, NavigationItemPosition, InfoBar,
-                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF)
+                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator)
 from qframelesswindow import FramelessWindow, StandardTitleBar
 from widgets.setting_page import SettingPage
 from widgets.home_interface import MainInterface
@@ -16,17 +16,16 @@ from widgets.ssh_widget import Widget
 from tools.ssh import SSHWorker
 from tools.icons import My_Icons
 from tools.remote_file_manage import RemoteFileManager
+from tools.setting_config import SCM
 import os
 font_ = font_config()
+configer = SCM()
 
 
 def resource_path(relative_path):
-    """获取资源文件的绝对路径（兼容 PyInstaller）"""
     if hasattr(sys, "_MEIPASS"):
-        # 打包后
         base_path = sys._MEIPASS
     else:
-        # 源码运行
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
@@ -35,6 +34,9 @@ class Window(FramelessWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        self._resize_timer = QTimer(self)
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.timeout.connect(self.apply_locked_ratio)
         self.icons = My_Icons()
         self.setMinimumSize(800, 600)
         self.setTitleBar(StandardTitleBar(self))
@@ -61,7 +63,8 @@ class Window(FramelessWindow):
         self.MainInterface = MainInterface(self)
         self.MainInterface.sessionClicked.connect(self._on_session_selected)
 
-        self.sessions = Widget('暂无选择的会话', True, self)
+        self.sessions = Widget(
+            self.tr('No conversation selected yet'), True, self)
 
         self.navigationInterface.setStyleSheet("background: transparent;")
         self.navigationInterface.setCollapsible(True)
@@ -73,32 +76,22 @@ class Window(FramelessWindow):
             self.apply_locked_ratio)
         self.settingInterface.opacityEdit.valueChanged.connect(
             self.set_background_opacity)
-        # 连接透明度设置信号
+        # Connect transparency setting signal
         # self.settingInterface.bgOpacityChanged.connect(
         #     self.set_background_opacity)
         self._on_theme_changed(
             self.settingInterface.cfg.background_color.value)
 
-        # initialize layout
         self.initLayout()
-
-        # add items to navigation interface
         self.initNavigation()
 
         self.initWindow()
-        # self.set_background_opacity(0.5)
 
     def set_background_opacity(self, opacity: float):
-        """
-        设置背景图片透明度
-
-        参数:
-            opacity: 透明度值 (0.0 - 1.0)，0.0为完全透明，1.0为完全不透明
-        """
         if not self._bg_pixmap:
             return
 
-        # int情况下 只会是setting传入
+        # In the case of int, only setting is passed in
         if isinstance(opacity, int):
             opacity = opacity / 100
 
@@ -119,8 +112,8 @@ class Window(FramelessWindow):
 
     def _on_ssh_error(self, msg: str):
         InfoBar.error(
-            title="连接失败",
-            content=f"错误:\n{msg}\n请关闭此会话",
+            title=self.tr("Connection failed"),
+            content=self.tr(f"Error:\n{msg}\nPlease close this session"),
             orient=Qt.Vertical,
             isClosable=True,
             position=InfoBarPosition.TOP_RIGHT,
@@ -152,7 +145,7 @@ class Window(FramelessWindow):
 
                     # print(processes_cpu_percent, processes_name, processes_mem)
             else:
-                print("获取SSH Widget失败")
+                print("Failed to obtain the SSH Widget")
         except Exception as e:
             print(e)
 
@@ -161,55 +154,55 @@ class Window(FramelessWindow):
         if type_ == "upload":
             duration = 10000
             if status:
-                status_msg = "上传成功"
+                status_msg = self.tr("Upload Successful")
             else:
-                status_msg = "上传失败"
+                status_msg = self.tr("Upload Failed")
                 duration = -1
-            title = f'文件：{path} 状态：{status_msg}\n'
+            title = self.tr(f'File: {path} Status: {status_msg}\n')
 
         elif type_ == "start_upload":
             duration = 2000
-            title = f"开始上传 {local_path} 到 {path}"
+            title = self.tr(f"Start uploading {local_path} to {path}")
             msg = ""
 
         elif type_ == "delete":
             duration = 2000
             if status:
-                title = f"删除 {path} 成功\n"
+                title = self.tr(f"Deleted {path} successfully\n")
             else:
-                title = f"删除 {path} 失败\n{msg}"
+                title = self.tr(f"Failed to delete {path}\n{msg}")
                 duration = -1
 
         elif type_ == "start_download":
             duration = 2000
-            title = f"开始下载 {path}"
+            title = self.tr(f"Start downloading {path}")
             msg = ""
 
         elif type_ == "download":
             duration = 2000
             if status:
-                title = f"下载 {path} 成功"
-                msg = f"成功下载到 {local_path}"
+                title = self.tr(f"Downloaded {path} successfully")
+                msg = self.tr(f"Successfully downloaded to {local_path}")
             else:
-                title = f"下载 {path} 失败\n"
+                title = self.tr(f"Failed to download {path}\n")
                 duration = -1
 
         elif type_ == "paste":
             duration = 2000
             if status:
-                title = f"粘贴成功"
-                msg = f"粘贴 {path} 到 {local_path}"
+                title = self.tr("Paste Successful")
+                msg = self.tr(f"Pasted {path} to {local_path}")
             else:
-                title = f"粘贴失败"
+                title = self.tr("Paste Failed")
                 duration = -1
 
         if type_ == "rename":
             duration = 2000
             if status:
-                title = f"重命名成功"
-                msg = f"重命名 {path} 为 {local_path}"
+                title = self.tr("Rename Successful")
+                msg = self.tr(f"Renamed {path} to {local_path}")
             else:
-                title = "重命名失败"
+                title = self.tr("Rename Failed")
                 duration = -1
 
         elif type_ == "info":
@@ -217,32 +210,35 @@ class Window(FramelessWindow):
             if status:
                 def format_file_info(info: dict) -> str:
                     if not info:
-                        return "文件信息为空"
+                        return self.tr("File info is empty")
 
                     lines = [
-                        f"路径: {info.get('path')}",
-                        f"文件名: {info.get('filename')}",
-                        f"大小: {info.get('size')}",
-                        f"所有者: {info.get('owner')}",
-                        f"所属组: {info.get('group')}",
-                        f"权限: {info.get('permissions')}",
-                        f"是否可执行: {'是' if info.get('is_executable') else '否'}",
-                        f"最后修改时间: {info.get('last_modified')}",
-                        f"是否目录: {'是' if info.get('is_directory') else '否'}",
-                        f"是否符号链接: {'是' if info.get('is_symlink') else '否'}"
+                        self.tr(f"Path: {info.get('path')}"),
+                        self.tr(f"Filename: {info.get('filename')}"),
+                        self.tr(f"Size: {info.get('size')}"),
+                        self.tr(f"Owner: {info.get('owner')}"),
+                        self.tr(f"Group: {info.get('group')}"),
+                        self.tr(f"Permissions: {info.get('permissions')}"),
+                        self.tr(
+                            f"Executable: {'Yes' if info.get('is_executable') else 'No'}"),
+                        self.tr(f"Last Modified: {info.get('last_modified')}"),
+                        self.tr(
+                            f"Is Directory: {'Yes' if info.get('is_directory') else 'No'}"),
+                        self.tr(
+                            f"Is Symlink: {'Yes' if info.get('is_symlink') else 'No'}")
                     ]
 
-                    # 如果是符号链接，加上目标路径
                     if info.get('is_symlink'):
-                        lines.append(f"符号链接目标: {info.get('symlink_target')}")
+                        lines.append(
+                            self.tr(f"Symlink Target: {info.get('symlink_target')}"))
 
                     return "\n".join(lines)
 
-                title = f"文件 {path} 信息如下: "
+                title = self.tr(f"File {path} info:")
                 msg = format_file_info(local_path)
             else:
                 duration = -1
-                title = f"获取 {path} 详细失败"
+                title = self.tr(f"Failed to get detailed info for {path}")
 
         InfoBar.info(
             title=title,
@@ -257,7 +253,6 @@ class Window(FramelessWindow):
 
     def _start_ssh_connect(self, session, child_key):
 
-        # 系统资源显示相关
         parent_key = child_key.split("-")[0].strip()
         session_widget = self.session_widgets[parent_key][child_key]
         processes = SSHWorker(session, for_resources=True)
@@ -266,7 +261,6 @@ class Window(FramelessWindow):
             lambda usage, key=child_key: self._set_usage(key, usage))
         processes.start()
 
-        # 处理路径相关
         file_manager = RemoteFileManager(session)
         file_manager.file_tree_updated.connect(
             lambda file_tree, path, sw=session_widget: self.on_file_tree_updated(
@@ -316,7 +310,6 @@ class Window(FramelessWindow):
         file_manager.start()
         self.file_tree_object[child_key] = file_manager
 
-        # 主SSH窗口
         worker = SSHWorker(session, for_resources=False)
         self.ssh_session[child_key] = worker
 
@@ -324,17 +317,15 @@ class Window(FramelessWindow):
             lambda success, msg: self._on_ssh_connected(success, msg))
         worker.error_occurred.connect(lambda e: self._on_ssh_error(e))
 
-        # 注入 worker 到 UI 的终端 widget
         try:
 
             child_widget = self.session_widgets[parent_key][child_key]
-            # 假设 child_widget 在构造时已经把 self.ssh_widget = WebTerminal(...) 放好
             if hasattr(child_widget, 'ssh_widget'):
                 child_widget.ssh_widget.set_worker(worker)
             else:
-                print("child_widget 没有 ssh_widget 属性")
+                print("child_widget does not have an ssh_widget attribute")
         except Exception as e:
-            print("注入 worker 失败:", e)
+            print("Injecting worker failed:", e)
 
         worker.start()
         session_widget.ssh_widget.directoryChanged.connect(
@@ -366,35 +357,31 @@ class Window(FramelessWindow):
             file_manager.get_file_info(full_path)
 
     def _refresh_paths(self, child_key: str):
-        print("刷新页面")
+        print("Refresh the page")
         parent_key = child_key.split("-")[0].strip()
         session_widget: Widget = self.session_widgets[parent_key][child_key]
         session_widget._update_file_explorer()
 
     def parse_linux_path(self, path: str) -> list:
         """
-        将 Linux 路径解析为路径列表，每一层作为一个元素。
+        Parse a Linux path into a list of path elements, with each level as an element.
 
-        示例：
+        Example:
             '/home/bee' -> ['/', 'home', 'bee']
             '/' -> ['/']
 
-        参数：
-            path: str，Linux 风格路径
+        Parameters:
+            path: str, Linux-style path
 
-        返回：
-            list[str]，从根到最深目录的列表
+        Returns:
+            list[str], list from root to deepest directory
         """
         if not path:
             return []
 
         path_list = []
-
-        # 确保以 '/' 开头
         if path.startswith('/'):
-            path_list.append('/')  # 根目录
-
-        # 分割路径，去掉空字符串
+            path_list.append('/')
         parts = [p for p in path.strip('/').split('/') if p]
 
         path_list.extend(parts)
@@ -412,16 +399,15 @@ class Window(FramelessWindow):
         #     print(f"{path}不存在")
 
     def on_file_tree_updated(self, file_tree, sw, path=None):
-        """处理文件树更新"""
+        """Handling file tree updates"""
         sw.disk_storage.refresh_tree(file_tree)
         if path:
             sw.disk_storage.switch_to(path)
 
     def on_file_manager_error(self, error_msg):
-        """处理文件管理器错误"""
         InfoBar.error(
-            title='文件管理错误',
-            content=f'''错误详情:\n{error_msg}''',
+            title=self.tr('File management errors'),
+            content=self.tr(f'''Error details:\n{error_msg}'''),
             orient=Qt.Vertical,
             isClosable=True,
             position=InfoBarPosition.TOP_RIGHT,
@@ -448,7 +434,7 @@ class Window(FramelessWindow):
             parent_key = session.name
         if parent_key not in self.session_widgets:
             # Create a parent widget
-            print(f"partent_key:{parent_key}")
+            print(f"partent_key: {parent_key}")
             parent_widget = Widget(parent_key, True, self,)
             parent_widget.setObjectName(parent_key)
             self.addSubInterface(
@@ -483,7 +469,7 @@ class Window(FramelessWindow):
 
         self.session_widgets[parent_key][child_key] = child_widget
         self.switchTo(widget=child_widget, window_tittle=child_key)
-        print(f"创建子级会话: {child_key} (父级: {parent_key})")
+        print(f"Creating a Child Session: {child_key} (Parent: {parent_key})")
         print(session, child_key)
         self._start_ssh_connect(session, child_key)
 
@@ -492,11 +478,9 @@ class Window(FramelessWindow):
         """Apply background image proportionally to window size"""
         if self.settingInterface._lock_ratio and self._bg_pixmap and self._bg_ratio:
             if event is not None and not isinstance(event, bool):
-                # resizeEvent 调用
                 new_width = event.size().width()
                 new_height = event.size().height()
             else:
-                # 手动调用，直接用当前窗口大小
                 new_width = self.width()
                 new_height = self.height()
 
@@ -509,6 +493,7 @@ class Window(FramelessWindow):
             self.settingInterface.save_window_size((new_width, new_height))
 
     def resizeEvent(self, event):
+        self._resize_timer.start(50)
         if not self.isActiveWindow() or not self.underMouse():
             self.apply_locked_ratio(event)
         super().resizeEvent(event)
@@ -521,34 +506,21 @@ class Window(FramelessWindow):
         self.hBoxLayout.setStretchFactor(self.stackWidget, 1)
 
     def initNavigation(self):
-        # enable acrylic effect
         # self.navigationInterface.setAcrylicEnabled(True)
 
-        self.addSubInterface(self.MainInterface, FIF.HOME, '主页')
+        self.addSubInterface(self.MainInterface, FIF.HOME, self.tr("Home"))
 
         self.navigationInterface.addSeparator()
 
         self.addSubInterface(self.sessions, FIF.ALBUM,
-                             'SSH会话', NavigationItemPosition.SCROLL)
+                             self.tr("SSH session"), NavigationItemPosition.SCROLL)
 
         self.addSubInterface(self.settingInterface, FIF.SETTING,
-                             '设置', NavigationItemPosition.BOTTOM)
-
-        #!IMPORTANT: don't forget to set the default route key if you enable the return button
-        # qrouter.setDefaultRouteKey(self.stackWidget, self.musicInterface.objectName())
-
-        # set the maximum width
-        # self.navigationInterface.setExpandWidth(300)
-
+                             self.tr("Setting"), NavigationItemPosition.BOTTOM)
         self.stackWidget.currentChanged.connect(self.onCurrentInterfaceChanged)
         self.stackWidget.setCurrentIndex(0)
 
-        # always expand
-        # self.navigationInterface.setCollapsible(False)
-
     def initWindow(self):
-        # self.resize(900, 700)
-      #  self.setWindowIcon(QIcon('resource/logo.png'))
         self.titleBar.setAttribute(Qt.WA_StyledBackground)
 
         desktop = QApplication.desktop().availableGeometry()
@@ -586,8 +558,9 @@ class Window(FramelessWindow):
                 self.switchTo(self.session_widgets[parent]["widget"])
             close_count = 1 if len(remove_keys) == 0 else len(remove_keys)
             InfoBar.success(
-                title='关闭会话成功',
-                content=f'''关闭了 “{parent}” 下 {close_count} 个会话''',
+                title=self.tr('Session closed successfully!'),
+                content=self.tr(
+                    f'Closed {close_count} sessions under "{parent}"'),
                 orient=Qt.Horizontal,
                 isClosable=True,
                 position=InfoBarPosition.TOP_RIGHT,
@@ -596,8 +569,8 @@ class Window(FramelessWindow):
             )
         except Exception as e:
             InfoBar.error(
-                title='关闭会话出现错误！',
-                content=f'''错误详情:\n{e}''',
+                title=self.tr('Error closing session!'),
+                content=self.tr(f'''Error details:\n{e}'''),
                 orient=Qt.Vertical,
                 isClosable=True,
                 position=InfoBarPosition.TOP_RIGHT,
@@ -606,18 +579,13 @@ class Window(FramelessWindow):
             )
 
     def addSubInterface(self, interface, icon, text: str, position=NavigationItemPosition.TOP, parent=None):
-        """ 添加页面 """
-        tittle = None
-        if text == "主页":
-            tittle = "RemmoteSSH Beta @su8aru"
-        else:
-            tittle == text
+        """ Add a page """
         self.stackWidget.addWidget(interface)
         self.navigationInterface.addItem(
             routeKey=interface.objectName(),
             icon=icon,
             text=text,
-            onClick=lambda: self.switchTo(interface, tittle),
+            onClick=lambda: self.switchTo(interface),
             position=position,
             tooltip=text,
             parentRouteKey=parent.objectName() if parent else None
@@ -639,11 +607,7 @@ class Window(FramelessWindow):
         widget = self.stackWidget.widget(index)
         self.navigationInterface.setCurrentItem(widget.objectName())
 
-        #!IMPORTANT: This line of code needs to be uncommented if the return button is enabled
-        # qrouter.push(self.stackWidget, widget.objectName())
-
     def remove_nav_edge(self):
-        # Set the NavigationInterface background to be transparent
         self.navigationInterface.setStyleSheet("""
             NavigationInterface {
                 background-color: transparent;
@@ -664,12 +628,12 @@ class Window(FramelessWindow):
                             value_1.ssh_widget.set_colors(text_color=color)
                             value_1.task.set_text_color(color)
         except Exception as e:
-            print(f"设置字体颜色失败：{e}")
+            print(f"Setting font color failed:{e}")
 
     def _on_theme_changed(self, value):
-        if value == "浅色":
+        if value == "Light":
             setTheme(Theme.LIGHT)
-        elif value == "暗色":
+        elif value == "Dark":
             setTheme(Theme.DARK)
         else:
             setTheme(Theme.DARK if isDarkTheme() else Theme.LIGHT)
@@ -684,50 +648,101 @@ class Window(FramelessWindow):
                 w.update()
 
     def clear_global_background(self):
-        """
-        清除全局背景图片，并恢复 NavigationInterface 样式
-        """
         self._bg_pixmap = None
-        self._bg_opacity = 1.0  # 重置透明度
-        self.update()  # 触发重绘
+        self._bg_opacity = 1.0
+        self.update()
 
-        # 恢复导航栏默认样式
         self.navigationInterface.setStyleSheet("")
 
     def set_global_background(self, image_path: str):
         pixmap = QPixmap(image_path)
         if pixmap.isNull():
-            print(f"无效图片路径: {image_path}")
+            print(f"Invalid image path: {image_path}")
             return
         self._bg_pixmap = pixmap
         self._bg_ratio = pixmap.width() / pixmap.height()
-        self._bg_opacity = 1.0  # 设置新背景时重置透明度
+        self._bg_opacity = 1.0
         self.update()
         self.remove_nav_edge()
 
     def paintEvent(self, event):
         if self._bg_pixmap:
             painter = QPainter(self)
-            # 设置透明度
             painter.setOpacity(self._bg_opacity)
             painter.drawPixmap(self.rect(), self._bg_pixmap)
         super().paintEvent(event)
+
+    def _set_language(self, lang_code: str):
+        translator = QTranslator()
+        if lang_code == "system":
+            system_locale = QLocale.system().name()
+            if translator.load(f"resource/i18n/pssh_{system_locale}.qm"):
+                QApplication.instance().installTranslator(translator)
+            else:
+                print("Translation file loading failed")
+        else:
+            if translator.load(f"resource/i18n/pssh_{lang_code}.qm"):
+                QApplication.instance().installTranslator(translator)
+            else:
+                print("Translation file loading failed")
+        self.settingInterface.retranslateUi()
+        self.MainInterface.retranslateUi()
+        for _, value_ in self.session_widgets.items():
+            for key, value_1 in value_.items():
+                if key != "widget":
+                    value_1.retranslateUi()
+
+
+def language_code_to_locale(code: str) -> str:
+    """
+    EN -> en_US
+    CN -> zh_CN
+    JP -> ja_JP
+    RU -> ru_RU
+    system -> 
+    """
+    mapping = {
+        "EN": "en_US",
+        "CN": "zh_CN",
+        "JP": "ja_JP",
+        "RU": "ru_RU",
+    }
+
+    code = code.upper().strip()
+
+    if code == "SYSTEM":
+        return QLocale.system().name()
+
+    return mapping.get(code, "en_US")
 
 
 if __name__ == '__main__':
     try:
 
         setup_global_logging()
-        main_logger.info("应用程序启动")
+        main_logger.info("Application Startup")
         QApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
         QApplication.setAttribute(Qt.AA_UseOpenGLES)
         app = QApplication(sys.argv)
 
+        config = configer.read_config()
+        lang = language_code_to_locale(config.get("language", "system"))
+
+        # print(f"Language setting: {lang}")
+        translator = QTranslator()
+        translator_1 = FluentTranslator()
+        if lang == "en_US":
+            pass
+        elif translator.load(f"resource/i18n/pssh_{lang}.qm"):
+            app.installTranslator(translator)
+        else:
+            print("Translation file loading failed")
+        app.installTranslator(translator_1)
         clipboard = app.clipboard()
         w = Window()
         w.show()
         app.exec_()
     except Exception as e:
-        main_logger.critical("应用程序启动失败", exc_info=True)
+        main_logger.critical("Application startup failure", exc_info=True)

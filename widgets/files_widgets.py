@@ -5,14 +5,12 @@ from PyQt5.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
 from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit
 import os
 from functools import partial
-# ---------------- 全局图标 ----------------
 
 
 # ---------------- FlowLayout ----------------
 
 
 class FlowLayout(QLayout):
-    """自定义流式布局（自动换行）"""
 
     def __init__(self, parent=None, margin=10, spacing=20):
         super().__init__(parent)
@@ -73,8 +71,10 @@ class FlowLayout(QLayout):
 class FileItem(QWidget):
     WIDTH, HEIGHT = 80, 100
     selected_sign = pyqtSignal(dict)
-    action_triggered = pyqtSignal(str, str, str)  # 操作类型, 文件名, 是否目录
-    rename_action = pyqtSignal(str, str, str, str)  # 操作类型, 原文件名, 新文件名，是否目录
+    # Operation type, file name, directory or not
+    action_triggered = pyqtSignal(str, str, str)
+    # Operation type, original file name, new file name, whether it is a directory
+    rename_action = pyqtSignal(str, str, str, str)
 
     def __init__(self, name, is_dir, parent=None, explorer=None, icons=None):
         super().__init__(parent)
@@ -87,7 +87,6 @@ class FileItem(QWidget):
         self.icon = icons.Folder_Icon if is_dir else icons.File_Icon
         self.setMinimumSize(self.WIDTH, self.HEIGHT)
 
-        # 设置样式表，根据主题调整文字颜色
         self._update_style()
         self.rename_edit = LineEdit(self)
         self.rename_edit.setText(self.name)
@@ -98,7 +97,7 @@ class FileItem(QWidget):
         self._rename_applied = False
 
     def _update_style(self):
-        """根据主题更新样式"""
+        """Update styles based on the theme"""
         from qfluentwidgets import isDarkTheme
         if isDarkTheme():
             self.setStyleSheet("""
@@ -128,40 +127,33 @@ class FileItem(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # 绘制选中背景
         if self.selected:
             painter.setBrush(QColor("#cce8ff"))
             painter.setPen(Qt.NoPen)
             painter.drawRoundedRect(self.rect(), 5, 5)
 
-        # 绘制图标
         painter.drawPixmap(
             (self.width() - self.icon.width()) // 2, 5, self.icon)
 
-        # 绘制文件名 - 处理过长文件名
-        font = QFont("Segoe UI", 8)  # 使用稍小的字体
+        font = QFont("Segoe UI", 8)
         painter.setFont(font)
 
-        # 获取字体度量
         metrics = painter.fontMetrics()
         text_width = metrics.width(self.name)
-        available_width = self.width() - 10  # 左右留5像素边距
+        available_width = self.width() - 10
 
-        # 处理文本过长的情况
         display_text = self.name
         if text_width > available_width:
-            # 使用省略号缩短文本
+
             display_text = metrics.elidedText(
                 self.name, Qt.ElideMiddle, available_width)
 
-        # 设置文本颜色（从样式表获取或根据主题设置）
         from qfluentwidgets import isDarkTheme
         if isDarkTheme():
-            painter.setPen(QColor(255, 255, 255))  # 白色
+            painter.setPen(QColor(255, 255, 255))
         else:
-            painter.setPen(QColor(0, 0, 0))  # 黑色
+            painter.setPen(QColor(0, 0, 0))
 
-        # 绘制文本
         painter.drawText(QRect(5, 70, self.width()-10, 30),
                          Qt.AlignCenter, display_text)
 
@@ -173,18 +165,19 @@ class FileItem(QWidget):
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.selected_sign.emit({self.name: self.is_dir})
-            print(f"双击打开: {self.name}")
+            print(f"Double-click to open: {self.name}")
 
     def contextMenuEvent(self, e) -> None:
         menu = RoundMenu(parent=self)
 
-        copy_action = Action(FIF.COPY, '复制')
-        delete_action = Action(FIF.DELETE, '删除')
-        cut_action = Action(FIF.CUT, "剪切")
-        download_action = Action(FIF.DOWNLOAD, "下载")
-        copy_path = Action(FIF.FLAG, "复制路径")
-        file_info = Action(FIF.INFO, "详细信息")
-        rename = Action(FIF.LABEL, "重命名")
+        copy_action = Action(FIF.COPY, self.tr("Copy"))
+        delete_action = Action(FIF.DELETE, self.tr("Delete"))
+        cut_action = Action(FIF.CUT, self.tr("Cut"))
+        download_action = Action(FIF.DOWNLOAD, self.tr("Download"))
+        copy_path = Action(FIF.FLAG, self.tr("Copy Path"))
+        file_info = Action(FIF.INFO, self.tr("File Info"))
+        rename = Action(FIF.LABEL, self.tr("Rename"))
+
         copy_action.triggered.connect(lambda: self._emit_action('copy'))
         delete_action.triggered.connect(lambda: self._emit_action('delete'))
         cut_action.triggered.connect(lambda: self._emit_action('cut'))
@@ -201,7 +194,6 @@ class FileItem(QWidget):
         menu.exec(e.globalPos())
 
     def _emit_action(self, action_type):
-        """发射动作信号"""
         if action_type == "rename":
             self._start_rename()
         else:
@@ -209,7 +201,6 @@ class FileItem(QWidget):
                 action_type, self.name, str(self.is_dir))
 
     def _start_rename(self):
-        """进入重命名模式"""
         self._rename_applied = False
         self.rename_edit.setText(self.name)
         self.rename_edit.setGeometry(5, 70, self.width()-10, 25)
@@ -218,7 +209,6 @@ class FileItem(QWidget):
         self.rename_edit.selectAll()
 
     def _apply_rename(self):
-        """提交重命名"""
         if self._rename_applied:
             return
 
@@ -241,20 +231,18 @@ class FileExplorer(QWidget):
 
     def __init__(self, parent=None, path=None, icons=None):
         super().__init__(parent)
-        # 滚动区域
+
         self.copy_file_path = None
         self.cut_ = False
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
 
-        # 容器 widget 放 FlowLayout
         self.container = QWidget()
         self.flow_layout = FlowLayout(self.container)
         self.container.setLayout(self.flow_layout)
 
         self.scroll_area.setWidget(self.container)
         self.icons = icons
-        # 主布局
 
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(self.scroll_area)
@@ -267,44 +255,44 @@ class FileExplorer(QWidget):
         self.start_pos = None
         self.setMouseTracking(True)
         self.setAcceptDrops(True)
-        self.paste = Action(FIF.PASTE, "粘贴")
+        self.paste = Action(FIF.PASTE, self.tr("Paste"))
         self.paste.triggered.connect(
             lambda: self._handle_file_action("paste", "", ""))
 
     def add_files(self, files):
         """
-        接受：
-        - dict: {name: bool_or_marker}  (True 表示目录，False 表示文件)
-        - list: [{"name": ..., "is_dir": True/False}, ...]
-        - list of tuples: [("name", True), ...]
-        将目录排序在前，文件在后，均按名字（不区分大小写）升序。
+    Accepts:
+    - dict: {name: bool_or_marker} (True for directories, False for files)
+    - list: [{"name": ..., "is_dir": True/False}, ...]
+    - list of tuples: [("name", True), ...]
+    Sorts directories first, files last, in ascending order by name (case-insensitive).
         """
-        # 临时关闭更新以提升性能（避免多次重绘）
+        # Temporarily disable updates to improve performance (avoid multiple repaints)
         self.container.setUpdatesEnabled(False)
 
-        # 1) 清空旧文件（安全隐藏，避免闪现）
+        # 1) Clear old files (safely hide them first to avoid flicker)
         while self.flow_layout.count():
             item = self.flow_layout.takeAt(0)
             if item:
                 w = item.widget()
                 if w:
-                    w.hide()          # 先隐藏，避免顶层闪现
-                    w.setParent(None)  # 移除父窗口
-                    w.deleteLater()   # 延迟删除
+                    w.hide()           # Hide first to avoid top-level flicker
+                    w.setParent(None)  # Remove parent
+                    w.deleteLater()    # Delete later
         self.selected_items.clear()
 
-        # 2) 归一化输入到 (name, is_dir) 列表
+        # 2) Normalize input into a list of (name, is_dir)
         entries = []
         if files is None:
             files = {}
         # dict: {name: val}
         if isinstance(files, dict):
             for name, val in files.items():
-                # 判定为目录的条件：值为 True, 或者是 dict（你的 file_tree 里目录用 dict 表示）
+                # Determine if it is a directory: True or a dict (your file_tree uses dict for directories)
                 is_dir = True if (
                     val is True or isinstance(val, dict)) else False
                 entries.append((str(name), bool(is_dir)))
-        # list: [{"name":..., "is_dir":...}] 或 [("name", True)]
+        # list: [{"name":..., "is_dir":...}] or [("name", True)]
         elif isinstance(files, (list, tuple)):
             for entry in files:
                 if isinstance(entry, dict):
@@ -316,37 +304,37 @@ class FileExplorer(QWidget):
                 elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
                     entries.append((str(entry[0]), bool(entry[1])))
                 else:
-                    # 不识别的条目，尝试 str() 处理为文件名
+                    # Unrecognized item, try converting to string as filename
                     entries.append((str(entry), False))
         else:
-            # 其它类型直接忽略
+            # Ignore other types
             self.container.setUpdatesEnabled(True)
             return
 
-        # 3) 排序：目录在前 (not is_dir -> False for directories),
-        #    然后按名字不区分大小写排序
+        # 3) Sort: directories first (not is_dir -> False for directories),
+        #    then sort by name case-insensitively
         entries.sort(key=lambda x: (not x[1], x[0].lower()))
 
-        # 4) 创建 FileItem 并添加到布局
+        # 4) Create FileItem and add to layout
         for name, is_dir in entries:
-            # 使用 functools.partial 防止 lambda 闭包晚绑定问题
+            # Use functools.partial to prevent late binding issue with lambda
             item_widget = FileItem(
                 name, is_dir, parent=self.container, explorer=self, icons=self.icons)
-            # selected_sign 需要传递条目数据时，避免闭包问题
+            # Connect selected_sign to pass item data while avoiding closure issues
             item_widget.selected_sign.connect(
                 partial(lambda s, d: self.selected.emit(d), None))
             item_widget.action_triggered.connect(self._handle_file_action)
             item_widget.rename_action.connect(lambda type_, name, new_name, is_dir: self._handle_file_action(
                 action_type=type_, file_name=name, is_dir_str=is_dir, new_name=new_name))
-            # 如果你需要把具体 name 传出去，可以这样：
+            # If you want to emit the specific name, you can do:
             # item_widget.selected_sign.connect(partial(self.selected.emit, {name: is_dir}))
             item_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            # 先隐藏，避免在 addWidget 的瞬间出现（更稳妥）
+            # Hide first to avoid flicker when adding to layout
             item_widget.hide()
             self.flow_layout.addWidget(item_widget)
             item_widget.show()
 
-        # 恢复更新并刷新显示
+        # Re-enable updates and refresh display
         self.container.setUpdatesEnabled(True)
         self.container.update()
 
@@ -367,7 +355,7 @@ class FileExplorer(QWidget):
         item.update()
 
     def _handle_file_action(self, action_type, file_name, is_dir_str, new_name=None):
-        """处理文件项的动作"""
+        """Actions for processing file items"""
         if file_name:
             if self.path.endswith('/'):
                 full_path = self.path + file_name
@@ -399,10 +387,10 @@ class FileExplorer(QWidget):
                         self.copy_file_path = ""
                 else:
                     print(
-                        f"操作类型: {action_type}, 文件路径: {full_path}, 是否是目录: {is_dir_str}")
+                        f"Action type: {action_type}, File path: {full_path}, Is it a directory: {is_dir_str}")
                     self.file_action.emit(action_type, full_path, "", False)
 
-    # ---------------- 框选逻辑 ----------------
+    # ---------------- Box selection logic ----------------
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -446,7 +434,7 @@ class FileExplorer(QWidget):
             self.dragging = False
             self.rubberBand.hide()
 
-    # ---------------- 拖入文件事件 ----------------
+    # ---------------- Drag-in file event ----------------
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
@@ -456,7 +444,7 @@ class FileExplorer(QWidget):
         file_dict = {}
         for url in urls:
             path = url.toLocalFile()
-            print("拖入文件路径:", path)
+            print("Drag in the file path:", path)
             is_dir = os.path.isdir(path)
             filename = os.path.basename(path)
             file_dict[filename] = is_dir
@@ -466,7 +454,7 @@ class FileExplorer(QWidget):
     def contextMenuEvent(self, e) -> None:
         menu = RoundMenu(parent=self)
 
-        refresh_action = Action(FIF.UPDATE, '刷新页面')
+        refresh_action = Action(FIF.UPDATE, self.tr('Refresh the page'))
 
         refresh_action.triggered.connect(
             lambda checked: self.refresh_action.emit())

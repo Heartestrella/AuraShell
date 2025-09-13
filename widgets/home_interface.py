@@ -1,5 +1,5 @@
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                             QPushButton, QDialog, QListWidgetItem, QFrame)
+from PyQt5.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QListWidgetItem, QFrame)
 from PyQt5.QtCore import Qt, pyqtSignal
 from qfluentwidgets import (PrimaryPushButton, ListWidget, TitleLabel,
                             BodyLabel, FluentIcon as FIF, CardWidget, RoundMenu, CaptionLabel, Action, TransparentToolButton, InfoBar, InfoBarPosition)
@@ -21,7 +21,8 @@ class SSH_CARD(CardWidget):
         self.titleLabel = BodyLabel(self.title, self)
         self.contentLabel = CaptionLabel(content, self)
 
-        # # 添加状态指示灯
+        # Add status indicator
+
         # self.statusIndicator = QLabel(self)
         # self.statusIndicator.setFixedSize(8, 8)
         # self.statusIndicator.setStyleSheet(
@@ -41,7 +42,6 @@ class SSH_CARD(CardWidget):
         self.vBoxLayout.setContentsMargins(0, 0, 0, 0)
         self.vBoxLayout.setSpacing(0)
 
-        # 标题行布局（状态指示灯 + 标题）
         self.titleLayout = QHBoxLayout()
         # self.titleLayout.addWidget(self.statusIndicator)
         self.titleLayout.addWidget(self.titleLabel)
@@ -60,10 +60,10 @@ class SSH_CARD(CardWidget):
 
         self.menu = RoundMenu(parent=self)
 
-        self.action_open = Action(FIF.FOLDER, "打开新会话")
-        self.action_edit = Action(FIF.EDIT, "编辑")
-        self.action_delete = Action(FIF.DELETE, "删除")
-        self.close_action = Action(FIF.CLOSE, '关闭所有子会话')
+        self.action_open = Action(FIF.FOLDER, self.tr("Open a new session"))
+        self.action_edit = Action(FIF.EDIT, self.tr("Edit"))
+        self.action_delete = Action(FIF.DELETE, self.tr("Delete"))
+        self.close_action = Action(FIF.CLOSE, self.tr('Close all subsessions'))
         self.menu.addActions([self.action_open, self.action_edit,])
         self.menu.addSeparator()
         self.menu.addActions([self.action_delete, self.close_action])
@@ -84,7 +84,6 @@ class SSH_CARD(CardWidget):
         parent = self.parent()
         while parent:
             if hasattr(parent, 'remove_sub_interface'):
-                # 传递正确的参数：route_key，而不是parent
                 parent.remove_sub_interface(
                     self, close_sub_all=True, parent_id=self.title)
                 return
@@ -111,8 +110,6 @@ class SSH_CARD(CardWidget):
     #         self.parent_interface.sessionClicked.emit(session_id)
 
     def set_card_font(self, font: QFont = None):
-        """设置卡片字体"""
-        # 设置所有文本部件的字体
         self.titleLabel.setFont(font)
         self.contentLabel.setFont(font)
         self.moreButton.setFont(font)
@@ -127,21 +124,18 @@ class SSH_CARD(CardWidget):
                 "edit", self.session_id)
 
     def _on_delete(self):
-        """删除会话"""
-        # 通过 parent() 获取父部件（MainInterface）
         if hasattr(self.parent_interface, 'session_manager'):
             self.parent_interface.session_manager.delete_session(
                 self.session_id)
-            self.parent_interface.refresh_sessions()  # 刷新列表
+            self.parent_interface.refresh_sessions()  # Refresh list
 
     def showMenu(self):
-        """ 在按钮正下方显示菜单 """
         pos = self.moreButton.mapToGlobal(self.moreButton.rect().bottomRight())
         self.menu.exec(pos)
 
 
 class MainInterface(QWidget):
-    sessionClicked = pyqtSignal(str)  # 发射会话ID
+    sessionClicked = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -158,10 +152,10 @@ class MainInterface(QWidget):
         layout.setContentsMargins(30, 20, 30, 20)
         layout.setSpacing(15)
 
-        # 标题区域
         title_layout = QHBoxLayout()
-        self.title_label = TitleLabel("SSH 会话管理")
-        self.new_session_btn = PrimaryPushButton("新建会话", self, FIF.ADD)
+        self.title_label = TitleLabel(self.tr("SSH session management"))
+        self.new_session_btn = PrimaryPushButton(
+            self.tr("New Session"), self, FIF.ADD)
         self.new_session_btn.clicked.connect(self._create_edit_new_session)
 
         title_layout.addWidget(self.title_label)
@@ -170,39 +164,35 @@ class MainInterface(QWidget):
 
         layout.addLayout(title_layout)
 
-        # 分隔线
         separator = QFrame()
         separator.setFrameShape(QFrame.HLine)
         separator.setFrameShadow(QFrame.Sunken)
         # separator.setStyleSheet("background-color: rgba(255, 255, 255, 50);")
         layout.addWidget(separator)
 
-        # 说明文字
-        info_label = BodyLabel("选择已有的会话或创建新的SSH连接")
+        info_label = BodyLabel(
+            self.tr("Select an existing session or create a new SSH connection"))
         info_label.setStyleSheet("color: #888888;")
         layout.addWidget(info_label)
 
-        # 会话列表
         self.session_list = ListWidget()
         self.session_list.setSpacing(10)
         self.session_list.setStyleSheet("""
-        /* ListWidget 容器 */
+
         ListWidget {
             background-color: transparent;
             border: 1px solid rgba(255, 255, 255, 30);
             border-radius: 8px;
             outline: none;
-            padding: 5px;  /* 容器内边距，让第一/最后一个卡片有呼吸空间 */
+            padding: 5px; 
         }
 
-        /* 每个 item 使用透明背景，实际圆角由 item_widget 控制 */
         ListWidget::item {
             background-color: transparent;
             border: none;
-            padding: 0px;  /* 内部布局控制卡片内边距 */
+            padding: 0px;
         }
 
-        /* 移除焦点虚线 */
         ListWidget::item:focus {
             outline: none;
         }
@@ -211,15 +201,14 @@ class MainInterface(QWidget):
         self.session_list.itemDoubleClicked.connect(self._on_session_clicked)
         layout.addWidget(self.session_list)
 
-        # 空状态提示
-        self.empty_label = BodyLabel("暂无会话，点击右上角按钮创建新会话")
+        self.empty_label = BodyLabel(self.tr(
+            "There is no session yet. Click the button in the upper right corner to create a new session."))
         self.empty_label.setAlignment(Qt.AlignCenter)
         self.empty_label.setStyleSheet("color: #666666; padding: 40px;")
         self.empty_label.hide()
         layout.addWidget(self.empty_label)
 
     def _load_sessions(self):
-        """加载会话列表"""
         self.session_list.clear()
         sessions = self.session_manager.sessions_cache
 
@@ -234,7 +223,6 @@ class MainInterface(QWidget):
                 self._add_session_item(session)
 
     def _add_session_item(self, session):
-        """添加会话项到列表"""
         card = SSH_CARD(
             title=session.name,
             content=f"{session.username}@{session.host}:{session.port}",
@@ -250,12 +238,10 @@ class MainInterface(QWidget):
         self.session_list.setItemWidget(list_item, card)
 
     def _on_session_clicked(self, item):
-        """会话项点击事件"""
         session_id = item.data(Qt.UserRole)
         self.sessionClicked.emit(session_id)
 
     def _create_edit_new_session(self, mode: str = "create", session_id: str = None):
-        """创建新会话"""
         dialog = SessionDialog(self)
         if mode == "create":
             pass
@@ -264,9 +250,9 @@ class MainInterface(QWidget):
                 (s for s in self.session_manager.sessions_cache if s.id == session_id), None)
 
             if not session:
-                print(f"未找到会话 ID: {session_id}")
+                print(f"Session ID not found: {session_id}")
                 return
-            print("编辑的会话ID:", session.id)
+            print("Edited session ID:", session.id)
             dialog.session_name.setText(session.name)
             dialog.username.setText(session.username)
             dialog.host.setText(session.host)
@@ -296,22 +282,20 @@ class MainInterface(QWidget):
                     'key_path': dialog.key_path.text() if dialog.auth_combo.currentIndex() != 0 else ''
                 }
 
-                # 打印信息
-                print("会话名:", session_data['name'])
-                print("用户名:", session_data['username'])
-                print("主机地址:", session_data['host'])
-                print("端口:", session_data['port'])
-                print("认证方式:", session_data['auth_type'])
-                print("密码:", session_data['password'])
-                print("密钥路径:", session_data['key_path'])
+                print("Session Name:", session_data['name'])
+                print("Username:", session_data['username'])
+                print("Host:", session_data['host'])
+                print("Port:", session_data['port'])
+                print("Authentication method:", session_data['auth_type'])
+                print("Password:", session_data['password'])
+                print("Key Path:", session_data['key_path'])
 
                 try:
-                    content_mode = "新建"
-                    # 编辑模式删除再重建
+                    content_mode = self.tr("New")
                     if mode == "edit":
                         self.session_manager.delete_session(
                             session_id=session_id)
-                        content_mode = "编辑"
+                        content_mode = self.tr("Edit")
                     new_session = self.session_manager.create_session(
                         name=session_data['name'],
                         host=session_data['host'],
@@ -325,8 +309,9 @@ class MainInterface(QWidget):
                     # self.sessionClicked.emit(new_session.id)
 
                     InfoBar.success(
-                        title='成功',
-                        content=f"{content_mode}会话 [ {session_data['name']} ] 成功",
+                        title=self.tr('Success'),
+                        content=self.tr(
+                            f"{content_mode}session [ {session_data['name']} ] success"),
                         orient=Qt.Horizontal,
                         isClosable=True,
                         position=InfoBarPosition.TOP_RIGHT,
@@ -336,8 +321,8 @@ class MainInterface(QWidget):
 
                 except ValueError as e:
                     InfoBar.error(
-                        title='错误！！！',
-                        content=f"尝试会话失败 原因：{e}",
+                        title=self.tr('Error！！！'),
+                        content=self.tr(f"Session attempt failed Reason：{e}"),
                         orient=Qt.Horizontal,
                         isClosable=True,
                         position=InfoBarPosition.TOP_RIGHT,
@@ -347,21 +332,20 @@ class MainInterface(QWidget):
 
             else:
                 InfoBar.warning(
-                    title='创建失败',
-                    content="IP/域名/端口不合法",
+                    title=self.tr('Creation failed'),
+                    content=self.tr(
+                        "The IP/domain name/port is illegal, please re-enter"),
                     orient=Qt.Horizontal,
                     isClosable=True,
                     position=InfoBarPosition.TOP_RIGHT,
-                    duration=5000,    # 永不消失
+                    duration=5000,
                     parent=self
                 )
 
     def refresh_sessions(self):
-        """刷新会话列表"""
         self.session_manager.sessions_cache = self.session_manager.load_sessions()
         self._load_sessions()
 
     def showEvent(self, event):
-        """显示事件 - 每次显示时刷新会话列表"""
         super().showEvent(event)
         self.refresh_sessions()

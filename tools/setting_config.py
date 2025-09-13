@@ -9,7 +9,7 @@ class SCM:
         self.config_path = Path.home() / ".config" / "setting-config.json"
         if not os.path.exists(self.config_path):
             self.init_config("Dark", None, "12", True,
-                             "#FFFFFF", 100, 720, 680, False)
+                             "#FFFFFF", 100, 720, 680, False, "system")
 
     def write_config(self, config):
         with open(self.config_path, mode="w", encoding="utf-8") as f:
@@ -17,14 +17,21 @@ class SCM:
 
     def init_config(self, *parameter):
         '''
-        parameter 顺序：设置页面选项依次排序 \n
-        0 -> bg_color: 背景颜色 ("Dark" 或 "Light") \n
-        1 -> bg_pic: 背景图片路径 (Path 或 None) \n
-        2 -> font_size 字体大小 (int 12-30) \n
-        3 -> locked_ratio: 是否锁定横纵比 (Bool) \n
-        4 -> ssh_widget_text_color: SSH会话页面字体颜色\n
-        5 -> background_opacity : 背景图片不透明度\n
-        8 -> follow_cd 使用cd后文件管理器跟随到新的目录\n
+        Parameter order: Sets the order of page options.
+
+        0 -> bg_color: Background color ("Dark" or "Light")
+
+        1 -> bg_pic: Background image path (Path or None)
+
+        2 -> font_size: Font size (int 12-30)
+
+        3 -> locked_ratio: Whether to lock the aspect ratio (Bool)
+
+        4 -> ssh_widget_text_color: SSH session page font color
+
+        5 -> background_opacity: Background image opacity
+
+        8 -> follow_cd: The file manager follows the new directory after using cd.
         '''
         config = {
             "bg_color": parameter[0],  # Dark or Light
@@ -35,7 +42,8 @@ class SCM:
             "background_opacity": parameter[5],  # int 0-100
             "window_last_width": parameter[6],  # int
             "window_last_height": parameter[7],  # int
-            "follow_cd": parameter[8]  # bool
+            "follow_cd": parameter[8],  # bool
+            "language": parameter[9]  # system, EN, CN, JP, RU
         }
         self.write_config(config)
 

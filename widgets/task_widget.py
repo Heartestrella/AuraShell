@@ -3,11 +3,6 @@ from PyQt5.QtGui import QFont, QColor
 from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QFrame, QVBoxLayout
 
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont, QColor
-from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QFrame, QVBoxLayout
-
-
 class Tasks(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -48,36 +43,33 @@ class Tasks(QFrame):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         layout.addWidget(self.table)
 
-        # 默认字体颜色
         self.text_color = "#ffffff"
 
     def set_text_color(self, color_hex: str):
-        """设置表格内容字体颜色（不影响表头）"""
         self.text_color = color_hex
 
     def add_row(self, mem, cpu, cmd):
-        # 如果行数超过5，先清空表格
         if self.table.rowCount() >= 5:
             self.table.setRowCount(0)
 
         row = self.table.rowCount()
         self.table.insertRow(row)
 
-        # 内存列
+        # RAM
         mem_item = QTableWidgetItem(str(mem))
         mem_item.setTextAlignment(Qt.AlignCenter)
         mem_item.setFont(self._bold_font())
         mem_item.setForeground(QColor(self.text_color))
         self.table.setItem(row, 0, mem_item)
 
-        # CPU列
+        # CPU
         cpu_item = QTableWidgetItem(str(cpu))
         cpu_item.setTextAlignment(Qt.AlignCenter)
         cpu_item.setFont(self._bold_font())
         cpu_item.setForeground(QColor(self.text_color))
         self.table.setItem(row, 1, cpu_item)
 
-        # 命令列
+        # Command
         cmd_item = QTableWidgetItem(str(cmd))
         cmd_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         cmd_item.setForeground(QColor(self.text_color))

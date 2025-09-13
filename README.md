@@ -58,8 +58,8 @@ Includes a **remote file manager** and **integrated terminal**, providing a mode
 
 ## 🌐 Internationalization (i18n)
 
-Currently, multi-language support is not yet implemented.  
-This feature is planned for the official release, which will include full internationalization support to make PSSH accessible to users worldwide.
+Currently, multilingual support is not yet available. (Chinese and English only.)
+This feature is planned for official release, which will include full internationalization support so that users around the world can use PSSH.
 
 ## 📝 Source Code
 

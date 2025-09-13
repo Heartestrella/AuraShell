@@ -25,7 +25,7 @@ class font_config:
             with open(self.config_path, mode="r", encoding="utf-8") as f:
                 config_dict = json.load(f)
 
-            # 未指定且不为默认字体
+            # Unspecified and not the default font
             if font_path is None and config_dict["family"] != "Courier New":
                 pass
             elif font_path is not None:

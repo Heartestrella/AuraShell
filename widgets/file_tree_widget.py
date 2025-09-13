@@ -8,15 +8,14 @@ from typing import Optional, Dict, Set
 
 def _parse_linux_path(path: str):
     """
-    把 '/home/bee' -> ['home','bee']
-    根 '/' -> []
+    Change '/home/bee' -> ['home','bee']
+    root '/' -> []
     """
     if not path:
         return []
     path = path.strip()
     if path == '/':
         return []
-    # 去除开头的斜杠，再按 '/' 分割，去掉空段
     parts = [p for p in path.strip('/').split('/') if p]
     return parts
 
@@ -39,11 +38,11 @@ class File_Navigation_Bar(QWidget):
         if self.send_signal:
             print("updatePathLabel")
             currentIndex = self.breadcrumbBar.currentIndex()
-            items = self.breadcrumbBar.items  # items 是 BreadcrumbItem 对象列表
+            items = self.breadcrumbBar.items  # items is a list of BreadcrumbItem objects
             path_list = [item.text for item in items[:currentIndex + 1]]
             path = "/" + \
                 "/".join(path_list[1:]
-                         ) if len(path_list) > 1 else path_list[0]  # 拼接路径
+                         ) if len(path_list) > 1 else path_list[0]  # Stitching Path
             # print("Path Bar 当前路径:", path)
             self.bar_path_changed.emit(path)
         else:
@@ -52,12 +51,12 @@ class File_Navigation_Bar(QWidget):
 
 class FileTreeWidget(QWidget):
     """
-    文件树 Widget（可传入初始 file_tree）。
-    - refresh_tree(new_tree=None, preserve_expand=True)
-    - add_path(path, type='file')
-    - remove_path(path)
-    内部 model: {'': {...}}
-    文件用字符串 "is_file" 标记，目录用 dict。
+File tree widget (can pass in an initial file_tree).\n
+- refresh_tree(new_tree=None, preserve_expand=True)\n
+- add_path(path, type='file')\n
+- remove_path(path)\n
+Internal model: {'': {...}}\n
+Files are marked with the string "is_file"; directories are marked with a dict.
     """
     directory_selected = pyqtSignal(str)  # path
 
@@ -65,27 +64,26 @@ class FileTreeWidget(QWidget):
         super().__init__(parent)
         self.setLayout(QVBoxLayout(self))
         self.layout().setContentsMargins(0, 0, 0, 0)
-        self.refresh = Action(FIF.UPDATE, '刷新文件树')
+        self.refresh = Action(FIF.UPDATE, self.tr('Refresh the file tree'))
         self.tree = TreeWidget(self)
-        self.tree.setHeaderLabels(["文件管理器"])
+        self.tree.setHeaderLabels([self.tr("File Manager")])
         self.tree.setColumnCount(1)
         self.layout().addWidget(self.tree)
         self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
-        # 内部数据模型
+        # Internal data model
         if file_tree is None:
             self.file_tree = {'': {}}
         else:
-            # 直接引用传入的 dict（如果需要独立副本，可在调用方传入 copy）
             self.file_tree = file_tree
 
-        # 初始化渲染
+        # Initialize rendering
         self.refresh_tree()
 
     # ------------------------
-    # 展开状态收集/恢复
+    # Expand state collection/recovery
     # ------------------------
     def _gather_expanded_paths(self) -> Set[str]:
-        """遍历当前 tree，将所有展开的 item 的完整路径收集为 set"""
+        """Traverse the current tree and collect the full paths of all expanded items into a set"""
         expanded = set()
 
         def recurse(item):
@@ -96,7 +94,7 @@ class FileTreeWidget(QWidget):
                 if path and ch.isExpanded():
                     expanded.add(path)
                 recurse(ch)
-        # 顶层 items
+
         root = self.tree.invisibleRootItem()
         for i in range(root.childCount()):
             top = root.child(i)
@@ -107,7 +105,7 @@ class FileTreeWidget(QWidget):
         return expanded
 
     def _restore_expanded_paths(self, expanded_paths: Set[str]):
-        """遍历所有 items，根据路径集合还原展开状态"""
+        """Traverse all items and restore the expanded state according to the path collection"""
         def recurse(item):
             for i in range(item.childCount()):
                 ch = item.child(i)
@@ -132,10 +130,9 @@ class FileTreeWidget(QWidget):
     # ------------------------
     def refresh_tree(self, new_tree: Optional[Dict] = None, preserve_expand: bool = True):
         """
-        刷新整个树：
-        - 如果传入 new_tree，则替换内部模型
-        - preserve_expand: 是否保持以前的展开状态（默认 True）
-        """
+        Refresh the entire tree:\n
+        - If new_tree is passed, replace the internal model\n
+        - preserve_expand: Whether to preserve the previous expanded state (default True)        """
         if new_tree is not None:
             self.file_tree = new_tree
 
@@ -154,50 +151,43 @@ class FileTreeWidget(QWidget):
         # 恢复展开状态（如果需要）
         if preserve_expand:
             self._restore_expanded_paths(expanded_paths)
-    print("刷新树完成")
+    print("Refresh tree complete")
 
     def _populate_tree(self, node_dict: Dict, parent_item, parent_path: str):
         """
-        递归把 node_dict 添加到 parent_item（parent_item 可以是 TreeWidget 或 QTreeWidgetItem）
-        parent_path: 父节点的完整路径（'' 表示根），用于构造当前项的完整路径，例如 '/home' '/home/bee'
-        """
-        # 排序：目录优先，按字母序
+        Recursively append node_dict to parent_item (parent_item can be a TreeWidget or QTreeWidgetItem).
+        parent_path: The full path of the parent node ('' represents the root), used to construct the full path of the current item, e.g. '/home' '/home/bee'        """
         def sort_key(kv):
             name, val = kv
             is_file = (val == "is_file")
             return (is_file, name.lower())
 
         for name, val in sorted(node_dict.items(), key=sort_key):
-            # 构造完整路径
             if parent_path:
                 full_path = parent_path.rstrip('/') + '/' + name
             else:
                 full_path = '/' + name
 
             item = QTreeWidgetItem(parent_item, [name])
-            # 存储完整路径到 UserRole（方便恢复状态/查找）
             item.setData(0, Qt.UserRole, full_path)
 
             if val == "is_file":
                 icon = self.style().standardIcon(QStyle.SP_FileIcon)
                 item.setIcon(0, icon)
-                # 文件不递归
             else:
                 icon = self.style().standardIcon(QStyle.SP_DirIcon)
                 item.setIcon(0, icon)
-                # 如果是目录且非空字典，则递归添加子项
                 if isinstance(val, dict) and val:
                     self._populate_tree(val, item, full_path)
 
     # ------------------------
-    # 数据模型操作（add / remove）
+    # Data model operations (add/remove)
     # ------------------------
     def add_path(self, path: str, typ: str = 'file'):
         """
-        在内部 file_tree 上添加 path。
-        typ: 'file'/'is_file' 表示文件，'dir'/'directory' 表示目录
-        会自动创建中间目录（如果中间节点曾被标记为 'is_file'，则会覆盖为目录）
-        """
+        Adds path to the internal file_tree.\n
+        typ: 'file'/'is_file' for files, 'dir'/'directory' for directories.\n
+        Intermediate directories are automatically created (if an intermediate node was previously marked 'is_file', it will be overwritten as a directory).        """
         if not path:
             return
 
@@ -230,7 +220,7 @@ class FileTreeWidget(QWidget):
 
     def remove_path(self, path: str):
         """
-        删除指定 path（文件或目录）。如果 path=="/" 则清空根。
+        Delete the specified path (file or directory). If path=="/", the root is cleared
         """
         if not path:
             return
@@ -253,13 +243,12 @@ class FileTreeWidget(QWidget):
         last = parts[-1]
         if isinstance(node, dict) and last in node:
             del node[last]
-            # 可选：向上清理空目录（如果需要）
             self.refresh_tree()
         else:
             return
 
     def get_model(self) -> Dict:
-        """返回当前内部 file_tree 引用（注意：是引用而非深拷贝）"""
+        """Returns the current internal file_tree reference"""
         return self.file_tree
 
     def contextMenuEvent(self, e) -> None:
@@ -270,7 +259,7 @@ class FileTreeWidget(QWidget):
 
     def switch_to(self, path: str):
         """
-        展开并选中指定 path（必须存在于 file_tree 模型中）。
+        Expand and select the specified path (must exist in the file_tree model)
         """
         if not path or path == "/":
             return
@@ -279,7 +268,6 @@ class FileTreeWidget(QWidget):
         if not parts:
             return
 
-        # 从根开始遍历
         root = self.tree.invisibleRootItem()
         current_item = None
         current_path = ""
@@ -291,7 +279,6 @@ class FileTreeWidget(QWidget):
                 current_path = "/" + part
 
             found = None
-            # 遍历当前层的 child
             parent = root if current_item is None else current_item
             for j in range(parent.childCount()):
                 child = parent.child(j)
@@ -302,27 +289,27 @@ class FileTreeWidget(QWidget):
 
             if found is None:
                 print(f"switch_to: {current_path} not found in tree")
-                return  # 找不到就提前退出
+                return  # Exit early if not found
 
-            # 展开目录（如果不是最后一层）
+            # Expand the directory (if it is not the last level)
 
             found.setExpanded(True)
 
             current_item = found
 
-        # 最后选中目标节点
+        # Finally select the target node
         if current_item is not None:
             self.tree.setCurrentItem(current_item)
             self.tree.scrollToItem(current_item)
             current_item.setSelected(True)
 
     def _on_item_double_clicked(self, item, column):
-        """双击 item 时，如果是目录则发射信号"""
+        """When you double-click an item, if it is a directory, a signal is emitted"""
         path = item.data(0, Qt.UserRole)
         if not path:
             return
 
-        # 查找该 path 在内部模型中的类型
+        # Find the type of the path in the internal model
         node = self.file_tree.get('', {})
         parts = _parse_linux_path(path)
         for part in parts:
@@ -331,7 +318,7 @@ class FileTreeWidget(QWidget):
             else:
                 return
 
-        # 如果是目录（dict 类型），发射信号
+        # If it is a directory (dict type), emit a signal
         if isinstance(node, dict):
             print(f"文件树被选择：{path}")
             self.directory_selected.emit(path)
