@@ -467,3 +467,11 @@ class FileExplorer(QWidget):
         menu.addActions([refresh_action, self.paste])
         menu.addSeparator()
         menu.exec(e.globalPos())
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_F2:
+            if self.selected_items:
+                item = list(self.selected_items)[0]
+                item._start_rename()
+        else:
+            super().keyPressEvent(event)
