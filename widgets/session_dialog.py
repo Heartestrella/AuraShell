@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QFileDialog
+from PyQt5.QtWidgets import QHBoxLayout, QLabel, QFileDialog, QWidget
 from qfluentwidgets import LineEdit, ComboBox, SubtitleLabel, MessageBoxBase, PushButton, InfoBar, InfoBarPosition, PasswordLineEdit
 from PyQt5.QtCore import Qt, QDir
 
@@ -7,7 +7,7 @@ class SessionDialog(MessageBoxBase):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._font = getattr(parent, "fonts", None)
-        print(self._font)
+        # print(self._font)
         self.titleLabel = SubtitleLabel(self.tr('New SSH Session'))
         if self._font:
             self.titleLabel.setFont(self._font)
@@ -96,6 +96,18 @@ class SessionDialog(MessageBoxBase):
 
         self.widget.setMinimumWidth(400)
         self._on_auth_changed(0)  # Initialize to password authentication
+
+        self.set_font_recursive(self, self._font)
+
+    def set_font_recursive(self, widget: QWidget, font):
+        """
+        Recursively set the font for a widget and all its children.
+        """
+        if font is None:
+            return
+        widget.setFont(font)
+        for child in widget.findChildren(QWidget):
+            child.setFont(font)
 
     def _on_auth_changed(self, index):
         if index == 0:  # Password

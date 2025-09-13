@@ -1,11 +1,11 @@
 # coding:utf-8
 import sys
-from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale
-from PyQt5.QtGui import QPixmap, QPainter
-from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout
+from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl
+from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices
+from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget
 
 from qfluentwidgets import (NavigationInterface, NavigationItemPosition, InfoBar,
-                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator)
+                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget)
 from qframelesswindow import FramelessWindow, StandardTitleBar
 from widgets.setting_page import SettingPage
 from widgets.home_interface import MainInterface
@@ -17,6 +17,7 @@ from tools.ssh import SSHWorker
 from tools.icons import My_Icons
 from tools.remote_file_manage import RemoteFileManager
 from tools.setting_config import SCM
+from widgets.sync_widget import SycnWidget
 import os
 import subprocess
 font_ = font_config()
@@ -62,6 +63,8 @@ class Window(FramelessWindow):
         # create sub interface
         self.MainInterface = MainInterface(self)
         self.MainInterface.sessionClicked.connect(self._on_session_selected)
+
+        self.sycn_widget = SycnWidget(self)
 
         self.sessions = Widget(
             self.tr('No conversation selected yet'), True, self)
@@ -207,7 +210,7 @@ class Window(FramelessWindow):
                 title = self.tr("Paste Failed")
                 duration = -1
 
-        if type_ == "rename":
+        elif type_ == "rename":
             duration = 2000
             if status:
                 title = self.tr("Rename Successful")
@@ -250,6 +253,14 @@ class Window(FramelessWindow):
             else:
                 duration = -1
                 title = self.tr(f"Failed to get detailed info for {path}")
+
+        elif type_ == "mkdir":
+            duration = 2000
+            if status:
+                title = self.tr(f"Created directory {path} successfully")
+            else:
+                title = self.tr(f"Failed to create directory {path}\n{msg}")
+                duration = -1
 
         InfoBar.info(
             title=title,
@@ -296,6 +307,9 @@ class Window(FramelessWindow):
             lambda path, type_: self._open_server_files(path, type_, child_key))
         file_manager.file_info_ready.connect(
             lambda path, info, status, error_msg: self._show_info(path=path, status=status, child_key=child_key, msg=error_msg, type_="info", local_path=info))
+        file_manager.mkdir_finished.connect(lambda path, status, msg: self._show_info(
+            path=path, status=status, msg=msg, type_="mkdir", child_key=child_key
+        ))
         session_widget.file_explorer.upload_file.connect(
             lambda path, target_path: self._show_info(type_="start_upload", child_key=child_key, local_path=path, path=target_path))
         session_widget.file_explorer.upload_file.connect(
@@ -391,6 +405,9 @@ class Window(FramelessWindow):
                 file_manager.rename(path=full_path, new_name=copy_to)
         elif action_type == "info":
             file_manager.get_file_info(full_path)
+        elif action_type == "mkdir":
+            if full_path:
+                file_manager.mkdir(full_path)
 
     def _refresh_paths(self, child_key: str):
         print("Refresh the page")
@@ -551,10 +568,25 @@ class Window(FramelessWindow):
         self.addSubInterface(self.sessions, FIF.ALBUM,
                              self.tr("SSH session"), NavigationItemPosition.SCROLL)
 
+        self.addSubInterface(self.sycn_widget, FIF.SYNC, self.tr(
+            "Sync"), NavigationItemPosition.BOTTOM)
+
+        self.navigationInterface.addWidget(
+            routeKey='about',
+            widget=NavigationAvatarWidget(
+                'su8aru', 'resource/icons/avatar.jpg'),
+            onClick=self._open_github,
+            position=NavigationItemPosition.BOTTOM,
+        )
+
         self.addSubInterface(self.settingInterface, FIF.SETTING,
                              self.tr("Setting"), NavigationItemPosition.BOTTOM)
         self.stackWidget.currentChanged.connect(self.onCurrentInterfaceChanged)
         self.stackWidget.setCurrentIndex(0)
+
+    def _open_github(self):
+        github_url = QUrl("https://github.com/Heartestrella/P-SSH")
+        QDesktopServices.openUrl(github_url)
 
     def initWindow(self):
         self.titleBar.setAttribute(Qt.WA_StyledBackground)
@@ -678,8 +710,8 @@ class Window(FramelessWindow):
 
         for i in range(self.stackWidget.count()):
             w = self.stackWidget.widget(i)
-            if hasattr(w, 'widget'):
-                w.widget().update()
+            if hasattr(w, 'widget') and isinstance(w.widget, QWidget):
+                w.widget.update()
             else:
                 w.update()
 

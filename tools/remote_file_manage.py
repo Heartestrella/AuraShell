@@ -61,6 +61,8 @@ class RemoteFileManager(QThread):
     file_info_ready = pyqtSignal(str, dict, bool, str)
     # path , type
     file_type_ready = pyqtSignal(str, str)
+    # path , status , error_msg
+    mkdir_finished = pyqtSignal(str, bool, str)
 
     def __init__(self, session_info, parent=None, child_key=None):
         super().__init__(parent)
@@ -177,6 +179,9 @@ class RemoteFileManager(QThread):
                                 task['path'], info[1], info[2], info[3])
                         elif ttype == 'file_type':
                             self.classify_file_type_using_file(task['path'])
+                        elif ttype == 'mkdir':
+                            self._handle_mkdir_task(
+                                task['path'], task.get('callback'))
                         else:
                             print(f"Unknown task type: {ttype}")
                     except Exception as e:
@@ -214,6 +219,17 @@ class RemoteFileManager(QThread):
     # ---------------------------
     # Public task API
     # ---------------------------
+
+    def mkdir(self, path: str, callback=None):
+        self.mutex.lock()
+        self._tasks.append({
+            'type': 'mkdir',
+            'path': path,
+            "callback": callback,
+        })
+        self.condition.wakeAll()
+        self.mutex.unlock()
+
     def get_file_type(self, path: str):
         self.mutex.lock()
         self._tasks.append({'type': 'file_type', 'path': path})
@@ -441,10 +457,10 @@ class RemoteFileManager(QThread):
 
                 # common executable-related MIME strings
                 if ("executable" in mime_out
-                    or "x-executable" in mime_out
-                    or mime_out.startswith("application/x-sharedlib")
-                    or "x-mach-binary" in mime_out
-                    or "pe" in mime_out  # covers various PE-like mimes
+                        or "x-executable" in mime_out
+                        or mime_out.startswith("application/x-sharedlib")
+                        or "x-mach-binary" in mime_out
+                        or "pe" in mime_out  # covers various PE-like mimes
                     ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
@@ -498,6 +514,55 @@ class RemoteFileManager(QThread):
             print(f"Failed to run remote file command for {path}: {e}")
             self.file_type_ready.emit(path, "unknown")
             return "unknown"
+
+    def _handle_mkdir_task(self, path: str, callback=None):
+        """
+        Asynchronously create a remote directory (mkdir -p behavior) via SFTP.
+
+        Emits:
+            mkdir_finished(path, status, error_msg)
+        """
+        if self.sftp is None:
+            error_msg = "SFTP connection not ready"
+            print(f"❌ Mkdir failed - {error_msg}: {path}")
+            self.mkdir_finished.emit(path, False, error_msg)
+            if callback:
+                callback(False, error_msg)
+            return
+
+        try:
+            # Recursively create directories like 'mkdir -p'
+            parts = path.strip("/").split("/")
+            current_path = ""
+            for part in parts:
+                current_path += f"/{part}"
+                try:
+                    self.sftp.stat(current_path)
+                except FileNotFoundError:
+                    try:
+                        self.sftp.mkdir(current_path)
+                        print(f"✅ Created directory: {current_path}")
+                    except Exception as mkdir_exc:
+                        error_msg = f"Failed to create directory {current_path}: {mkdir_exc}"
+                        print(f"❌ Mkdir failed - {error_msg}")
+                        self.mkdir_finished.emit(path, False, error_msg)
+                        if callback:
+                            callback(False, error_msg)
+                        return
+
+            # Success
+            self.mkdir_finished.emit(path, True, "")
+            if callback:
+                callback(True, "")
+
+        except Exception as e:
+            error_msg = f"Error during mkdir: {str(e)}"
+            print(f"❌ Mkdir failed - {error_msg}")
+            import traceback
+            traceback.print_exc()
+            self.mkdir_finished.emit(path, False, error_msg)
+            if callback:
+                callback(False, error_msg)
 
     def _handle_upload_task(self, local_path: str, remote_path: str, callback=None):
         if self.sftp is None:

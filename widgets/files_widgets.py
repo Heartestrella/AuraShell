@@ -75,6 +75,8 @@ class FileItem(QWidget):
     action_triggered = pyqtSignal(str, str, str)
     # Operation type, original file name, new file name, whether it is a directory
     rename_action = pyqtSignal(str, str, str, str)
+    # new_dir_name
+    mkdir_action = pyqtSignal(str)
 
     def __init__(self, name, is_dir, parent=None, explorer=None, icons=None):
         super().__init__(parent)
@@ -83,7 +85,7 @@ class FileItem(QWidget):
         self.selected = False
         self.parent_explorer = explorer
         self.icons = icons
-
+        self.mkdir = False
         self.icon = icons.Folder_Icon if is_dir else icons.File_Icon
         self.setMinimumSize(self.WIDTH, self.HEIGHT)
 
@@ -92,7 +94,7 @@ class FileItem(QWidget):
         self.rename_edit.setText(self.name)
         self.rename_edit.setAlignment(Qt.AlignCenter)
         self.rename_edit.hide()
-        self.rename_edit.returnPressed.connect(self._apply_rename)
+        # self.rename_edit.returnPressed.connect(self._apply_rename)
         self.rename_edit.editingFinished.connect(self._apply_rename)
         self._rename_applied = False
 
@@ -209,16 +211,24 @@ class FileItem(QWidget):
         self.rename_edit.selectAll()
 
     def _apply_rename(self):
+        print("Apply rename")
         if self._rename_applied:
             return
 
         self._rename_applied = True
         new_name = self.rename_edit.text().strip()
-        if new_name and new_name != self.name:
-            self.rename_action.emit(
-                "rename", self.name, new_name, str(self.is_dir))
-        self.rename_edit.hide()
-        self.update()
+        if self.mkdir:
+            self.mkdir_action.emit(new_name)
+            self.mkdir = False
+            self.rename_edit.hide()
+            self.update()
+        else:
+
+            if new_name and new_name != self.name:
+                self.rename_action.emit(
+                    "rename", self.name, new_name, str(self.is_dir))
+            self.rename_edit.hide()
+            self.update()
 # ---------------- FileExplorer ----------------
 
 
@@ -258,8 +268,34 @@ class FileExplorer(QWidget):
         self.paste = Action(FIF.PASTE, self.tr("Paste"))
         self.paste.triggered.connect(
             lambda: self._handle_file_action("paste", "", ""))
+        self.make_dir = Action(FIF.FOLDER_ADD, self.tr("New Folder"))
+        self.make_dir.triggered.connect(self._handle_mkdir)
+        # self.make_dir.triggered.connect(
+        #     lambda: self._handle_file_action("mkdir", "", ""))
 
-    def add_files(self, files):
+    def _handle_mkdir(self):
+        """Create a new folder placeholder and enter rename mode."""
+        new_folder_name = "New Folder"
+
+        # Make sure the name is unique to prevent existing folders with the same name
+        existing_names = {self.flow_layout.itemAt(
+            i).widget().name for i in range(self.flow_layout.count())}
+        counter = 1
+        candidate_name = new_folder_name
+        while candidate_name in existing_names:
+            candidate_name = f"{new_folder_name} ({counter})"
+            counter += 1
+
+        self.add_files([(candidate_name, True)], clear_old=False)
+
+        new_item = self.flow_layout.itemAt(
+            self.flow_layout.count() - 1).widget()
+
+        self.select_item(new_item)
+        new_item.mkdir = True
+        new_item._start_rename()
+
+    def add_files(self, files, clear_old=True):
         """
     Accepts:
     - dict: {name: bool_or_marker} (True for directories, False for files)
@@ -271,15 +307,16 @@ class FileExplorer(QWidget):
         self.container.setUpdatesEnabled(False)
 
         # 1) Clear old files (safely hide them first to avoid flicker)
-        while self.flow_layout.count():
-            item = self.flow_layout.takeAt(0)
-            if item:
-                w = item.widget()
-                if w:
-                    w.hide()           # Hide first to avoid top-level flicker
-                    w.setParent(None)  # Remove parent
-                    w.deleteLater()    # Delete later
-        self.selected_items.clear()
+        if clear_old:
+            while self.flow_layout.count():
+                item = self.flow_layout.takeAt(0)
+                if item:
+                    w = item.widget()
+                    if w:
+                        w.hide()           # Hide first to avoid top-level flicker
+                        w.setParent(None)  # Remove parent
+                        w.deleteLater()    # Delete later
+            self.selected_items.clear()
 
         # 2) Normalize input into a list of (name, is_dir)
         entries = []
@@ -326,6 +363,8 @@ class FileExplorer(QWidget):
             item_widget.action_triggered.connect(self._handle_file_action)
             item_widget.rename_action.connect(lambda type_, name, new_name, is_dir: self._handle_file_action(
                 action_type=type_, file_name=name, is_dir_str=is_dir, new_name=new_name))
+            item_widget.mkdir_action.connect(lambda new_dir_name: self._handle_file_action(
+                action_type="mkdir", file_name=new_dir_name))
             # If you want to emit the specific name, you can do:
             # item_widget.selected_sign.connect(partial(self.selected.emit, {name: is_dir}))
             item_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
@@ -354,8 +393,9 @@ class FileExplorer(QWidget):
             item.selected = True
         item.update()
 
-    def _handle_file_action(self, action_type, file_name, is_dir_str, new_name=None):
+    def _handle_file_action(self, action_type, file_name, is_dir_str=None, new_name=None):
         """Actions for processing file items"""
+        print(action_type)
         if file_name:
             if self.path.endswith('/'):
                 full_path = self.path + file_name
@@ -365,9 +405,13 @@ class FileExplorer(QWidget):
             full_path = os.path.normpath(full_path).replace('\\', '/')
 
         if action_type == "rename":
+            print(action_type, full_path, new_name)
             if new_name:
                 self.file_action.emit(action_type, full_path, new_name, False)
-
+        elif action_type == "mkdir":
+            print(action_type, full_path)
+            if file_name:
+                self.file_action.emit(action_type, full_path, "", False)
         else:
 
             if action_type == "copy":
@@ -464,7 +508,7 @@ class FileExplorer(QWidget):
         # download_action.triggered.connect(
         #     lambda: self._emit_action('download'))
 
-        menu.addActions([refresh_action, self.paste])
+        menu.addActions([refresh_action, self.paste, self.make_dir])
         menu.addSeparator()
         menu.exec(e.globalPos())
 
