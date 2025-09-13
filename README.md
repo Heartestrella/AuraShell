@@ -52,9 +52,10 @@ Includes a **remote file manager** and **integrated terminal**, providing a mode
 
 ## 📷 Screenshots
 
-<img width="1624" height="913" alt="image" src="https://github.com/user-attachments/assets/f45dd0da-fac0-4a40-a005-72e1207224d0" />
-<img width="1624" height="913" alt="image" src="https://github.com/user-attachments/assets/38e18a59-39a1-4590-81c9-cf1bd4e30cf1" />
-<img width="1624" height="913" alt="image" src="https://github.com/user-attachments/assets/ab3b947e-f4fd-42da-a706-eaa160a148fd" />
+<img width="1456" height="819" alt="image" src="https://github.com/user-attachments/assets/467ac84d-284e-4572-97ea-22109ee92575" />
+<img width="1456" height="819" alt="image" src="https://github.com/user-attachments/assets/da427c06-731e-4606-b5f6-1ea3b038301c" />
+<img width="1456" height="819" alt="image" src="https://github.com/user-attachments/assets/34e86170-d602-4f6c-8540-358447f2faf9" />
+
 
 
 
