@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-lang-key="title">AuraShell - Win11 风格 SSH 终端</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Sans+JP:wght@300;400;500;700&family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+        :root {
+            --bg-color: #202020;
+            --text-color: #f0f0f0;
+            --primary-color: #0078d4;
+            --card-bg: #2d2d2d;
+            --shadow-color: rgba(0, 0, 0, 0.4);
+            --border-radius: 8px;
+            --font-family: 'Noto Sans SC', 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 15px 0;
+            background-color: rgba(45, 45, 45, 0.8);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 2px 10px var(--shadow-color);
+            z-index: 1000;
+            transition: background-color 0.3s, box-shadow 0.3s;
+        }
+        
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            container-type: inline-size;
+        }
+
+        .logo {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+            align-items: center;
+        }
+
+        .nav-links li {
+            margin-left: 25px;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-color);
+            font-weight: 500;
+            position: relative;
+            padding: 5px 0;
+            transition: color 0.3s;
+        }
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background-color: var(--primary-color);
+            transition: width 0.3s ease;
+        }
+        .nav-links a:hover, .nav-links a.active {
+            color: var(--primary-color);
+        }
+        .nav-links a:hover::after, .nav-links a.active::after {
+            width: 100%;
+        }
+        
+        .language-switcher {
+            position: relative;
+        }
+
+        .language-switcher select {
+            background: transparent;
+            border: 1px solid #ccc;
+            padding: 5px 8px;
+            border-radius: 5px;
+            color: var(--text-color);
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        /* Hero Section */
+        .hero {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            min-height: 100vh;
+            padding-top: 80px;
+            background: radial-gradient(circle, rgba(0,120,212,0.2), transparent 70%);
+        }
+
+        .hero-content {
+            max-width: 800px;
+        }
+
+        .hero h1 {
+            font-size: 3.5em;
+            margin-bottom: 20px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .hero h1 span {
+            color: var(--primary-color);
+        }
+
+        .hero p {
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            color: #ccc;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background-color: var(--primary-color);
+            color: #fff;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: var(--border-radius);
+            font-weight: 500;
+            font-size: 1.1em;
+            transition: transform 0.3s, box-shadow 0.3s;
+            box-shadow: 0 4px 15px rgba(0, 120, 212, 0.4);
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0, 120, 212, 0.5);
+        }
+
+        .section {
+            padding: 100px 0;
+        }
+        .section-title {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 60px;
+            font-weight: 700;
+            position: relative;
+        }
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 4px;
+            background-color: var(--primary-color);
+            border-radius: 2px;
+        }
+
+        /* Features Section */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+        .feature-card {
+            background-color: var(--card-bg);
+            padding: 30px;
+            border-radius: var(--border-radius);
+            box-shadow: 0 5px 25px var(--shadow-color);
+            text-align: center;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .feature-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 10px 30px var(--shadow-color);
+        }
+        .feature-icon {
+            font-size: 3em;
+            color: var(--primary-color);
+            margin-bottom: 20px;
+        }
+        .feature-card h3 {
+            font-size: 1.5em;
+            margin-bottom: 15px;
+        }
+
+        /* Screenshots Section */
+        #screenshots {
+             background-color: var(--card-bg);
+        }
+        .screenshot-gallery {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+        .screenshot-gallery img {
+            width: 100%;
+            height: auto;
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 15px var(--shadow-color);
+            transition: transform 0.3s, filter 0.3s;
+            cursor: pointer;
+        }
+        .screenshot-gallery img:hover {
+            transform: scale(1.05);
+            filter: brightness(1.1);
+        }
+
+        footer {
+            background: var(--card-bg);
+            padding: 40px 0;
+            text-align: center;
+            border-top: 1px solid #444;
+        }
+        .footer-text {
+            color: #ccc;
+        }
+        .footer-text a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        /* Animation */
+        .animate-on-scroll {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+        }
+        .animate-on-scroll.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .nav-links { display: none; } /* Simple hide for small screens, can be replaced by a hamburger menu */
+            .hero h1 { font-size: 2.5em; }
+            .hero p { font-size: 1em; }
+            .section-title { font-size: 2em; }
+            .screenshot-gallery { grid-template-columns: 1fr; }
+        }
+
+    </style>
+</head>
+<body data-theme="dark">
+
+    <!-- Header -->
+    <header>
+        <div class="container">
+            <nav>
+                <div class="logo">AuraShell</div>
+                <ul class="nav-links">
+                    <li><a href="#hero" class="nav-link active" data-lang-key="nav_home">首页</a></li>
+                    <li><a href="#features" class="nav-link" data-lang-key="nav_features">特性</a></li>
+                    <li><a href="#screenshots" class="nav-link" data-lang-key="nav_screenshots">截图</a></li>
+                </ul>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <div class="language-switcher">
+                        <select id="lang-selector">
+                            <option value="zh-CN">简体中文</option>
+                            <option value="zh-TW">繁體中文</option>
+                            <option value="en">English</option>
+                            <option value="ko">한국어</option>
+                            <option value="ja">日本語</option>
+                        </select>
+                    </div>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <section id="hero" class="hero">
+        <div class="hero-content animate-on-scroll">
+            <h1 data-lang-key="hero_title">AuraShell<span>Win11</span> 风格 SSH 终端</h1>
+            <p data-lang-key="hero_subtitle">一个跨平台的SSH客户端, 具有远程文件管理器和集成终端, 提供现代化、优雅且高效的远程管理体验.</p>
+            <a href="https://github.com/Heartestrella/AuraShell/releases" target="_blank" class="cta-button" data-lang-key="hero_cta">立即下载</a>
+        </div>
+    </section>
+
+    <section id="features" class="section">
+        <div class="container">
+            <h2 class="section-title animate-on-scroll" data-lang-key="features_title">核心功能</h2>
+            <div class="features-grid">
+                <div class="feature-card animate-on-scroll" style="transition-delay: 0.1s;">
+                    <div class="feature-icon">🎨</div>
+                    <h3 data-lang-key="feature_ui_title">Win11 风格用户界面</h3>
+                    <p data-lang-key="feature_ui_desc">采用 QFluentWidgets 实现 Fluent Design 风格, 支持亮/暗主题无缝切换.</p>
+                </div>
+                <div class="feature-card animate-on-scroll" style="transition-delay: 0.2s;">
+                    <div class="feature-icon">🖥️</div>
+                    <h3 data-lang-key="feature_terminal_title">集成 SSH 终端</h3>
+                    <p data-lang-key="feature_terminal_desc">基于 xterm.js, 支持命令行交互、复制粘贴、并可自定义字体和配色方案.</p>
+                </div>
+                <div class="feature-card animate-on-scroll" style="transition-delay: 0.3s;">
+                    <div class="feature-icon">📂</div>
+                    <h3 data-lang-key="feature_file_manager_title">远程文件管理器</h3>
+                    <p data-lang-key="feature_file_manager_desc">支持文件上传、下载、重命名、删除和权限修改, 提供类似 Windows 资源管理器的体验.</p>
+                </div>
+                <div class="feature-card animate-on-scroll" style="transition-delay: 0.4s;">
+                    <div class="feature-icon">⚡</div>
+                    <h3 data-lang-key="feature_multi_session_title">多会话管理</h3>
+                    <p data-lang-key="feature_multi_session_desc">支持同时进行多个远程连接, 并在不同会话之间轻松切换, 会话信息本地持久化.</p>
+                </div>
+                <div class="feature-card animate-on-scroll" style="transition-delay: 0.5s;">
+                    <div class="feature-icon">📊</div>
+                    <h3 data-lang-key="feature_monitor_title">系统资源监控</h3>
+                    <p data-lang-key="feature_monitor_desc">实时显示远程主机的 CPU 和内存使用率, 并可查看资源占用最高的进程列表.</p>
+                </div>
+                <div class="feature-card animate-on-scroll" style="transition-delay: 0.6s;">
+                    <div class="feature-icon">🛡️</div>
+                    <h3 data-lang-key="feature_auth_title">多种认证方式</h3>
+                    <p data-lang-key="feature_auth_desc">支持密码和 SSH 密钥两种认证方式, 确保连接的灵活性和安全性.</p>
+                </div>
+                <div class="feature-card animate-on-scroll" style="transition-delay: 0.7s;">
+                    <div class="feature-icon">📦</div>
+                    <h3 data-lang-key="feature_compress_title">打包压缩传输</h3>
+                    <p data-lang-key="feature_compress_desc">支持将多个文件或文件夹打包成压缩文件进行传输, 提高效率并减少带宽占用.</p>
+                </div>
+                <div class="feature-card animate-on-scroll" style="transition-delay: 0.8s;">
+                    <div class="feature-icon">☁️</div>
+                    <h3 data-lang-key="feature_gist_title">Gist 云同步</h3>
+                    <p data-lang-key="feature_gist_desc">与 GitHub Gist 集成, 可将常用脚本和配置文件同步到云端, 方便多设备访问.</p>
+                </div>
+                <div class="feature-card animate-on-scroll" style="transition-delay: 0.9s;">
+                    <div class="feature-icon">🔒</div>
+                    <h3 data-lang-key="feature_sftp_title">SFTP 协议支持</h3>
+                    <p data-lang-key="feature_sftp_desc">基于安全的 SFTP 协议进行文件传输, 确保数据在传输过程中的完整性与机密性.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="screenshots" class="section">
+        <div class="container">
+            <h2 class="section-title animate-on-scroll" data-lang-key="screenshots_title">软件截图</h2>
+            <div class="screenshot-gallery">
+                <img src="https://github.com/user-attachments/assets/467ac84d-284e-4572-97ea-22109ee92575" alt="Screenshot 1" class="animate-on-scroll" style="transition-delay: 0.1s;">
+                <img src="https://github.com/user-attachments/assets/da427c06-731e-4606-b5f6-1ea3b038301c" alt="Screenshot 2" class="animate-on-scroll" style="transition-delay: 0.2s;">
+                <img src="https://github.com/user-attachments/assets/34e86170-d602-4f6c-8540-358447f2faf9" alt="Screenshot 3" class="animate-on-scroll" style="transition-delay: 0.3s;">
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p class="footer-text" data-lang-key="footer_text">
+                源代码可在 <a href="https://github.com/Heartestrella/AuraShell" target="_blank">GitHub</a> 上找到.
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const translations = {
+                'zh-CN': {
+                    title: 'AuraShell - Win11 风格 SSH 终端',
+                    nav_home: '首页',
+                    nav_features: '特性',
+                    nav_screenshots: '截图',
+                    hero_title: 'AuraShell - <span>Win11</span> 风格 SSH 终端',
+                    hero_subtitle: '一个跨平台的SSH客户端, 具有远程文件管理器和集成终端, 提供现代化、优雅且高效的远程管理体验.',
+                    hero_cta: '立即下载',
+                    features_title: '核心功能',
+                    feature_ui_title: 'Win11 风格用户界面',
+                    feature_ui_desc: '采用 QFluentWidgets 实现 Fluent Design 风格, 支持亮/暗主题无缝切换.',
+                    feature_terminal_title: '集成 SSH 终端',
+                    feature_terminal_desc: '基于 xterm.js, 支持命令行交互、复制粘贴、并可自定义字体和配色方案.',
+                    feature_file_manager_title: '远程文件管理器',
+                    feature_file_manager_desc: '支持文件上传、下载、重命名、删除和权限修改, 提供类似 Windows 资源管理器的体验.',
+                    feature_multi_session_title: '多会话管理',
+                    feature_multi_session_desc: '支持同时进行多个远程连接, 并在不同会话之间轻松切换, 会话信息本地持久化.',
+                    feature_monitor_title: '系统资源监控',
+                    feature_monitor_desc: '实时显示远程主机的 CPU 和内存使用率, 并可查看资源占用最高的进程列表.',
+                    feature_auth_title: '多种认证方式',
+                    feature_auth_desc: '支持密码和 SSH 密钥两种认证方式, 确保连接的灵活性和安全性.',
+                    feature_compress_title: '打包压缩传输',
+                    feature_compress_desc: '支持将多个文件或文件夹打包成压缩文件进行传输, 提高效率并减少带宽占用.',
+                    feature_gist_title: 'Gist 云同步',
+                    feature_gist_desc: '与 GitHub Gist 集成, 可将常用脚本和配置文件同步到云端, 方便多设备访问.',
+                    feature_sftp_title: 'SFTP 协议支持',
+                    feature_sftp_desc: '基于安全的 SFTP 协议进行文件传输, 确保数据在传输过程中的完整性与机密性.',
+                    screenshots_title: '软件截图',
+                    footer_text: '源代码可在 <a href="https://github.com/Heartestrella/AuraShell" target="_blank">GitHub</a> 上找到.',
+                },
+                'zh-TW': {
+                    title: 'AuraShell - Win11 風格 SSH 終端',
+                    nav_home: '首頁',
+                    nav_features: '特性',
+                    nav_screenshots: '截圖',
+                    hero_title: 'AuraShell - <span>Win11</span> 風格 SSH 終端',
+                    hero_subtitle: '一個跨平台的SSH客戶端, 具有遠程文件管理器和集成終端, 提供現代化、優雅且高效的遠程管理體驗.',
+                    hero_cta: '立即下載',
+                    features_title: '核心功能',
+                    feature_ui_title: 'Win11 風格使用者介面',
+                    feature_ui_desc: '採用 QFluentWidgets 實現 Fluent Design 風格, 支援亮/暗主題無縫切換.',
+                    feature_terminal_title: '整合 SSH 終端',
+                    feature_terminal_desc: '基於 xterm.js, 支援命令行互動、複製貼上、並可自訂字體和配色方案.',
+                    feature_file_manager_title: '遠程文件管理器',
+                    feature_file_manager_desc: '支援文件上傳、下載、重命名、刪除和權限修改, 提供類似 Windows 檔案總管的體驗.',
+                    feature_multi_session_title: '多會話管理',
+                    feature_multi_session_desc: '支援同時進行多個遠程連接, 並在不同會話之間輕鬆切換, 會話資訊本地持久化.',
+                    feature_monitor_title: '系統資源監控',
+                    feature_monitor_desc: '即時顯示遠程主機的 CPU 和記憶體使用率, 並可查看資源佔用最高的進程列表.',
+                    feature_auth_title: '多種認證方式',
+                    feature_auth_desc: '支援密碼和 SSH 金鑰兩種認證方式, 確保連接的靈活性和安全性.',
+                    feature_compress_title: '打包壓縮傳輸',
+                    feature_compress_desc: '支援將多個文件或文件夾打包成壓縮文件進行傳輸, 提高效率並減少帶寬佔用.',
+                    feature_gist_title: 'Gist 雲同步',
+                    feature_gist_desc: '與 GitHub Gist 集成, 可將常用腳本和配置文件同步到雲端, 方便多設備訪問.',
+                    feature_sftp_title: 'SFTP 協議支持',
+                    feature_sftp_desc: '基於安全的 SFTP 協議進行文件傳輸, 確保數據在傳輸過程中的完整性與機密性.',
+                    screenshots_title: '軟體截圖',
+                    footer_text: '原始碼可在 <a href="https://github.com/Heartestrella/AuraShell" target="_blank">GitHub</a> 上找到.',
+                },
+                'en': {
+                    title: 'AuraShell - Win11 Style SSH Terminal',
+                    nav_home: 'Home',
+                    nav_features: 'Features',
+                    nav_screenshots: 'Screenshots',
+                    hero_title: 'AuraShell - <span>Win11</span> Style SSH Terminal',
+                    hero_subtitle: 'A cross-platform SSH client with a remote file manager and integrated terminal, providing a modern, elegant, and efficient remote management experience.',
+                    hero_cta: 'Download Now',
+                    features_title: 'Core Features',
+                    feature_ui_title: 'Win11 Style UI',
+                    feature_ui_desc: 'Uses QFluentWidgets to implement Fluent Design, supporting seamless light/dark theme switching.',
+                    feature_terminal_title: 'Integrated SSH Terminal',
+                    feature_terminal_desc: 'Built with xterm.js, it supports command-line interaction, copy & paste, and customizable fonts and color schemes.',
+                    feature_file_manager_title: 'Remote File Manager',
+                    feature_file_manager_desc: 'Supports file upload, download, rename, delete, and permission modification with a Windows Explorer-like experience.',
+                    feature_multi_session_title: 'Multi-Session Management',
+                    feature_multi_session_desc: 'Supports multiple simultaneous remote connections with easy switching between sessions and local persistence.',
+                    feature_monitor_title: 'System Resource Monitoring',
+                    feature_monitor_desc: 'Displays real-time CPU and memory usage of the remote host and shows a list of top resource-consuming processes.',
+                    feature_auth_title: 'Multiple Authentication Methods',
+                    feature_auth_desc: 'Supports both password and SSH key authentication, ensuring connection flexibility and security.',
+                    feature_compress_title: 'Package & Compress Transfer',
+                    feature_compress_desc: 'Supports packing multiple files or folders into a compressed file for transfer, improving efficiency and reducing bandwidth usage.',
+                    feature_gist_title: 'Gist Cloud Sync',
+                    feature_gist_desc: 'Integrates with GitHub Gist to sync frequently used scripts and configuration files to the cloud for easy access across multiple devices.',
+                    feature_sftp_title: 'SFTP Protocol Support',
+                    feature_sftp_desc: 'Based on the secure SFTP protocol for file transfer, ensuring data integrity and confidentiality during transmission.',
+                    screenshots_title: 'Screenshots',
+                    footer_text: 'Source code is available on <a href="https://github.com/Heartestrella/AuraShell" target="_blank">GitHub</a>.',
+                },
+                'ko': {
+                    title: 'AuraShell - Win11 스타일 SSH 터미널',
+                    nav_home: '홈',
+                    nav_features: '기능',
+                    nav_screenshots: '스크린샷',
+                    hero_title: 'AuraShell - <span>Win11</span> 스타일 SSH 터미널',
+                    hero_subtitle: '원격 파일 관리자와 통합 터미널을 갖춘 크로스 플랫폼 SSH 클라이언트로, 현대적이고 우아하며 효율적인 원격 관리 경험을 제공합니다.',
+                    hero_cta: '지금 다운로드',
+                    features_title: '핵심 기능',
+                    feature_ui_title: 'Win11 스타일 UI',
+                    feature_ui_desc: 'QFluentWidgets를 사용하여 Fluent Design을 구현했으며, 라이트/다크 테마 전환을 원활하게 지원합니다.',
+                    feature_terminal_title: '통합 SSH 터미널',
+                    feature_terminal_desc: 'xterm.js로 구축되어 명령줄 상호 작용, 복사 및 붙여넣기, 사용자 정의 가능한 글꼴 및 색상 구성표를 지원합니다.',
+                    feature_file_manager_title: '원격 파일 관리자',
+                    feature_file_manager_desc: 'Windows 탐색기와 유사한 환경에서 파일 업로드, 다운로드, 이름 바꾸기, 삭제 및 권한 수정을 지원합니다.',
+                    feature_multi_session_title: '다중 세션 관리',
+                    feature_multi_session_desc: '여러 동시 원격 연결을 지원하며 세션 간 쉬운 전환 및 로컬 지속성을 제공합니다.',
+                    feature_monitor_title: '시스템 리소스 모니터링',
+                    feature_monitor_desc: '원격 호스트의 실시간 CPU 및 메모리 사용량을 표시하고 상위 리소스 소모 프로세스 목록을 보여줍니다.',
+                    feature_auth_title: '다중 인증 방법',
+                    feature_auth_desc: '비밀번호 및 SSH 키 인증을 모두 지원하여 연결 유연성과 보안을 보장합니다.',
+                    feature_compress_title: '패키지 및 압축 전송',
+                    feature_compress_desc: '전송을 위해 여러 파일이나 폴더를 압축 파일로 패키징하여 효율성을 높이고 대역폭 사용량을 줄입니다.',
+                    feature_gist_title: 'Gist 클라우드 동기화',
+                    feature_gist_desc: 'GitHub Gist와 통합하여 자주 사용하는 스크립트 및 구성 파일을 클라우드에 동기화하여 여러 장치에서 쉽게 액세스할 수 있습니다.',
+                    feature_sftp_title: 'SFTP 프로토콜 지원',
+                    feature_sftp_desc: '보안 SFTP 프로토콜을 기반으로 파일 전송을 수행하여 전송 중 데이터 무결성과 기밀성을 보장합니다.',
+                    screenshots_title: '스크린샷',
+                    footer_text: '소스 코드는 <a href="https://github.com/Heartestrella/AuraShell" target="_blank">GitHub</a>에서 확인할 수 있습니다.',
+                },
+                'ja': {
+                    title: 'AuraShell - Win11 スタイル SSH ターミナル',
+                    nav_home: 'ホーム',
+                    nav_features: '特徴',
+                    nav_screenshots: 'スクリーンショット',
+                    hero_title: 'AuraShell - <span>Win11</span> スタイル SSH ターミナル',
+                    hero_subtitle: 'リモートファイルマネージャーと統合ターミナルを備えたクロスプラットフォームSSHクライアントで、モダンでエレガント、かつ効率的なリモート管理体験を提供します。',
+                    hero_cta: '今すぐダウンロード',
+                    features_title: '主な機能',
+                    feature_ui_title: 'Win11 スタイル UI',
+                    feature_ui_desc: 'QFluentWidgets を使用して Fluent Design を実装し、ライト/ダークテーマのシームレスな切り替えをサポートします。',
+                    feature_terminal_title: '統合SSHターミナル',
+                    feature_terminal_desc: 'xterm.js で構築され、コマンドライン操作、コピー＆ペースト、カスタマイズ可能なフォントとカラースキームをサポートします。',
+                    feature_file_manager_title: 'リモートファイルマネージャー',
+                    feature_file_manager_desc: 'Windows エクスプローラーのような操作性で、ファイルのアップロード、ダウンロード、名前変更、削除、権限変更をサポートします。',
+                    feature_multi_session_title: 'マルチセッション管理',
+                    feature_multi_session_desc: '複数の同時リモート接続をサポートし、セッション間の簡単な切り替えとローカルでの永続化を実現します。',
+                    feature_monitor_title: 'システムリソース監視',
+                    feature_monitor_desc: 'リモートホストのリアルタイムCPUおよびメモリ使用量を表示し、リソース消費の多いプロセスのリストを表示します。',
+                    feature_auth_title: '複数の認証方法',
+                    feature_auth_desc: 'パスワードとSSHキーの両方の認証をサポートし、接続の柔軟性とセキュリティを確保します。',
+                    feature_compress_title: 'パッケージ化と圧縮転送',
+                    feature_compress_desc: '複数のファイルやフォルダを圧縮ファイルにまとめて転送し、効率を向上させ、帯域幅の使用量を削減します。',
+                    feature_gist_title: 'Gist クラウド同期',
+                    feature_gist_desc: 'GitHub Gist と統合し、頻繁に使用するスクリプトや設定ファイルをクラウドに同期して、複数のデバイスから簡単にアクセスできるようにします。',
+                    feature_sftp_title: 'SFTP プロトコルのサポート',
+                    feature_sftp_desc: '安全なSFTPプロトコルに基づいてファイルを転送し、転送中のデータの完全性と機密性を確保します。',
+                    screenshots_title: 'スクリーンショット',
+                    footer_text: 'ソースコードは <a href="https://github.com/Heartestrella/AuraShell" target="_blank">GitHub</a> で入手できます。',
+                }
+            };
+            const langSelector = document.getElementById('lang-selector');
+            function setLanguage(lang) {
+                document.documentElement.lang = lang;
+                const translation = translations[lang];
+                document.querySelectorAll('[data-lang-key]').forEach(el => {
+                    const key = el.getAttribute('data-lang-key');
+                    if (translation[key]) {
+                        el.innerHTML = translation[key];
+                    }
+                });
+                let fontFamily = " 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif";
+                if (lang === 'zh-CN' || lang === 'zh-TW') fontFamily = "'Noto Sans SC', 'Noto Sans TC'," + fontFamily;
+                if (lang === 'ja') fontFamily = "'Noto Sans JP'," + fontFamily;
+                if (lang === 'ko') fontFamily = "'Noto Sans KR'," + fontFamily;
+                document.body.style.fontFamily = fontFamily;
+            }
+            langSelector.addEventListener('change', (e) => {
+                setLanguage(e.target.value);
+            });
+            setLanguage('zh-CN');
+            const scrollElements = document.querySelectorAll('.animate-on-scroll');
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('is-visible');
+                    }
+                });
+            }, {
+                threshold: 0.1
+            });
+            scrollElements.forEach(el => {
+                observer.observe(el);
+            });
+            const navLinks = document.querySelectorAll('.nav-link');
+            const sections = document.querySelectorAll('section');
+            window.addEventListener('scroll', () => {
+                let current = '';
+                sections.forEach(section => {
+                    const sectionTop = section.offsetTop;
+                    if (pageYOffset >= sectionTop - 60) {
+                        current = section.getAttribute('id');
+                    }
+                });
+                navLinks.forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('href').substring(1) === current) {
+                        link.classList.add('active');
+                    }
+                });
+            });
+        });
+
+    </script>
+</body>
+</html>
