@@ -430,7 +430,10 @@ class Window(FramelessWindow):
                 print(f"Rename {full_path} to {copy_to}")
                 file_manager.rename(path=full_path, new_name=copy_to)
         elif action_type == "info":
-            file_manager.get_file_info(full_path)
+            paths_to_info = full_path if isinstance(
+                full_path, list) else [full_path]
+            for path in paths_to_info:
+                file_manager.get_file_info(path)
         elif action_type == "mkdir":
             if full_path:
                 file_manager.mkdir(full_path)
