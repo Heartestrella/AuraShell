@@ -1,6 +1,7 @@
 # remote_file_manage.py
 from PyQt5.QtCore import pyqtSignal, QThread, QMutex, QWaitCondition, QThreadPool
 from tools.transfer_worker import TransferWorker
+from tools.setting_config import SCM
 import paramiko
 import traceback
 from typing import Dict, List, Optional
@@ -75,7 +76,9 @@ class RemoteFileManager(QThread):
 
         # Thread pool for handling concurrent transfers
         self.thread_pool = QThreadPool()
-        self.thread_pool.setMaxThreadCount(4)  # Limit concurrent transfers
+        config = SCM().read_config()
+        max_threads = config.get("max_concurrent_transfers", 4)
+        self.thread_pool.setMaxThreadCount(max_threads)
 
     # ---------------------------
     # Main thread loop

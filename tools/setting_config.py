@@ -21,7 +21,8 @@ class SCM:
             "window_last_height": 680,  # int
             "follow_cd": False,  # bool
             "language": "system",  # system, EN, CN, JP, RU
-            "default_view": "icon"  # icon or details
+            "default_view": "icon",  # icon or details
+            "max_concurrent_transfers": 10  # int 1-10
         }
         self.config_path = Path.home() / ".config" / "setting-config.json"
         if not os.path.exists(self.config_path):
