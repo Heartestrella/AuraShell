@@ -202,6 +202,7 @@ class TerminalBridge(QObject):
             return
         try:
             data = base64.b64decode(b64)
+            # print("接收到:", data.decode("utf-8", errors="ignore"))
             self._process_user_input(data)
             self.worker.run_command(data, add_newline=False)
         except Exception as e:
@@ -813,18 +814,28 @@ class WebTerminal(QWidget):
           if (bridge && bridge.output) {{
             bridge.output.connect(function(b64) {{
               try {{
-                var bin = safeDecodeB64ToBinary(b64);
-                term.write(bin);
+                var text = base64ToUtf8(b64);
+                term.write(text);
               }} catch (e) {{
                 console.error('bridge.output write error', e);
               }}
             }});
           }}
+            function base64ToUtf8(b64) {{
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    return new TextDecoder("utf-8").decode(bytes);
+}}
+            function utf8ToBase64(str) {{
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    bytes.forEach(b => binary += String.fromCharCode(b));
+    return btoa(binary);
+}}
 
           // JS -> Bridge: user typed data
           term.onData(function(data) {{
             try {{
-              var b64 = safeEncodeBinaryToB64(data);
+              var b64 = utf8ToBase64(data);
               bridge.sendInput(b64);
             }} catch (e) {{
               console.error('term.onData sendInput error', e);
