@@ -148,10 +148,10 @@ class RemoteFileManager(QThread):
                                 task.get('callback')
                             )
                         elif ttype == 'file_info':
-                            info = self._get_file_info(task['path'])
-                            print(info)
+                            path, info_dict, status, error_msg = self._get_file_info(
+                                task['path'])
                             self.file_info_ready.emit(
-                                task['path'], info[1], info[2], info[3])
+                                path, info_dict, status, error_msg)
                         elif ttype == 'file_type':
                             self.classify_file_type_using_file(task['path'])
                         elif ttype == 'mkdir':
@@ -772,7 +772,7 @@ class RemoteFileManager(QThread):
             perm = stat.filemode(attr.st_mode)
 
             # 用户和组（跨平台）
-            owner, group = get_owner_group(attr.st_uid, attr.st_gid)
+            owner, group = self._get_owner_group(attr.st_uid, attr.st_gid)
 
             # 是否可执行
             is_executable = bool(attr.st_mode & stat.S_IXUSR)
@@ -807,7 +807,7 @@ class RemoteFileManager(QThread):
             return path, info, True, ""
 
         except Exception as e:
-            return None, False, f"获取文件信息失败: {e}"
+            return path, {}, False, f"获取文件信息失败: {e}"
 
     def _handle_rename_task(self, path: str, new_name: str, callback=None):
         """
