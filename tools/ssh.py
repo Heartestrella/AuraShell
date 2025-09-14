@@ -5,6 +5,7 @@ import traceback
 import paramiko
 from typing import Dict, List
 from PyQt5.QtCore import QThread, QTimer, pyqtSignal
+from tools.atool import resource_path
 
 
 class SSHWorker(QThread):
@@ -89,8 +90,8 @@ class SSHWorker(QThread):
                         except Exception as e:
                             print(f"设为可执行失败: {e}")
                     else:
-                        local_proc = os.path.join(
-                            os.getcwd(), "resource", "resources_software", "linux64", "processes")
+                        local_proc = resource_path(os.path.join(
+                            "resource", "resources_software", "linux64", "processes"))
                         if not os.path.exists(local_proc):
                             err = f"本地 processes 文件不存在: {local_proc}"
                             print(err)

@@ -20,15 +20,8 @@ from tools.setting_config import SCM
 from widgets.sync_widget import SycnWidget
 import os
 import subprocess
+from tools.atool import resource_path
 font_ = font_config()
-
-
-def resource_path(relative_path):
-    if hasattr(sys, "_MEIPASS"):
-        base_path = sys._MEIPASS
-    else:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
 
 
 class Window(FramelessWindow):
