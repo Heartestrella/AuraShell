@@ -57,6 +57,10 @@ class Config(QConfig):
         restart=True
     )
 
+    default_view = OptionsConfigItem(
+        "Files", "DefaultView", "图标", OptionsValidator(["图标", "详情"]), restart=False
+    )
+
 
 class FontSelectorDialog(QDialog):
     """
@@ -477,6 +481,17 @@ class SettingPage(ScrollArea):
 
         self.cfg.background_color.valueChanged.connect(self._on_card_changed)
 
+        self.default_view_card = ComboBoxSettingCard(
+            configItem=self.cfg.default_view,
+            icon=FluentIcon.VIEW,
+            title="默认文件管理器视图",
+            content="设置文件管理器的默认视图",
+            texts=["图标", "详情"]
+        )
+        self.default_view_card.comboBox.currentIndexChanged.connect(
+            self._on_default_view_changed)
+        layout.addWidget(self.default_view_card)
+
         self.choose_color = PushSettingCard(
             self.tr("Open Color Picker"),
             FluentIcon.PENCIL_INK,
@@ -498,6 +513,21 @@ class SettingPage(ScrollArea):
 
     def _save_opacity_value(self, value: int):
         configer.revise_config("background_opacity", value)
+
+    def _on_default_view_changed(self, index: int):
+        view_map = {0: ("icon", "图标"), 1: ("details", "详情")}
+        value_to_save, display_name = view_map.get(index, ("icon", "图标"))
+
+        configer.revise_config("default_view", value_to_save)
+        InfoBar.success(
+            title="设置已保存",
+            content=f"默认视图已设置为 {display_name}",
+            orient=Qt.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP_RIGHT,
+            duration=2000,
+            parent=self
+        )
 
     def _unbelievable(self):
         InfoBar.error(
@@ -564,6 +594,8 @@ class SettingPage(ScrollArea):
         self.cd_follow.setChecked(self.config["follow_cd"])
         self.parent_class.set_global_background(self.config["bg_pic"])
         self.opacityEdit.setValue(self.config["background_opacity"])
+        self.cfg.default_view.value = "图标" if self.config.get(
+            "default_view", "icon") == "icon" else "详情"
         # Achieve results
         self._lock_ratio = self.config["locked_ratio"]
         self._restore_background_opacity(self.config["background_opacity"])

@@ -159,6 +159,9 @@ class Widget(QWidget):
 
             self.file_explorer = FileExplorer(
                 self.file_manage, icons=self._get_icons())
+            # Set default view from settings
+            default_view = config.get("default_view", "icon")
+            self.file_explorer.switch_view(default_view)
             self.file_explorer.selected.connect(self._process_selected_path)
             self.file_explorer.refresh_action.connect(
                 self._update_file_explorer)
@@ -250,6 +253,7 @@ class Widget(QWidget):
         except Exception:
             pass
 
+        self.file_bar.set_path(path)
         self.file_bar.breadcrumbBar.clear()
         for p in path_list:
             self.file_bar.breadcrumbBar.addItem(p, p)
@@ -258,6 +262,8 @@ class Widget(QWidget):
             self.file_bar.breadcrumbBar.blockSignals(False)
         except Exception:
             pass
+
+        self.file_bar._hide_path_edit()
 
         # ensure explorer.path updated and only refresh once
         self.file_explorer.path = path

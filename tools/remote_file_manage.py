@@ -8,34 +8,6 @@ import os
 from typing import Tuple
 from datetime import datetime
 import shlex
-if os.name != "nt":
-    import pwd
-    import grp
-else:
-    pwd = None
-    grp = None
-
-
-def get_owner_group(uid, gid):
-    """
-    根据 uid/gid 获取用户名和组名
-    Windows 下直接返回数字字符串
-    """
-    owner = str(uid)
-    group = str(gid)
-
-    if pwd and grp:  # 仅类 Unix 系统可解析
-        try:
-            owner = pwd.getpwuid(uid).pw_name
-        except KeyError:
-            pass
-        try:
-            group = grp.getgrgid(gid).gr_name
-        except KeyError:
-            pass
-    return owner, group
-
-
 class RemoteFileManager(QThread):
     """
     Remote file manager, responsible for building and maintaining remote file trees
@@ -48,7 +20,7 @@ class RemoteFileManager(QThread):
     upload_finished = pyqtSignal(str, bool, str)
     # Path, success, error message
     delete_finished = pyqtSignal(str, bool, str)
-    list_dir_finished = pyqtSignal(str, dict)  # path, result
+    list_dir_finished = pyqtSignal(str, list)  # path, result
     # path, result (e.g. "directory"/"file"/False)
     path_check_result = pyqtSignal(str, object)
     # remote_path , local_path , status , error msg,open it
@@ -79,6 +51,10 @@ class RemoteFileManager(QThread):
 
         # File_tree
         self.file_tree: Dict = {}
+
+        # UID/GID Caching
+        self.uid_map: Dict[int, str] = {}
+        self.gid_map: Dict[int, str] = {}
 
         # Thread Control
         self.mutex = QMutex()
@@ -114,7 +90,7 @@ class RemoteFileManager(QThread):
 
             self.sftp = self.conn.open_sftp()
             self.sftp_ready.emit()
-
+            self._fetch_user_group_maps()
             while self._is_running:
                 self.mutex.lock()
                 if not self._tasks:
@@ -147,11 +123,10 @@ class RemoteFileManager(QThread):
                                 task['path'], openit=task["open_it"])
                         elif ttype == 'list_dir':
                             print(f"Handle:{[task['path']]}")
-                            result = self.list_dir_simple(task['path'])
-
+                            result = self.list_dir_detailed(task['path'])
                             print(f"List dir : {result}")
                             self.list_dir_finished.emit(
-                                task['path'], result or {})
+                                task['path'], result or [])
                         elif ttype == 'check_path':
                             path_to_check = task['path']
                             try:
@@ -276,7 +251,7 @@ class RemoteFileManager(QThread):
         self.condition.wakeAll()
         self.mutex.unlock()
 
-    def delete_path(self, path: str, callback=None):
+    def delete_path(self, path: [str, List[str]], callback=None):
         """
         Asynchronously deletes a remote file or directory.
 
@@ -1273,81 +1248,146 @@ class RemoteFileManager(QThread):
             print(f"list_dir_simple 获取目录内容时出错: {e}")
             return None
 
+    def _fetch_user_group_maps(self):
+        """
+        Fetch and parse /etc/passwd and /etc/group to cache UID/GID mappings.
+        """
+        if self.conn is None:
+            return
+
+        # Fetch /etc/passwd
+        try:
+            stdin, stdout, stderr = self.conn.exec_command("cat /etc/passwd")
+            passwd_content = stdout.read().decode('utf-8', errors='ignore')
+            for line in passwd_content.strip().split('\n'):
+                parts = line.split(':')
+                if len(parts) >= 3:
+                    username, _, uid = parts[0], parts[1], parts[2]
+                    self.uid_map[int(uid)] = username
+        except Exception as e:
+            print(f"Could not fetch or parse /etc/passwd: {e}")
+
+        # Fetch /etc/group
+        try:
+            stdin, stdout, stderr = self.conn.exec_command("cat /etc/group")
+            group_content = stdout.read().decode('utf-8', errors='ignore')
+            for line in group_content.strip().split('\n'):
+                parts = line.split(':')
+                if len(parts) >= 3:
+                    groupname, _, gid = parts[0], parts[1], parts[2]
+                    self.gid_map[int(gid)] = groupname
+        except Exception as e:
+            print(f"Could not fetch or parse /etc/group: {e}")
+
+    def _get_owner_group(self, uid, gid):
+        owner = self.uid_map.get(uid, str(uid))
+        group = self.gid_map.get(gid, str(gid))
+        return owner, group
+
+    def list_dir_detailed(self, path: str) -> Optional[List[dict]]:
+        if self.sftp is None:
+            print("list_dir_detailed: sftp not ready")
+            return None
+        detailed_result = []
+        try:
+            for attr in self.sftp.listdir_attr(path):
+                owner, group = self._get_owner_group(attr.st_uid, attr.st_gid)
+                is_dir = stat.S_ISDIR(attr.st_mode)
+                if stat.S_ISLNK(attr.st_mode):
+                    try:
+                        full_path = f"{path.rstrip('/')}/{attr.filename}"
+                        target_attr = self.sftp.stat(full_path)
+                        if stat.S_ISDIR(target_attr.st_mode):
+                            is_dir = True
+                    except Exception as e:
+                        print(
+                            f"Could not stat symlink target for {attr.filename}: {e}")
+
+                detailed_result.append({
+                    "name": attr.filename,
+                    "is_dir": is_dir,
+                    "size": attr.st_size,
+                    "mtime": datetime.fromtimestamp(attr.st_mtime).strftime('%Y/%m/%d %H:%M'),
+                    "perms": stat.filemode(attr.st_mode),
+                    "owner": f"{owner}/{group}"
+                })
+            return detailed_result
+        except Exception as e:
+            print(f"list_dir_detailed error when getting directory contents: {e}")
+            return None
+
     # ---------------------------
     # 删除功能实现
     # ---------------------------
 
-    def _handle_delete_task(self, remote_path: str, callback=None):
+    def _handle_delete_task(self, paths, callback=None):
         """
-        处理删除任务（内部实现）
+        Handles the deletion task for one or more remote paths.
         """
         if self.conn is None:
-            error_msg = "SSH 连接未就绪"
-            print(f"❌ 删除失败 - {error_msg}: {remote_path}")
-            self.delete_finished.emit(remote_path, False, error_msg)
+            error_msg = "SSH connection is not ready"
+            print(f"❌ Deletion failed - {error_msg}: {paths}")
+            self.delete_finished.emit(str(paths), False, error_msg)
             if callback:
                 callback(False, error_msg)
             return
 
-        try:
-            print(f"🗑️  开始删除: {remote_path}")
+        if isinstance(paths, str):
+            paths = [paths]
 
-            # 先检查路径是否存在
+        all_successful = True
+        errors = []
+        parent_dirs_to_refresh = set()
+
+        for path in paths:
             try:
-                path_type = self.check_path_type(remote_path)
-                if not path_type:
-                    error_msg = f"路径不存在: {remote_path}"
-                    print(f"❌ 删除失败 - {error_msg}")
-                    self.delete_finished.emit(remote_path, False, error_msg)
-                    if callback:
-                        callback(False, error_msg)
-                    return
+                print(f"🗑️ Starting deletion of: {path}")
 
-                print(f"📁 路径类型: {path_type}")
+                path_type = self.check_path_type(path)
+                if not path_type:
+                    error_msg = f"Path does not exist: {path}"
+                    print(f"❌ Deletion failed - {error_msg}")
+                    errors.append(error_msg)
+                    all_successful = False
+                    continue
+
+                print(f"📁 Path type: {path_type}")
+                cmd = f'rm -rf "{path}"'
+                print(f"🔧 Executing command: {cmd}")
+
+                stdin, stdout, stderr = self.conn.exec_command(cmd)
+                exit_status = stdout.channel.recv_exit_status()
+                error_output = stderr.read().decode('utf-8').strip()
+
+                if exit_status == 0:
+                    print(f"✅ Deletion successful: {path}")
+                    parent_dir = os.path.dirname(path)
+                    if parent_dir:
+                        parent_dirs_to_refresh.add(parent_dir)
+                else:
+                    error_msg = f"Deletion command failed for {path}: {error_output}" if error_output else "Unknown error"
+                    print(f"❌ Deletion failed - {error_msg}")
+                    errors.append(error_msg)
+                    all_successful = False
 
             except Exception as e:
-                error_msg = f"检查路径时出错: {str(e)}"
-                print(f"❌ 删除失败 - {error_msg}")
-                self.delete_finished.emit(remote_path, False, error_msg)
-                if callback:
-                    callback(False, error_msg)
-                return
+                error_msg = f"Error during deletion of {path}: {str(e)}"
+                print(f"❌ Deletion failed - {error_msg}")
+                traceback.print_exc()
+                errors.append(error_msg)
+                all_successful = False
 
-            # 执行删除命令
-            cmd = f'rm -rf "{remote_path}"'
-            print(f"🔧 执行命令: {cmd}")
+        final_error_message = "; ".join(errors)
+        display_path = "Multiple files" if len(paths) > 1 else paths[0]
+        self.delete_finished.emit(
+            display_path, all_successful, final_error_message)
 
-            stdin, stdout, stderr = self.conn.exec_command(cmd)
-            exit_status = stdout.channel.recv_exit_status()
-            error_output = stderr.read().decode('utf-8').strip()
+        if parent_dirs_to_refresh:
+            print(f"🔄 Refreshing parent directories: {parent_dirs_to_refresh}")
+            self.refresh_paths(list(parent_dirs_to_refresh))
 
-            if exit_status == 0:
-                print(f"✅ 删除成功: {remote_path}")
-                self.delete_finished.emit(remote_path, True, "")
-
-                # 刷新父目录
-                parent_dir = os.path.dirname(remote_path)
-                if parent_dir:
-                    print(f"🔄 刷新父目录: {parent_dir}")
-                    self.refresh_paths([parent_dir])
-
-                if callback:
-                    callback(True, "")
-            else:
-                error_msg = f"删除命令执行失败: {error_output}" if error_output else "未知错误"
-                print(f"❌ 删除失败 - {error_msg}")
-                self.delete_finished.emit(remote_path, False, error_msg)
-                if callback:
-                    callback(False, error_msg)
-
-        except Exception as e:
-            error_msg = f"删除过程错误: {str(e)}"
-            print(f"❌ 删除失败 - {error_msg}")
-            import traceback
-            traceback.print_exc()
-            self.delete_finished.emit(remote_path, False, error_msg)
-            if callback:
-                callback(False, error_msg)
+        if callback:
+            callback(all_successful, final_error_message)
 
     # ---------------------------
     # 辅助方法 - 添加安全的路径处理
