@@ -956,7 +956,8 @@ class FileExplorer(QWidget):
             self,
             self.tr("Select files u want to upload"),
             "",
-            self.tr("All files (*)")
+            self.tr("All files (*)1")
         )
         print(f"Background file selected: {paths}")
-        self.upload_file.emit(paths, self.path, compression)
+        if paths:
+            self.upload_file.emit(paths, self.path, compression)
