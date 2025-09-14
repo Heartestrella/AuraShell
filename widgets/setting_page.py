@@ -484,9 +484,9 @@ class SettingPage(ScrollArea):
         self.default_view_card = ComboBoxSettingCard(
             configItem=self.cfg.default_view,
             icon=FluentIcon.VIEW,
-            title="默认文件管理器视图",
-            content="设置文件管理器的默认视图",
-            texts=["图标", "详情"]
+            title=self.tr("Default file manager view"),
+            content=self.tr("Set the default view of the file manager"),
+            texts=["Icon", "Info"]
         )
         self.default_view_card.comboBox.currentIndexChanged.connect(
             self._on_default_view_changed)

@@ -730,6 +730,10 @@ class WebTerminal(QWidget):
       document.addEventListener('contextmenu', function(e) {{
     e.preventDefault();
 }});
+    // Prevent all drag operations
+    document.addEventListener('dragenter', e => e.preventDefault());
+    document.addEventListener('dragover', e => e.preventDefault());
+    document.addEventListener('drop', e => e.preventDefault());
 
       (function() {{
         function safeDecodeB64ToBinary(b64) {{ return atob(b64); }}
@@ -947,3 +951,11 @@ class WebTerminal(QWidget):
         """
         super().resizeEvent(event)
         # No explicit action here; JS side handles sizing via fitAddon and window resize listener.
+
+    # Prevent all drag operations
+
+    def dragEnterEvent(self, event):
+        event.ignore()
+
+    def dropEvent(self, event):
+        event.ignore()
