@@ -1076,29 +1076,63 @@ class RemoteFileManager(QThread):
         print(f"remote_path: {remote_path}")
 
         if compression:
-            # ------------------- 一口气压缩下载 -------------------
-            # 创建远程临时目录
-            tmp_folder = "_tmp_dl_" + \
-                "".join(random.choices(string.ascii_letters + string.digits, k=8))
-            remote_dir = os.path.commonpath(
-                paths).replace("\\", "/")  # POSIX路径
-            remote_tmp_folder = f"{remote_dir.rstrip('/')}/{tmp_folder}"
-            self._exec_remote_command(f'mkdir -p "{remote_tmp_folder}"')
-            print(f"🗂️ Created remote temporary folder: {remote_tmp_folder}")
+            # ------------------- 压缩打包下载 -------------------
+            if len(paths) == 1:
+                # 单个文件或目录
+                src = paths[0].rstrip("/")
+                base_name = os.path.basename(src)
+                remote_dir = os.path.dirname(src)
 
-            # 拷贝文件/目录到临时目录
-            for p in paths:
-                base_name = os.path.basename(p.rstrip("/"))
+                try:
+                    attr = self.sftp.stat(src)
+                    remote_tar = f"{remote_dir}/{base_name}.tar.gz"
+                    if stat.S_ISDIR(attr.st_mode):
+                        # 单目录：直接打包
+                        self._exec_remote_command(
+                            f'cd "{remote_dir}" && tar -czf "{remote_tar}" "{base_name}"'
+                        )
+                        print(f"🗜️ Remote dir tar.gz created: {remote_tar}")
+                    else:
+                        # 单文件：直接打包
+                        self._exec_remote_command(
+                            f'cd "{remote_dir}" && tar -czf "{remote_tar}" "{base_name}"'
+                        )
+                        print(f"🗜️ Remote file tar.gz created: {remote_tar}")
+
+                except Exception as e:
+                    print(f"❌ Failed to stat {src}: {e}")
+                    self.download_finished.emit(src, "", False, str(e), openit)
+                    return "", False
+
+            else:
+                # 多个文件或目录
+                tmp_folder = "_tmp_dl_" + \
+                    "".join(random.choices(
+                        string.ascii_letters + string.digits, k=8))
+                remote_dir = os.path.commonpath(
+                    paths).replace("\\", "/")
+                remote_tmp_folder = f"{remote_dir.rstrip('/')}/{tmp_folder}"
+
+                # 创建远程临时目录
+                self._exec_remote_command(f'mkdir -p "{remote_tmp_folder}"')
+                print(
+                    f"🗂️ Created remote temporary folder: {remote_tmp_folder}")
+
+                # 拷贝所有文件/目录到临时目录
+                for p in paths:
+                    base_name = os.path.basename(p.rstrip("/"))
+                    self._exec_remote_command(
+                        f'cp -r "{p}" "{remote_tmp_folder}/{base_name}"'
+                    )
+
+                # 打包临时目录
+                remote_tar = f"{remote_dir.rstrip('/')}/{tmp_folder}.tar.gz"
                 self._exec_remote_command(
-                    f'cp -r "{p}" "{remote_tmp_folder}/{base_name}"')
+                    f'cd "{remote_dir}" && tar -czf "{remote_tar}" "{tmp_folder}"'
+                )
+                print(f"🗜️ Remote tar.gz created: {remote_tar}")
 
-            # 打包成 tar.gz
-            remote_tar = f"{remote_dir.rstrip('/')}/{tmp_folder}.tar.gz"
-            self._exec_remote_command(
-                f'cd "{remote_dir}" && tar -czf "{remote_tar}" "{tmp_folder}"')
-            print(f"🗜️ Remote tar.gz created: {remote_tar}")
-
-            # 下载 tar.gz
+            # ------------------- 下载 tar.gz -------------------
             local_tar_path = os.path.join(
                 local_base, os.path.basename(remote_tar))
             try:
@@ -1110,7 +1144,7 @@ class RemoteFileManager(QThread):
                     str(paths), "", False, str(e), openit)
                 return "", False
 
-            # 本地解压
+            # ------------------- 本地解压 -------------------
             try:
                 with tarfile.open(local_tar_path, "r:gz") as tar:
                     tar.extractall(local_base)
@@ -1122,14 +1156,12 @@ class RemoteFileManager(QThread):
                     str(paths), "", False, str(e), openit)
                 return "", False
 
-            # 清理远程临时目录和压缩包，以及本地临时压缩包
-            self._exec_remote_command(
-                f'rm -rf "{remote_tmp_folder}" "{remote_tar}"')
-            try:
-                os.remove(local_tar_path)
-            except Exception:
-                pass
-            print(f"🗑️ Removed remote temporary folder and tar.gz")
+            # ------------------- 清理 -------------------
+            self._exec_remote_command(f'rm -rf "{remote_tar}"')
+            if len(paths) > 1:
+                self._exec_remote_command(f'rm -rf "{remote_tmp_folder}"')
+            os.remove(local_tar_path)
+            print(f"🗑️ Removed remote tar.gz and temp folder if any")
 
             self.download_finished.emit(
                 str(paths), local_base, True, "", openit)
