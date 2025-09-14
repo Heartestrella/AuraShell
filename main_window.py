@@ -722,7 +722,7 @@ class Window(FramelessWindow):
         elif value == "Dark":
             setTheme(Theme.DARK)
         else:
-            setTheme(Theme.DARK if isDarkTheme() else Theme.LIGHT)
+            setTheme(Theme.AUTO)
 
         self.setQss()
 

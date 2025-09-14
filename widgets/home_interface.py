@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QListWidgetItem, QFrame)
+    QWidget, QVBoxLayout, QHBoxLayout, QListWidgetItem, QFrame, QLabel)
 from PyQt5.QtCore import Qt, pyqtSignal
 from qfluentwidgets import (PrimaryPushButton, ListWidget, TitleLabel,
                             BodyLabel, FluentIcon as FIF, CardWidget, RoundMenu, CaptionLabel, Action, TransparentToolButton, InfoBar, InfoBarPosition)
@@ -23,11 +23,11 @@ class SSH_CARD(CardWidget):
 
         # Add status indicator
 
-        # self.statusIndicator = QLabel(self)
-        # self.statusIndicator.setFixedSize(8, 8)
-        # self.statusIndicator.setStyleSheet(
-        #     "background-color: gray; border-radius: 4px;")
-        # self.set_connect_status(False)
+        self.statusIndicator = QLabel(self)
+        self.statusIndicator.setFixedSize(8, 8)
+        self.statusIndicator.setStyleSheet(
+            "background-color: gray; border-radius: 4px;")
+        self.set_connect_status(False)
         self.moreButton = TransparentToolButton(FIF.MORE, self)
 
         self.hBoxLayout = QHBoxLayout(self)
@@ -89,21 +89,21 @@ class SSH_CARD(CardWidget):
                 return
             parent = parent.parent()
 
-    # def set_connect_status(self, status: bool):
-    #     print(f"连接状态：{status}")
-    #     """设置连接状态指示器"""
-    #     color = "#00FF00" if status else "#FF0000"  # 绿色表示连接，红色表示断开
-    #     self.statusIndicator.setStyleSheet(f"""
-    #         background-color: {color};
-    #         border-radius: 4px;
-    #     """)
-    #     # 可选：添加工具提示
-    #     self.statusIndicator.setToolTip("已连接" if status else "已断开")
+    def set_connect_status(self, status: bool):
+        print(f"连接状态：{status}")
+        """设置连接状态指示器"""
+        color = "#00FF00" if status else "#FF0000"  # 绿色表示连接，红色表示断开
+        self.statusIndicator.setStyleSheet(f"""
+            background-color: {color};
+            border-radius: 4px;
+        """)
+        # 可选：添加工具提示
+        self.statusIndicator.setToolTip("已连接" if status else "已断开")
 
-    #     # 强制刷新
-    #     self.statusIndicator.style().unpolish(self.statusIndicator)
-    #     self.statusIndicator.style().polish(self.statusIndicator)
-    #     self.statusIndicator.update()
+        # 强制刷新
+        self.statusIndicator.style().unpolish(self.statusIndicator)
+        self.statusIndicator.style().polish(self.statusIndicator)
+        self.statusIndicator.update()
 
     # def _open_card(self):
     #     if self.parent_interface and hasattr(self.parent_interface, "sessionClicked"):

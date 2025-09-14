@@ -79,6 +79,7 @@ It is undeniable that part of the code has been generated with the help of AI to
   but the text is actually selected and can be copied with `Ctrl+Shift+C` and pasted with `Ctrl+Shift+V`.  
 - Some pages may not display the custom font correctly.  
 - Certain UI elements may not fully match the main window's style.  
+- Regarding font selection, the font that has been installed in the system is called instead of the character path.
 
 > ⚠️ **Beta Version Notice:**  
 > This is a beta release. If you encounter any bugs, please submit the runtime logs along with a brief description of how to reproduce the issue to the [GitHub Issues](https://github.com/Heartestrella/P-SSH/issues).
@@ -88,3 +89,7 @@ It is undeniable that part of the code has been generated with the help of AI to
 - Monitor open text file saves and automatically upload them
 - Built-in notepad
 
+## 🔮 Future Development Directions
+
+- ✅ **More Complete Python Implementation**
+The current terminal relies on `xterm.js`. While fully functional, it incurs additional memory usage and front-end dependencies.

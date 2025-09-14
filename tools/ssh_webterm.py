@@ -32,6 +32,8 @@ import PyQt5.QtCore as qc
 from tools.setting_config import SCM
 import re
 import os
+from PyQt5.QtWidgets import QShortcut
+from PyQt5.QtGui import QKeySequence
 print("QT_VERSION:", qc.QT_VERSION_STR, "PYQT:", qc.PYQT_VERSION_STR)
 
 configer = SCM()
@@ -272,7 +274,7 @@ class WebTerminal(QWidget):
 
         # QWebEngineView setup
         self.view = QWebEngineView(self)
-        # 允许在 Qt widget 层级透明
+
         self.view.setAttribute(Qt.WA_TranslucentBackground, True)
         self.view.setStyleSheet("""
             QWebEngineView {
@@ -322,11 +324,9 @@ class WebTerminal(QWidget):
         self.terminal_layout.addWidget(self.scroll_bar, 0)
         self.main_layout.addLayout(self.terminal_layout)
 
-        # 尝试设置页面背景透明（某些 Qt/Chromium 构建需要这个）
         try:
             self.view.page().setBackgroundColor(QColor(0, 0, 0, 0))
         except Exception as e:
-            # 不是致命错误；某些平台/Qt版本可能不支持透明度
             print("Warning: could not set page background transparent:", e)
 
         # WebChannel + Bridge
@@ -343,9 +343,6 @@ class WebTerminal(QWidget):
         self.devtools.resize(900, 700)
         self.view.page().setDevToolsPage(self.devtools.page())
 
-        # 给一个快捷键 Ctrl+Shift+I 打开
-        from PyQt5.QtWidgets import QShortcut
-        from PyQt5.QtGui import QKeySequence
         shortcut = QShortcut(QKeySequence("Ctrl+Shift+I"), self)
         shortcut.activated.connect(self._toggle_devtools)
 
@@ -436,7 +433,6 @@ class WebTerminal(QWidget):
     def _force_rerender(self):
         """强制终端重新渲染"""
         rerender_js = """
-        // 获取当前终端内容并重新设置以强制重绘
         const term = window.term;
         if (term) {
             const text = term.getSelection() || term.getText();
