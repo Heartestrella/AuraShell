@@ -650,7 +650,7 @@ class FileExplorer(QWidget):
 
     def _handle_mkdir(self):
         """Create a new folder placeholder and enter rename mode."""
-        new_folder_name = "New Folder"
+        new_folder_name = "NewFolder"
 
         # Make sure the name is unique to prevent existing folders with the same name
         existing_names = {self.flow_layout.itemAt(
@@ -937,9 +937,21 @@ class FileExplorer(QWidget):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Delete:
-            # Call the handler directly. Pass a dummy file_name as it will be ignored
-            # in multi-select scenarios and is not needed for single-select delete.
-            self._handle_file_action('delete', '')
+            selected_names = []
+            if self.view_mode == 'icon':
+                if not self.selected_items:
+                    return
+                selected_names = [item.name for item in self.selected_items]
+
+            elif self.view_mode == 'details':
+                indexes = self.details.details_view.selectionModel().selectedRows()
+                if not indexes:
+                    return
+                selected_names = [self.details.details_model.item(
+                    index.row(), 0).text() for index in indexes]
+
+            if selected_names:
+                self._handle_file_action('delete', selected_names, False, None)
 
         elif event.key() == Qt.Key_F2:
             # F2 rename should only work for a single selection
