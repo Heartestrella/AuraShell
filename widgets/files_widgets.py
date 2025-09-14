@@ -762,7 +762,7 @@ class FileExplorer(QWidget):
 
         if action_type == "download" and new_name == True:
             self.file_action.emit(action_type, full_path, "", True)
-
+            return
         # Only for detail mode
         if action_type == "open":
             self.selected.emit({file_name: is_dir})

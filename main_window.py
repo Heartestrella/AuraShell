@@ -428,11 +428,13 @@ class Window(FramelessWindow):
                     self._show_info(path=path, child_key=child_key,
                                     type_="start_download")
                     file_manager.download_path_async(path, compression=cut)
+                    print("执行非压缩下载")
             else:
                 self._show_info(path=paths_to_download, child_key=child_key,
                                 type_="start_download")
                 file_manager.download_path_async(
                     paths_to_download, compression=cut)
+                print("执行压缩下载")
         elif action_type == "paste":
             source_paths = full_path if isinstance(
                 full_path, list) else [full_path]

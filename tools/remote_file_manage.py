@@ -444,10 +444,10 @@ class RemoteFileManager(QThread):
 
                 # common executable-related MIME strings
                 if ("executable" in mime_out
-                        or "x-executable" in mime_out
-                        or mime_out.startswith("application/x-sharedlib")
-                        or "x-mach-binary" in mime_out
-                        or "pe" in mime_out  # covers various PE-like mimes
+                    or "x-executable" in mime_out
+                    or mime_out.startswith("application/x-sharedlib")
+                    or "x-mach-binary" in mime_out
+                    or "pe" in mime_out  # covers various PE-like mimes
                     ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
@@ -1073,78 +1073,67 @@ class RemoteFileManager(QThread):
         paths = [remote_path] if isinstance(remote_path, str) else remote_path
         if not paths:
             return None, False
-        print(f"remote_path: {paths} , {compression}")
+        print(f"remote_path: {remote_path}")
+
         if compression:
-            if len(paths) == 1:
-                # 单文件或单目录，直接打包
-                src = paths[0]
-                remote_dir = os.path.dirname(src) if os.path.isfile(
-                    src) else os.path.dirname(src.rstrip('/'))
-                remote_tar = f"{remote_dir.rstrip('/')}/{os.path.basename(src.rstrip('/'))}.tar.gz"
-                self._exec_remote_command(
-                    f'cd "{remote_dir}" && tar -czf "{remote_tar}" "{os.path.basename(src.rstrip("/"))}"'
-                )
-                print(f"🗜️ Remote tar.gz created: {remote_tar}")
+            # ------------------- 一口气压缩下载 -------------------
+            # 创建远程临时目录
+            tmp_folder = "_tmp_dl_" + \
+                "".join(random.choices(string.ascii_letters + string.digits, k=8))
+            remote_dir = os.path.commonpath(
+                paths).replace("\\", "/")  # POSIX路径
+            remote_tmp_folder = f"{remote_dir.rstrip('/')}/{tmp_folder}"
+            self._exec_remote_command(f'mkdir -p "{remote_tmp_folder}"')
+            print(f"🗂️ Created remote temporary folder: {remote_tmp_folder}")
 
-                # 下载 tar.gz
-                local_tar_path = os.path.join(
-                    local_base, os.path.basename(remote_tar))
+            # 拷贝文件/目录到临时目录
+            for p in paths:
+                base_name = os.path.basename(p.rstrip("/"))
+                self._exec_remote_command(
+                    f'cp -r "{p}" "{remote_tmp_folder}/{base_name}"')
+
+            # 打包成 tar.gz
+            remote_tar = f"{remote_dir.rstrip('/')}/{tmp_folder}.tar.gz"
+            self._exec_remote_command(
+                f'cd "{remote_dir}" && tar -czf "{remote_tar}" "{tmp_folder}"')
+            print(f"🗜️ Remote tar.gz created: {remote_tar}")
+
+            # 下载 tar.gz
+            local_tar_path = os.path.join(
+                local_base, os.path.basename(remote_tar))
+            try:
                 self.sftp.get(remote_tar, local_tar_path)
                 print(f"✅ Downloaded tar.gz: {remote_tar} -> {local_tar_path}")
-
-                # 本地解压
-                with tarfile.open(local_tar_path, "r:gz") as tar:
-                    tar.extractall(local_base)
-                print(
-                    f"✅ Extracted tar.gz locally: {local_tar_path} -> {local_base}")
-
-                # 删除远程 tar.gz 和本地临时压缩包
-                self._exec_remote_command(f'rm -f "{remote_tar}"')
-                os.remove(local_tar_path)
-                print(f"🗑️ Removed remote tar.gz")
-
-                self.download_finished.emit(src, local_base, True, "", openit)
-                return local_base, True
-
-            else:
-                # 多文件或多目录，使用现有临时目录逻辑
-                tmp_folder = "_tmp_dl_" + \
-                    "".join(random.choices(
-                        string.ascii_letters + string.digits, k=8))
-                remote_dir = os.path.commonpath(paths)
-                remote_tmp_folder = f"{remote_dir.rstrip('/')}/{tmp_folder}"
-                self._exec_remote_command(f'mkdir -p "{remote_tmp_folder}"')
-                print(
-                    f"🗂️ Created remote temporary folder: {remote_tmp_folder}")
-
-                for p in paths:
-                    base_name = os.path.basename(p.rstrip("/"))
-                    self._exec_remote_command(
-                        f'cp -r "{p}" "{remote_tmp_folder}/{base_name}"')
-
-                remote_tar = f"{remote_dir.rstrip('/')}/{tmp_folder}.tar.gz"
-                self._exec_remote_command(
-                    f'cd "{remote_dir}" && tar -czf "{remote_tar}" "{tmp_folder}"')
-                print(f"🗜️ Remote tar.gz created: {remote_tar}")
-
-                local_tar_path = os.path.join(
-                    local_base, os.path.basename(remote_tar))
-                self.sftp.get(remote_tar, local_tar_path)
-                print(f"✅ Downloaded tar.gz: {remote_tar} -> {local_tar_path}")
-
-                with tarfile.open(local_tar_path, "r:gz") as tar:
-                    tar.extractall(local_base)
-                print(
-                    f"✅ Extracted tar.gz locally: {local_tar_path} -> {local_base}")
-
-                self._exec_remote_command(
-                    f'rm -rf "{remote_tmp_folder}" "{remote_tar}"')
-                os.remove(local_tar_path)
-                print(f"🗑️ Removed remote temporary folder and tar.gz")
-
+            except Exception as e:
+                print(f"❌ Failed to download remote tar.gz: {e}")
                 self.download_finished.emit(
-                    str(paths), local_base, True, "", openit)
-                return local_base, True
+                    str(paths), "", False, str(e), openit)
+                return "", False
+
+            # 本地解压
+            try:
+                with tarfile.open(local_tar_path, "r:gz") as tar:
+                    tar.extractall(local_base)
+                print(
+                    f"✅ Extracted tar.gz locally: {local_tar_path} -> {local_base}")
+            except Exception as e:
+                print(f"❌ Local extraction failed: {e}")
+                self.download_finished.emit(
+                    str(paths), "", False, str(e), openit)
+                return "", False
+
+            # 清理远程临时目录和压缩包，以及本地临时压缩包
+            self._exec_remote_command(
+                f'rm -rf "{remote_tmp_folder}" "{remote_tar}"')
+            try:
+                os.remove(local_tar_path)
+            except Exception:
+                pass
+            print(f"🗑️ Removed remote temporary folder and tar.gz")
+
+            self.download_finished.emit(
+                str(paths), local_base, True, "", openit)
+            return local_base, True
 
         else:
             # ------------------- 非压缩逐个下载 -------------------
