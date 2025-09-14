@@ -535,7 +535,7 @@ class SettingPage(ScrollArea):
 
     def _on_default_view_changed(self, index: int):
         view_map = {0: ("icon", "图标"), 1: ("details", "详情")}
-        value_to_save = view_map.get(index, ("icon", "图标"))
+        value_to_save, display_name = view_map.get(index, ("icon", "图标"))
         configer.revise_config("default_view", value_to_save)
 
     def _unbelievable(self):
