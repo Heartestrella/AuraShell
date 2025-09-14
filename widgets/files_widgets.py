@@ -1,6 +1,6 @@
 
-from PyQt5.QtWidgets import (QApplication, QWidget, QLayout, QSizePolicy,
-                             QRubberBand, QScrollArea, QVBoxLayout, QTableView, QHeaderView)
+from PyQt5.QtWidgets import (QApplication, QWidget, QLayout, QSizePolicy, QFileDialog,
+                             QRubberBand,  QVBoxLayout, QTableView, QHeaderView)
 from PyQt5.QtGui import QFont, QPainter, QColor, QStandardItemModel, QStandardItem
 from PyQt5.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
 from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit, ScrollArea, TableView
@@ -125,8 +125,8 @@ class FlowLayout(QLayout):
 class FileItem(QWidget):
     WIDTH, HEIGHT = 80, 100
     selected_sign = pyqtSignal(dict)
-    # Operation type, file name, directory or not
-    action_triggered = pyqtSignal(str, object, str)
+    # Operation type, file name, directory or not,parameter (download_compression)
+    action_triggered = pyqtSignal(str, object, bool, object)
     # Operation type, original file name, new file name, whether it is a directory
     rename_action = pyqtSignal(str, str, str, str)
     # new_dir_name
@@ -227,6 +227,9 @@ class FileItem(QWidget):
         self.delete_action = Action(FIF.DELETE, self.tr("Delete"))
         self.cut_action = Action(FIF.CUT, self.tr("Cut"))
         self.download_action = Action(FIF.DOWNLOAD, self.tr("Download"))
+        self.download_compression_action = Action(
+            FIF.DOWNLOAD, self.tr("Download (compression)")
+        )
         self.copy_path_action = Action(FIF.FLAG, self.tr("Copy Path"))
         self.file_info_action = Action(FIF.INFO, self.tr("File Info"))
         self.renameaction = Action(FIF.LABEL, self.tr("Rename"))
@@ -237,6 +240,8 @@ class FileItem(QWidget):
         self.cut_action.triggered.connect(lambda: self._emit_action('cut'))
         self.download_action.triggered.connect(
             lambda: self._emit_action('download'))
+        self.download_compression_action.triggered.connect(
+            lambda: self._emit_action('download', True))
         self.copy_path_action.triggered.connect(
             lambda: self._emit_action('copy_path'))
         self.file_info_action.triggered.connect(
@@ -252,6 +257,7 @@ class FileItem(QWidget):
             self.cut_action,
             self.delete_action,
             self.download_action,
+            self.download_compression_action,
             self.copy_path_action,
             self.file_info_action,
             self.renameaction
@@ -266,23 +272,29 @@ class FileItem(QWidget):
         menu = self._create_context_menu()
         menu.exec(e.globalPos())
 
-    def _emit_action(self, action_type):
+    def _emit_action(self, action_type, parameter=None):
         if action_type == "rename":
             self._start_rename()
         else:
             copy_cut_paths = []
             if self.parent_explorer:
                 for item in self.parent_explorer.selected_items:
-                    if action_type in ("copy", "cut"):
+                    if action_type in ("copy", "cut") or action_type == "download" and parameter:
                         copy_cut_paths.append(item.name)
                     else:
                         self.action_triggered.emit(
-                            action_type, item.name, str(item.is_dir)
+                            action_type, item.name, item.is_dir, parameter
                         )
             if copy_cut_paths:
-                self.action_triggered.emit(
-                    action_type, copy_cut_paths, ""
-                )
+                if action_type != "download":
+                    self.action_triggered.emit(
+                        action_type, copy_cut_paths, False, parameter
+                    )
+                else:
+                    # if action_type == "download" and parameter:
+                    self.action_triggered.emit(
+                        action_type, copy_cut_paths, False, parameter)
+                    return
 
     def _start_rename(self):
         self._rename_applied = False
@@ -316,8 +328,8 @@ class FileItem(QWidget):
 
 
 class DetailItem(QWidget):
-    # type , file_name, is_dir , new_name
-    action_triggered = pyqtSignal(str, str, bool, str)
+    # type , file_name/file_names, is_dir , new_name/compression
+    action_triggered = pyqtSignal(str, object, bool, object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -399,25 +411,33 @@ class DetailItem(QWidget):
         self.details_model.dataChanged.connect(self._on_data_changed)
         self._rename_old_name = None
 
-    def _emit_action(self, action_type):
+    def _emit_action(self, action_type, parameter=None):
         indexes = self.details_view.selectionModel().selectedRows()
         if not indexes:
             return
 
-        copy_cut_paths = []
+        copy_cut_paths = []  # maybe its download list
 
         for index in indexes:
             name_item = self.details_model.item(index.row(), 0)
             file_name = name_item.text()
             is_dir = name_item.data(Qt.UserRole)
 
-            if action_type in ("copy", "cut"):
+            # download_compression
+            if action_type in ("copy", "cut",) or action_type == "download" and parameter:
                 copy_cut_paths.append(file_name)
             else:
                 self.action_triggered.emit(action_type, file_name, is_dir, "")
 
         if copy_cut_paths:
-            self.action_triggered.emit(action_type, copy_cut_paths, False, "")
+            if action_type != "download":
+                self.action_triggered.emit(
+                    action_type, copy_cut_paths, False, "")
+            else:
+                # if action_type == "download" and parameter:
+                self.action_triggered.emit(
+                    action_type, copy_cut_paths, False, parameter)
+                return
 
     def _on_row_double_click(self, index):
         if not index.isValid():
@@ -451,6 +471,9 @@ class DetailItem(QWidget):
         self.details_cut_action = Action(FIF.CUT, self.tr("Cut"))
         self.details_download_action = Action(
             FIF.DOWNLOAD, self.tr("Download"))
+        self.details_download_compression_action = Action(
+            FIF.DOWNLOAD, self.tr("Download (compression)")
+        )
         self.details_copy_path = Action(FIF.FLAG, self.tr("Copy Path"))
         self.details_file_info = Action(FIF.INFO, self.tr("File Info"))
         self.details_rename = Action(FIF.LABEL, self.tr("Rename"))
@@ -463,6 +486,8 @@ class DetailItem(QWidget):
             lambda: self._emit_action('delete'))
         self.details_download_action.triggered.connect(
             lambda: self._emit_action('download'))
+        self.details_download_compression_action.triggered.connect(
+            lambda: self._emit_action('download', True))
         self.details_copy_path.triggered.connect(
             lambda: self._emit_action('copy_path'))
         self.details_file_info.triggered.connect(
@@ -476,7 +501,8 @@ class DetailItem(QWidget):
         self.icon_view_action = Action(FIF.APPLICATION, self.tr('Icon View'))
         self.paste = Action(FIF.PASTE, self.tr("Paste"))
         self.make_dir = Action(FIF.FOLDER_ADD, self.tr("New Folder"))
-
+        self.uploads = Action(FIF.UP, self.tr("Upload files(compression)"))
+        self.upload = Action(FIF.UP, self.tr("Upload files"))
         self.refreshaction.triggered.connect(
             lambda: getattr(self.parent(), 'refresh', lambda: None)()
         )
@@ -495,15 +521,25 @@ class DetailItem(QWidget):
         self.make_dir.triggered.connect(
             lambda: getattr(self.parent(), 'handle_mkdir', lambda: None)()
         )
+        self.uploads.triggered.connect(
+            lambda: getattr(self.parent(), '_pick_upload_files',
+                            lambda a, b, c: None)(True)
+        )
+        self.upload.triggered.connect(
+            lambda: getattr(self.parent(), '_pick_upload_files',
+                            lambda a, b, c: None)(False)
+        )
 
     def _get_details_menus(self):
         menu = RoundMenu(parent=self)
         menu.addActions([self.details_copy_action, self.details_cut_action,
-                         self.details_delete_action, self.details_download_action,
+                         self.details_delete_action, self.details_download_action, self.details_download_compression_action,
                          self.details_copy_path, self.details_file_info, self.details_rename])
         menu.addSeparator()
-        menu.addActions([self.paste, self.make_dir, self.refreshaction,
-                        self.details_view_action, self.icon_view_action])
+        menu.addActions([self.paste, self.make_dir, self.refreshaction, self.uploads, self.upload,
+                         ])
+        menu.addSeparator()
+        menu.addActions([self.details_view_action, self.icon_view_action])
         return menu
 
     def _add_files_to_details_view(self, files, clear_old=True):
@@ -569,9 +605,10 @@ class DetailItem(QWidget):
 
 class FileExplorer(QWidget):
     selected = pyqtSignal(dict)
-    # action type , path , copy_to path , cut?
+    # action type , path , copy_to path , cut?/ download_compression
     file_action = pyqtSignal(str, object, str, bool)
-    upload_file = pyqtSignal(str, str)  # Source path , Target path
+    # Source path , Target path , compression
+    upload_file = pyqtSignal(object, str, bool)
     refresh_action = pyqtSignal()
 
     def __init__(self, parent=None, path=None, icons=None):
@@ -679,7 +716,7 @@ class FileExplorer(QWidget):
             item_widget.action_triggered.connect(self._handle_file_action)
             item_widget.rename_action.connect(
                 lambda type_, name, new_name, is_dir: self._handle_file_action(
-                    action_type=type_, file_name=name, is_dir_str=is_dir, new_name=new_name))
+                    action_type=type_, file_name=name, is_dir=is_dir, new_name=new_name))
             item_widget.mkdir_action.connect(
                 lambda new_dir_name: self._handle_file_action(
                     action_type="mkdir", file_name=new_dir_name))
@@ -705,6 +742,7 @@ class FileExplorer(QWidget):
             item.selected = True
         item.update()
 
+    # new_name/compression
     def _handle_file_action(self, action_type, file_name, is_dir=None, new_name=None):
         # try:
         #     file_name = list(file_name)  # Check if it's iterable
@@ -721,6 +759,9 @@ class FileExplorer(QWidget):
                 full_path.append(full_path_)
         else:
             full_path = self._get_full_path(file_name)
+
+        if action_type == "download" and new_name == True:
+            self.file_action.emit(action_type, full_path, "", True)
 
         # Only for detail mode
         if action_type == "open":
@@ -847,7 +888,7 @@ class FileExplorer(QWidget):
             is_dir = os.path.isdir(path)
             filename = os.path.basename(path)
             file_dict[filename] = is_dir
-            self.upload_file.emit(path, self.path)
+            self.upload_file.emit(path, self.path, False)
         event.acceptProposedAction()
 
     def _init_actions(self):
@@ -856,7 +897,8 @@ class FileExplorer(QWidget):
         self.icon_view_action = Action(FIF.APPLICATION, self.tr('Icon View'))
         self.paste = Action(FIF.PASTE, self.tr("Paste"))
         self.make_dir = Action(FIF.FOLDER_ADD, self.tr("New Folder"))
-
+        self.uploads = Action(FIF.UP, self.tr("Upload files(compression)"))
+        self.upload = Action(FIF.UP, self.tr("Upload files"))
         self.refreshaction.triggered.connect(
             lambda: self.refresh_action.emit())
         self.details_view_action.triggered.connect(
@@ -866,11 +908,17 @@ class FileExplorer(QWidget):
         self.paste.triggered.connect(
             lambda: self._handle_file_action("paste", "", ""))
         self.make_dir.triggered.connect(self._handle_mkdir)
+        self.uploads.triggered.connect(
+            lambda: self._pick_upload_files(True)
+        )
+        self.upload.triggered.connect(
+            lambda: self._pick_upload_files(False)
+        )
 
     def _get_menus(self):
         menu = RoundMenu(parent=self)
         menu.addActions(
-            [self.refreshaction, self.paste, self.make_dir])
+            [self.refreshaction, self.paste, self.make_dir, self.uploads, self.upload])
         menu.addSeparator()
         menu.addActions(
             [self.details_view_action, self.icon_view_action])
@@ -902,3 +950,13 @@ class FileExplorer(QWidget):
                 self.details.rename_selected_item()
         else:
             super().keyPressEvent(event)
+
+    def _pick_upload_files(self, compression=False):
+        paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            self.tr("Select files u want to upload"),
+            "",
+            self.tr("All files (*)")
+        )
+        print(f"Background file selected: {paths}")
+        self.upload_file.emit(paths, self.path, compression)

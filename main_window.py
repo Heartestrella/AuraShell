@@ -183,6 +183,11 @@ class Window(FramelessWindow):
                 duration = -1
             title = self.tr(f'File: {path} Status: {status_msg}\n')
 
+        elif type_ in ("compression", "uncompression"):
+            duration = 2000
+            title = self.tr(f"Start to {type_} : {path}")
+            msg = ""
+
         elif type_ == "start_upload":
             duration = 2000
             title = self.tr(f"Start uploading {local_path} to {path}")
@@ -328,8 +333,12 @@ class Window(FramelessWindow):
         file_manager.mkdir_finished.connect(lambda path, status, msg: self._show_info(
             path=path, status=status, msg=msg, type_="mkdir", child_key=child_key
         ))
+        file_manager.start_to_compression.connect(
+            lambda path: self._show_info(path=path, type_="compression"))
+        file_manager.start_to_compression.connect(
+            lambda path: self._show_info(path=path, type_="uncompression"))
         session_widget.file_explorer.upload_file.connect(
-            lambda path, target_path: self._show_info(type_="start_upload", child_key=child_key, local_path=path, path=target_path))
+            lambda path, target_path, compression: self._show_info(type_="start_upload", child_key=child_key, local_path=path, path=target_path))
         session_widget.file_explorer.upload_file.connect(
             file_manager.upload_file)
 
@@ -414,16 +423,23 @@ class Window(FramelessWindow):
         elif action_type == "download":
             paths_to_download = full_path if isinstance(
                 full_path, list) else [full_path]
-            for path in paths_to_download:
-                self._show_info(path=path, child_key=child_key,
+            if not cut:
+                for path in paths_to_download:
+                    self._show_info(path=path, child_key=child_key,
+                                    type_="start_download")
+                    file_manager.download_path_async(path, compression=cut)
+            else:
+                self._show_info(path=paths_to_download, child_key=child_key,
                                 type_="start_download")
-                file_manager.download_path_async(path)
+                file_manager.download_path_async(
+                    paths_to_download, compression=cut)
         elif action_type == "paste":
             source_paths = full_path if isinstance(
                 full_path, list) else [full_path]
             for source_path in source_paths:
                 if source_path and copy_to:
-                    print(f"Copy {source_path} to {copy_to} Cut status : {cut}")
+                    print(
+                        f"Copy {source_path} to {copy_to} Cut status : {cut}")
                     file_manager.copy_to(source_path, copy_to, cut)
         elif action_type == "rename":
             if copy_to:

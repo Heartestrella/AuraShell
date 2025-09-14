@@ -195,7 +195,6 @@ class Widget(QWidget):
         is_dir = next(iter(path_dict.values()))
         new_path = self.file_explorer.path + "/" + name
         if is_dir:
-
             self._set_file_bar(new_path)
         else:
             if self.file_manager:

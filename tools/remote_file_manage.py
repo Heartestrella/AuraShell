@@ -8,6 +8,12 @@ import os
 from typing import Tuple
 from datetime import datetime
 import shlex
+import tarfile
+import tempfile
+import random
+import string
+
+
 class RemoteFileManager(QThread):
     """
     Remote file manager, responsible for building and maintaining remote file trees
@@ -35,6 +41,10 @@ class RemoteFileManager(QThread):
     file_type_ready = pyqtSignal(str, str)
     # path , status , error_msg
     mkdir_finished = pyqtSignal(str, bool, str)
+    # target_zip_path
+    start_to_compression = pyqtSignal(str)
+    # remote_path_path
+    start_to_uncompression = pyqtSignal(str)
 
     def __init__(self, session_info, parent=None, child_key=None):
         super().__init__(parent)
@@ -111,7 +121,8 @@ class RemoteFileManager(QThread):
                             self._handle_upload_task(
                                 task['local_path'],
                                 task['remote_path'],
-                                task.get('callback')
+                                task.get('callback'),
+                                task['compression']
                             )
                         elif ttype == 'delete':
                             self._handle_delete_task(
@@ -120,7 +131,7 @@ class RemoteFileManager(QThread):
                             )
                         elif ttype == "download_files":
                             self._download_files(
-                                task['path'], openit=task["open_it"])
+                                task['path'], openit=task["open_it"], compression=task["compression"])
                         elif ttype == 'list_dir':
                             print(f"Handle:{[task['path']]}")
                             result = self.list_dir_detailed(task['path'])
@@ -251,7 +262,7 @@ class RemoteFileManager(QThread):
         self.condition.wakeAll()
         self.mutex.unlock()
 
-    def delete_path(self, path: [str, List[str]], callback=None):
+    def delete_path(self, path, callback=None):
         """
         Asynchronously deletes a remote file or directory.
 
@@ -317,10 +328,10 @@ class RemoteFileManager(QThread):
         self.condition.wakeAll()
         self.mutex.unlock()
 
-    def download_path_async(self, path: str, open_it: bool = False):
+    def download_path_async(self, path: str, open_it: bool = False, compression=False):
         self.mutex.lock()
         self._tasks.append(
-            {'type': 'download_files', 'path': path, "open_it": open_it})
+            {'type': 'download_files', 'path': path, "open_it": open_it, "compression": compression})
         self.condition.wakeAll()
         self.mutex.unlock()
 
@@ -357,7 +368,7 @@ class RemoteFileManager(QThread):
         self.condition.wakeAll()
         self.mutex.unlock()
 
-    def upload_file(self, local_path: str, remote_path: str, callback=None):
+    def upload_file(self, local_path, remote_path: str, compression: bool, callback=None):
         """
         Uploads a local file to the remote server asynchronously.
 
@@ -365,7 +376,7 @@ class RemoteFileManager(QThread):
         Upon completion, the `upload_finished` signal is emitted.
 
         Args:
-            local_path (str): Path to the local file to upload.
+            local_path (str or list): Path to the local file to upload.
             remote_path (str): Target path on the remote server.
             callback (callable, optional): Function to call when upload is complete.
                 Receives two arguments:
@@ -384,6 +395,7 @@ class RemoteFileManager(QThread):
             'type': 'upload_file',
             'local_path': local_path,
             'remote_path': remote_path,
+            'compression': compression,
             'callback': callback
         })
         self.condition.wakeAll()
@@ -539,7 +551,7 @@ class RemoteFileManager(QThread):
             if callback:
                 callback(False, error_msg)
 
-    def _handle_upload_task(self, local_path: str, remote_path: str, callback=None):
+    def _handle_upload_task(self, local_path, remote_path: str, callback=None, compression: bool = False):
         if self.sftp is None:
             error_msg = "SFTP connection not ready"
             print(
@@ -550,25 +562,140 @@ class RemoteFileManager(QThread):
             return
 
         try:
-            if not os.path.exists(local_path):
-                error_msg = f"The local path does not exist: {local_path}"
-                print(f"❌ Upload failed - {error_msg}")
-                self.upload_finished.emit(local_path, False, error_msg)
-                if callback:
-                    callback(False, error_msg)
+            # --------------------- 判断 local_path 类型 ---------------------
+            if isinstance(local_path, list):
+                # 列表形式
+                if compression:
+                    # 压缩整个列表
+                    tmp_fd, tmp_tar_path = tempfile.mkstemp(suffix=".tar.gz")
+                    os.close(tmp_fd)
+                    self.start_to_compression.emit(tmp_tar_path)
+                    try:
+                        with tarfile.open(tmp_tar_path, mode="w:gz") as tf:
+                            for path in local_path:
+                                if not os.path.exists(path):
+                                    print(
+                                        f"⚠️ Path does not exist, skipping: {path}")
+                                    continue
+                                if os.path.isfile(path):
+                                    # 压缩单文件，保留文件名
+                                    tf.add(path, arcname=os.path.basename(path))
+                                elif os.path.isdir(path):
+                                    # 压缩目录，保留相对路径
+                                    for root, dirs, files in os.walk(path):
+                                        for file in files:
+                                            full_path = os.path.join(
+                                                root, file)
+                                            # 相对路径相对于 path 的父目录，保留顶层目录名
+                                            arcname = os.path.relpath(
+                                                full_path, os.path.dirname(path))
+                                            tf.add(full_path, arcname=arcname)
+                        print(f"🗜️ Created combined zip: {tmp_tar_path}")
+                        self._upload_file(tmp_tar_path, remote_path, callback)
+                        remote_zip_path = f"{remote_path.rstrip('/')}/{os.path.basename(tmp_tar_path)}"
+                        self._remote_untar(remote_zip_path, remote_path)
+                        try:
+                            os.remove(tmp_tar_path)
+                        except Exception:
+                            pass
+                        return
+                    except Exception as e:
+                        os.remove(tmp_tar_path)
+                        error_msg = f"Compression/Upload error: {e}"
+                        print(
+                            f"❌ Upload with compression failed - {error_msg}")
+                        traceback.print_exc()
+                        self.upload_finished.emit(local_path, False, error_msg)
+                        if callback:
+                            callback(False, error_msg)
+                        return
+                else:
+                    # 非压缩列表 → 遍历逐个上传
+                    for path in local_path:
+                        if not os.path.exists(path):
+                            print(f"⚠️ Path does not exist, skipping: {path}")
+                            continue
+                        if os.path.isfile(path):
+                            self._upload_file(path, remote_path, callback)
+                        elif os.path.isdir(path):
+                            self._upload_directory(path, remote_path, callback)
+                        else:
+                            print(
+                                f"⚠️ Path is neither file nor directory, skipping: {path}")
+                    return
+
+            elif isinstance(local_path, str):
+                # 单文件或单目录
+                if not os.path.exists(local_path):
+                    error_msg = f"The local path does not exist: {local_path}"
+                    print(f"❌ Upload failed - {error_msg}")
+                    self.upload_finished.emit(local_path, False, error_msg)
+                    if callback:
+                        callback(False, error_msg)
+                    return
+
+                if compression:
+
+                    tmp_fd, tmp_tar_path = tempfile.mkstemp(suffix=".tar.gz")
+                    os.close(tmp_fd)
+                    self.start_to_compression.emit(tmp_tar_path)
+                    try:
+                        with tarfile.open(tmp_tar_path, mode="w:gz") as tf:
+                            if os.path.isfile(local_path):
+                                # 压缩单文件，保留文件名
+                                arcname = os.path.basename(local_path)
+                                tf.add(local_path, arcname=arcname)
+                            elif os.path.isdir(local_path):
+                                base_dir = os.path.basename(
+                                    local_path.rstrip(os.sep))
+                                for root, dirs, files in os.walk(local_path):
+                                    for file in files:
+                                        full_path = os.path.join(root, file)
+                                        # 相对于目录的相对路径，保留顶层目录
+                                        rel_path = os.path.relpath(
+                                            full_path, os.path.dirname(local_path))
+                                        tf.add(full_path, arcname=rel_path)
+                        print(
+                            f"🗜️ Created zip for compression: {tmp_tar_path}")
+
+                        # 上传压缩包
+                        self._upload_file(tmp_tar_path, remote_path, callback)
+                        remote_zip_path = f"{remote_path.rstrip('/')}/{os.path.basename(tmp_tar_path)}"
+                        self._remote_untar(remote_zip_path, remote_path)
+                        # 删除临时 zip
+                        try:
+                            os.remove(tmp_tar_path)
+                        except Exception:
+                            pass
+                        return
+
+                    except Exception as e:
+                        try:
+                            os.remove(tmp_tar_path)
+                        except Exception:
+                            pass
+                        error_msg = f"Compression/Upload error: {e}"
+                        print(
+                            f"❌ Upload with compression failed - {error_msg}")
+                        import traceback
+                        traceback.print_exc()
+                        self.upload_finished.emit(local_path, False, error_msg)
+                        if callback:
+                            callback(False, error_msg)
+                        return
+
+                # 非压缩，直接上传
+                if os.path.isfile(local_path):
+                    self._upload_file(local_path, remote_path, callback)
+                elif os.path.isdir(local_path):
+                    self._upload_directory(local_path, remote_path, callback)
+                else:
+                    error_msg = f"Path is neither a file nor a directory: {local_path}"
+                    print(f"❌ Upload failed - {error_msg}")
+                    self.upload_finished.emit(local_path, False, error_msg)
+                    if callback:
+                        callback(False, error_msg)
                 return
-
-            if os.path.isfile(local_path):
-                self._upload_file(local_path, remote_path, callback)
-            elif os.path.isdir(local_path):
-                self._upload_directory(local_path, remote_path, callback)
-            else:
-                error_msg = f"Path is neither a file nor a directory: {local_path}"
-                print(f"❌ Upload failed - {error_msg}")
-                self.upload_finished.emit(local_path, False, error_msg)
-                if callback:
-                    callback(False, error_msg)
-
         except Exception as e:
             error_msg = f"Error during upload: {str(e)}"
             print(f"❌ Upload failed - {error_msg}")
@@ -578,7 +705,7 @@ class RemoteFileManager(QThread):
             if callback:
                 callback(False, error_msg)
 
-    def _upload_file(self, local_path: str, remote_path: str, callback=None):
+    def _upload_file(self, local_path, remote_path: str, callback=None):
         """Uploading a single file"""
         try:
             file_size = os.path.getsize(local_path)
@@ -641,7 +768,7 @@ class RemoteFileManager(QThread):
             if callback:
                 callback(False, error_msg)
 
-    def _upload_directory(self, local_dir: str, remote_dir: str, callback=None):
+    def _upload_directory(self, local_dir, remote_dir: str, callback=None):
         """Recursively upload an entire directory"""
         try:
             dir_name = os.path.basename(local_dir)
@@ -927,10 +1054,13 @@ class RemoteFileManager(QThread):
             traceback.print_exc()
             self.copy_finished.emit(source_path, target_path, False, error_msg)
 
-    def _download_files(self, remote_path: str, local_base: str = "_ssh_download", openit: bool = False):
+    def _download_files(self, remote_path, local_base: str = "_ssh_download", openit: bool = False, compression: bool = False):
         """
-        同步下载文件或目录，完成后触发信号。
-        返回: (local_path, status)
+        下载文件/目录，支持压缩打包下载
+        :param remote_path: str 或 list[str]，服务器路径
+        :param local_base: 本地保存基础目录
+        :param openit: 下载完成后是否打开
+        :param compression: 是否压缩打包下载
         """
         if self.sftp is None:
             print("SFTP 未连接，无法下载")
@@ -939,48 +1069,126 @@ class RemoteFileManager(QThread):
         local_base = os.path.abspath(local_base)
         os.makedirs(local_base, exist_ok=True)
 
-        def _download_file(remote_file, local_file):
-            try:
-                self.sftp.get(remote_file, local_file)
-                print(f"文件下载完成: {remote_file} -> {local_file}")
-                return True
-            except Exception as e:
-                print(f"下载文件出错: {remote_file} -> {e}")
-                return False
+        # 统一 paths 为 list
+        paths = [remote_path] if isinstance(remote_path, str) else remote_path
+        if not paths:
+            return None, False
+        print(f"remote_path: {paths} , {compression}")
+        if compression:
+            if len(paths) == 1:
+                # 单文件或单目录，直接打包
+                src = paths[0]
+                remote_dir = os.path.dirname(src) if os.path.isfile(
+                    src) else os.path.dirname(src.rstrip('/'))
+                remote_tar = f"{remote_dir.rstrip('/')}/{os.path.basename(src.rstrip('/'))}.tar.gz"
+                self._exec_remote_command(
+                    f'cd "{remote_dir}" && tar -czf "{remote_tar}" "{os.path.basename(src.rstrip("/"))}"'
+                )
+                print(f"🗜️ Remote tar.gz created: {remote_tar}")
 
-        def _download_dir(remote_dir, local_dir):
-            os.makedirs(local_dir, exist_ok=True)
-            success = True
-            for entry in self.sftp.listdir_attr(remote_dir):
-                remote_item = f"{remote_dir.rstrip('/')}/{entry.filename}"
-                local_item = os.path.join(local_dir, entry.filename)
+                # 下载 tar.gz
+                local_tar_path = os.path.join(
+                    local_base, os.path.basename(remote_tar))
+                self.sftp.get(remote_tar, local_tar_path)
+                print(f"✅ Downloaded tar.gz: {remote_tar} -> {local_tar_path}")
 
-                if stat.S_ISDIR(entry.st_mode):
-                    if not _download_dir(remote_item, local_item):
-                        success = False
-                else:
-                    if not _download_file(remote_item, local_item):
-                        success = False
-            return success
+                # 本地解压
+                with tarfile.open(local_tar_path, "r:gz") as tar:
+                    tar.extractall(local_base)
+                print(
+                    f"✅ Extracted tar.gz locally: {local_tar_path} -> {local_base}")
 
-        try:
-            attr = self.sftp.stat(remote_path)
-            filename = os.path.basename(remote_path.rstrip("/"))
-            local_target = os.path.join(local_base, filename)
+                # 删除远程 tar.gz 和本地临时压缩包
+                self._exec_remote_command(f'rm -f "{remote_tar}"')
+                os.remove(local_tar_path)
+                print(f"🗑️ Removed remote tar.gz")
 
-            if stat.S_ISDIR(attr.st_mode):
-                status = _download_dir(remote_path, local_target)
+                self.download_finished.emit(src, local_base, True, "", openit)
+                return local_base, True
+
             else:
-                status = _download_file(remote_path, local_target)
+                # 多文件或多目录，使用现有临时目录逻辑
+                tmp_folder = "_tmp_dl_" + \
+                    "".join(random.choices(
+                        string.ascii_letters + string.digits, k=8))
+                remote_dir = os.path.commonpath(paths)
+                remote_tmp_folder = f"{remote_dir.rstrip('/')}/{tmp_folder}"
+                self._exec_remote_command(f'mkdir -p "{remote_tmp_folder}"')
+                print(
+                    f"🗂️ Created remote temporary folder: {remote_tmp_folder}")
 
-            self.download_finished.emit(
-                remote_path, local_target, status, "", openit)
-            return local_target, status
+                for p in paths:
+                    base_name = os.path.basename(p.rstrip("/"))
+                    self._exec_remote_command(
+                        f'cp -r "{p}" "{remote_tmp_folder}/{base_name}"')
 
-        except Exception as e:
-            print(f"下载失败 {remote_path}: {e}")
-            self.download_finished.emit(remote_path, "", False, e, openit)
-            return "", False
+                remote_tar = f"{remote_dir.rstrip('/')}/{tmp_folder}.tar.gz"
+                self._exec_remote_command(
+                    f'cd "{remote_dir}" && tar -czf "{remote_tar}" "{tmp_folder}"')
+                print(f"🗜️ Remote tar.gz created: {remote_tar}")
+
+                local_tar_path = os.path.join(
+                    local_base, os.path.basename(remote_tar))
+                self.sftp.get(remote_tar, local_tar_path)
+                print(f"✅ Downloaded tar.gz: {remote_tar} -> {local_tar_path}")
+
+                with tarfile.open(local_tar_path, "r:gz") as tar:
+                    tar.extractall(local_base)
+                print(
+                    f"✅ Extracted tar.gz locally: {local_tar_path} -> {local_base}")
+
+                self._exec_remote_command(
+                    f'rm -rf "{remote_tmp_folder}" "{remote_tar}"')
+                os.remove(local_tar_path)
+                print(f"🗑️ Removed remote temporary folder and tar.gz")
+
+                self.download_finished.emit(
+                    str(paths), local_base, True, "", openit)
+                return local_base, True
+
+        else:
+            # ------------------- 非压缩逐个下载 -------------------
+            def _download_file(remote_file, local_file):
+                try:
+                    self.sftp.get(remote_file, local_file)
+                    print(f"文件下载完成: {remote_file} -> {local_file}")
+                    return True
+                except Exception as e:
+                    print(f"下载文件出错: {remote_file} -> {e}")
+                    return False
+
+            def _download_dir(remote_dir, local_dir):
+                os.makedirs(local_dir, exist_ok=True)
+                success = True
+                for entry in self.sftp.listdir_attr(remote_dir):
+                    remote_item = f"{remote_dir.rstrip('/')}/{entry.filename}"
+                    local_item = os.path.join(local_dir, entry.filename)
+                    if stat.S_ISDIR(entry.st_mode):
+                        if not _download_dir(remote_item, local_item):
+                            success = False
+                    else:
+                        if not _download_file(remote_item, local_item):
+                            success = False
+                return success
+
+            results = []
+            for p in paths:
+                local_target = os.path.join(
+                    local_base, os.path.basename(p.rstrip("/")))
+                try:
+                    attr = self.sftp.stat(p)
+                    if stat.S_ISDIR(attr.st_mode):
+                        status = _download_dir(p, local_target)
+                    else:
+                        status = _download_file(p, local_target)
+                    results.append((p, local_target, status))
+                    self.download_finished.emit(
+                        p, local_target, status, "" if status else "Failed", openit)
+                except Exception as e:
+                    print(f"下载失败 {p}: {e}")
+                    results.append((p, "", False))
+                    self.download_finished.emit(p, "", False, str(e), openit)
+            return results
 
     def _add_path_to_tree(self, path: str, update_tree_sign: bool = True):
         parts = [p for p in path.strip("/").split("/") if p]
@@ -1150,6 +1358,54 @@ class RemoteFileManager(QThread):
     # ---------------------------
     # 辅助方法
     # ---------------------------
+    def _remote_untar(self, remote_tar_path: str, target_dir: str, remove_tar: bool = True):
+        """
+        在远程服务器解压 tar.gz 文件
+
+        :param remote_tar_path: 远程 tar.gz 文件完整路径
+        :param target_dir: 解压到目标目录
+        :param remove_tar: 是否解压后删除远程 tar.gz 文件
+        """
+        try:
+            self.start_to_uncompression.emit(remote_tar_path)
+            # 确保目标目录存在
+            mkdir_cmd = f'mkdir -p "{target_dir}"'
+            self._exec_remote_command(mkdir_cmd)
+
+            # 解压 tar.gz
+            untar_cmd = f'tar -xzf "{remote_tar_path}" -C "{target_dir}"'
+            out, err = self._exec_remote_command(untar_cmd)
+
+            if err:
+                print(f"⚠️ Remote untar error: {err}")
+            else:
+                print(
+                    f"✅ Remote untar completed: {remote_tar_path} -> {target_dir}")
+
+            # 删除远程 tar.gz
+            if remove_tar:
+                rm_cmd = f'rm -f "{remote_tar_path}"'
+                self._exec_remote_command(rm_cmd)
+                print(f"🗑️ Remote tar.gz removed: {remote_tar_path}")
+
+        except Exception as e:
+            print(f"❌ Remote untar failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _exec_remote_command(self, command: str):
+        """
+        在远程服务器执行命令
+        :param command: shell 命令字符串
+        :return: (stdout, stderr)
+        """
+        if not hasattr(self, "conn") or self.conn is None:
+            print("SSH connection is not established")
+
+        stdin, stdout, stderr = self.conn.exec_command(command)
+        out = stdout.read().decode(errors="ignore")
+        err = stderr.read().decode(errors="ignore")
+        return out, err
 
     def _human_readable_size(self, size_bytes: int) -> str:
         """将字节数转换为可读的格式"""
@@ -1313,7 +1569,8 @@ class RemoteFileManager(QThread):
                 })
             return detailed_result
         except Exception as e:
-            print(f"list_dir_detailed error when getting directory contents: {e}")
+            print(
+                f"list_dir_detailed error when getting directory contents: {e}")
             return None
 
     # ---------------------------

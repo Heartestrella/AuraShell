@@ -58,7 +58,7 @@ class Config(QConfig):
     )
 
     default_view = OptionsConfigItem(
-        "Files", "DefaultView", "图标", OptionsValidator(["图标", "详情"]), restart=False
+        "Files", "DefaultView", "Icon", OptionsValidator(["Icon", "Info"]), restart=False
     )
 
 
@@ -594,8 +594,8 @@ class SettingPage(ScrollArea):
         self.cd_follow.setChecked(self.config["follow_cd"])
         self.parent_class.set_global_background(self.config["bg_pic"])
         self.opacityEdit.setValue(self.config["background_opacity"])
-        self.cfg.default_view.value = "图标" if self.config.get(
-            "default_view", "icon") == "icon" else "详情"
+        self.cfg.default_view.value = "Icon" if self.config.get(
+            "default_view", "icon") == "icon" else "Info"
         # Achieve results
         self._lock_ratio = self.config["locked_ratio"]
         self._restore_background_opacity(self.config["background_opacity"])
