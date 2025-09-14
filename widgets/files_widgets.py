@@ -3,9 +3,60 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QLayout, QSizePolicy,
                              QRubberBand, QScrollArea, QVBoxLayout, QTableView, QHeaderView)
 from PyQt5.QtGui import QFont, QPainter, QColor, QStandardItemModel, QStandardItem
 from PyQt5.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
-from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit
+from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit, ScrollArea, TableView
 import os
 from functools import partial
+from qfluentwidgets import isDarkTheme
+
+
+def _format_size(size_bytes):
+    """Format size in bytes to a human-readable string."""
+    if not size_bytes:
+        return ""
+    try:
+        size_bytes = int(size_bytes)
+        if size_bytes == 0:
+            return "0 B"
+        size_names = ("B", "KB", "MB", "GB", "TB")
+        i = 0
+        while size_bytes >= 1024 and i < len(size_names) - 1:
+            size_bytes /= 1024.0
+            i += 1
+        return f"{round(size_bytes, 2)} {size_names[i]}"
+    except (ValueError, TypeError):
+        return str(size_bytes)
+
+
+def _normalize_files_data(files):
+    """Normalize different input formats to a standard list of tuples."""
+    entries = []
+    if not files:
+        return entries
+
+    if isinstance(files, dict):
+        # Assuming dict provides {name: is_dir}
+        for name, val in files.items():
+            is_dir = True if (
+                val is True or isinstance(val, dict)) else False
+            entries.append(
+                (str(name), is_dir, '', '', '', ''))
+    elif isinstance(files, (list, tuple)):
+        for entry in files:
+            if isinstance(entry, dict):
+                name = entry.get("name", "")
+                is_dir = entry.get("is_dir", False)
+                size = entry.get("size", 0)
+                mod_time = entry.get("mtime", "")
+                perms = entry.get("perms", "")
+                owner = entry.get("owner", "")
+                entries.append(
+                    (name, is_dir, size, mod_time, perms, owner))
+            elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                # Basic ("name", is_dir) provided
+                name, is_dir = entry[0], bool(entry[1])
+                entries.append(
+                    (str(name), is_dir, '', '', '', ''))
+    return entries
 
 
 # ---------------- FlowLayout ----------------
@@ -68,12 +119,14 @@ class FlowLayout(QLayout):
 
 # ---------------- FileItem ----------------
 
+# Icons mode
+
 
 class FileItem(QWidget):
     WIDTH, HEIGHT = 80, 100
     selected_sign = pyqtSignal(dict)
     # Operation type, file name, directory or not
-    action_triggered = pyqtSignal(str, str, str)
+    action_triggered = pyqtSignal(str, object, str)
     # Operation type, original file name, new file name, whether it is a directory
     rename_action = pyqtSignal(str, str, str, str)
     # new_dir_name
@@ -98,10 +151,10 @@ class FileItem(QWidget):
         # self.rename_edit.returnPressed.connect(self._apply_rename)
         self.rename_edit.editingFinished.connect(self._apply_rename)
         self._rename_applied = False
+        self._init_actions()
 
     def _update_style(self):
         """Update styles based on the theme"""
-        from qfluentwidgets import isDarkTheme
         if isDarkTheme():
             self.setStyleSheet("""
                 FileItem {
@@ -151,7 +204,6 @@ class FileItem(QWidget):
             display_text = metrics.elidedText(
                 self.name, Qt.ElideMiddle, available_width)
 
-        from qfluentwidgets import isDarkTheme
         if isDarkTheme():
             painter.setPen(QColor(255, 255, 255))
         else:
@@ -170,31 +222,40 @@ class FileItem(QWidget):
             self.selected_sign.emit({self.name: self.is_dir})
             print(f"Double-click to open: {self.name}")
 
+    def _init_actions(self):
+        self.copy_action = Action(FIF.COPY, self.tr("Copy"))
+        self.delete_action = Action(FIF.DELETE, self.tr("Delete"))
+        self.cut_action = Action(FIF.CUT, self.tr("Cut"))
+        self.download_action = Action(FIF.DOWNLOAD, self.tr("Download"))
+        self.copy_path_action = Action(FIF.FLAG, self.tr("Copy Path"))
+        self.file_info_action = Action(FIF.INFO, self.tr("File Info"))
+        self.renameaction = Action(FIF.LABEL, self.tr("Rename"))
+
+        self.copy_action.triggered.connect(lambda: self._emit_action('copy'))
+        self.delete_action.triggered.connect(
+            lambda: self._emit_action('delete'))
+        self.cut_action.triggered.connect(lambda: self._emit_action('cut'))
+        self.download_action.triggered.connect(
+            lambda: self._emit_action('download'))
+        self.copy_path_action.triggered.connect(
+            lambda: self._emit_action('copy_path'))
+        self.file_info_action.triggered.connect(
+            lambda: self._emit_action('info'))
+        self.renameaction.triggered.connect(
+            lambda: self._emit_action('rename'))
+
     def _create_context_menu(self):
         """Creates and returns the context menu for the file item."""
         menu = RoundMenu(parent=self)
-        copy_action = Action(FIF.COPY, self.tr("Copy"))
-        delete_action = Action(FIF.DELETE, self.tr("Delete"))
-        cut_action = Action(FIF.CUT, self.tr("Cut"))
-        download_action = Action(FIF.DOWNLOAD, self.tr("Download"))
-        copy_path = Action(FIF.FLAG, self.tr("Copy Path"))
-        file_info = Action(FIF.INFO, self.tr("File Info"))
-        rename = Action(FIF.LABEL, self.tr("Rename"))
-
-        copy_action.triggered.connect(lambda: self._emit_action('copy'))
-        delete_action.triggered.connect(lambda: self._emit_action('delete'))
-        cut_action.triggered.connect(lambda: self._emit_action('cut'))
-        download_action.triggered.connect(
-            lambda: self._emit_action('download'))
-        copy_path.triggered.connect(
-            lambda: self._emit_action('copy_path'))
-        file_info.triggered.connect(
-            lambda: self._emit_action('info'))
-        rename.triggered.connect(lambda: self._emit_action('rename'))
-
-        menu.addActions([copy_action, cut_action, delete_action,
-                        download_action, copy_path, file_info, rename])
-        menu.addSeparator()
+        menu.addActions([
+            self.copy_action,
+            self.cut_action,
+            self.delete_action,
+            self.download_action,
+            self.copy_path_action,
+            self.file_info_action,
+            self.renameaction
+        ])
         return menu
 
     def contextMenuEvent(self, e):
@@ -209,9 +270,19 @@ class FileItem(QWidget):
         if action_type == "rename":
             self._start_rename()
         else:
-            # Always emit for the source item only. The explorer will handle multi-select.
-            self.action_triggered.emit(
-                action_type, self.name, str(self.is_dir))
+            copy_cut_paths = []
+            if self.parent_explorer:
+                for item in self.parent_explorer.selected_items:
+                    if action_type in ("copy", "cut"):
+                        copy_cut_paths.append(item.name)
+                    else:
+                        self.action_triggered.emit(
+                            action_type, item.name, str(item.is_dir)
+                        )
+            if copy_cut_paths:
+                self.action_triggered.emit(
+                    action_type, copy_cut_paths, ""
+                )
 
     def _start_rename(self):
         self._rename_applied = False
@@ -240,35 +311,20 @@ class FileItem(QWidget):
                     "rename", self.name, new_name, str(self.is_dir))
             self.rename_edit.hide()
             self.update()
-# ---------------- FileExplorer ----------------
+
+# Detail Mode
 
 
-class FileExplorer(QWidget):
-    selected = pyqtSignal(dict)
-    # action type , path , copy_to path , cut?
-    file_action = pyqtSignal(str, object, str, bool)
-    upload_file = pyqtSignal(str, str)  # Source path , Target path
-    refresh_action = pyqtSignal()
+class DetailItem(QWidget):
+    # type , file_name, is_dir , new_name
+    action_triggered = pyqtSignal(str, str, bool, str)
 
-    def __init__(self, parent=None, path=None, icons=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.view_mode = "icon"  # "icon" or "details"
-        self.copy_file_path = None
-        self.cut_ = False
-        self.icons = icons
-        self.path = path
-
-        # Icon view
-        self.scroll_area = QScrollArea(self)
-        self.scroll_area.setWidgetResizable(True)
-        self.container = QWidget()
-        self.flow_layout = FlowLayout(self.container)
-        self.container.setLayout(self.flow_layout)
-        self.scroll_area.setWidget(self.container)
-
         # Details view
-        self.details_view = QTableView(self)
         self.details_model = QStandardItemModel(self)
+        self.details_view = TableView(self)
+        self.details_view.setAlternatingRowColors(False)
         self.details_view.setModel(self.details_model)
         self.details_view.setVisible(False)  # Default hidden
         self.details_view.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -276,15 +332,20 @@ class FileExplorer(QWidget):
         self.details_view.setSelectionBehavior(QTableView.SelectRows)
         self.details_view.setSelectionMode(QTableView.ExtendedSelection)
         self.details_view.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.details_view.customContextMenuRequested.connect(
-            self._show_details_view_context_menu)
-        self.details_view.doubleClicked.connect(
-            self._handle_details_view_double_click)
-        self.details_view.verticalHeader().setVisible(False)
-        self.details_model.setHorizontalHeaderLabels(
-            ['文件名', '大小', '修改时间', '权限', '用户/用户组'])
 
-        from qfluentwidgets import isDarkTheme
+        self.details_view.customContextMenuRequested.connect(
+            self._on_row_right_click)
+        self.details_view.doubleClicked.connect(
+            self._on_row_double_click)
+        self.details_view.verticalHeader().setVisible(False)
+        self.details_model.setHorizontalHeaderLabels([
+            self.tr('Name'),
+            self.tr('Size'),
+            self.tr('Modified Time'),
+            self.tr('Permissions'),
+            self.tr('User/Group')
+        ])
+
         if isDarkTheme():
             self.details_view.setStyleSheet("""
                 QTableView {
@@ -334,10 +395,210 @@ class FileExplorer(QWidget):
                 }
             """)
 
+        self._init_details_actions()
+        self.details_model.dataChanged.connect(self._on_data_changed)
+        self._rename_old_name = None
+
+    def _emit_action(self, action_type):
+        indexes = self.details_view.selectionModel().selectedRows()
+        if not indexes:
+            return
+
+        copy_cut_paths = []
+
+        for index in indexes:
+            name_item = self.details_model.item(index.row(), 0)
+            file_name = name_item.text()
+            is_dir = name_item.data(Qt.UserRole)
+
+            if action_type in ("copy", "cut"):
+                copy_cut_paths.append(file_name)
+            else:
+                self.action_triggered.emit(action_type, file_name, is_dir, "")
+
+        if copy_cut_paths:
+            self.action_triggered.emit(action_type, copy_cut_paths, False, "")
+
+    def _on_row_double_click(self, index):
+        if not index.isValid():
+            return
+        name_item = self.details_model.item(index.row(), 0)
+        file_name = name_item.text()
+        is_dir = name_item.data(Qt.UserRole)
+        self.action_triggered.emit("open", file_name, is_dir, "")
+        print(file_name, "mode", is_dir)
+
+    def _on_row_right_click(self, pos):
+        index = self.details_view.indexAt(pos)
+        if not index.isValid():
+            return
+
+        selection_model = self.details_view.selectionModel()
+
+        if not selection_model.isSelected(index):
+            selection_model.clearSelection()
+            selection_model.select(
+                index,
+                selection_model.Select | selection_model.Rows
+            )
+
+        menu = self._get_details_menus()
+        menu.exec_(self.details_view.viewport().mapToGlobal(pos))
+
+    def _init_details_actions(self):
+        self.details_copy_action = Action(FIF.COPY, self.tr("Copy"))
+        self.details_delete_action = Action(FIF.DELETE, self.tr("Delete"))
+        self.details_cut_action = Action(FIF.CUT, self.tr("Cut"))
+        self.details_download_action = Action(
+            FIF.DOWNLOAD, self.tr("Download"))
+        self.details_copy_path = Action(FIF.FLAG, self.tr("Copy Path"))
+        self.details_file_info = Action(FIF.INFO, self.tr("File Info"))
+        self.details_rename = Action(FIF.LABEL, self.tr("Rename"))
+
+        self.details_copy_action.triggered.connect(
+            lambda: self._emit_action('copy'))
+        self.details_cut_action.triggered.connect(
+            lambda: self._emit_action('cut'))
+        self.details_delete_action.triggered.connect(
+            lambda: self._emit_action('delete'))
+        self.details_download_action.triggered.connect(
+            lambda: self._emit_action('download'))
+        self.details_copy_path.triggered.connect(
+            lambda: self._emit_action('copy_path'))
+        self.details_file_info.triggered.connect(
+            lambda: self._emit_action('info'))
+        self.details_rename.triggered.connect(self.rename_selected_item)
+
+        # General actions Because the general menu cannot be called up when the object is full
+
+        self.refreshaction = Action(FIF.UPDATE, self.tr('Refresh the page'))
+        self.details_view_action = Action(FIF.VIEW, self.tr('Details View'))
+        self.icon_view_action = Action(FIF.APPLICATION, self.tr('Icon View'))
+        self.paste = Action(FIF.PASTE, self.tr("Paste"))
+        self.make_dir = Action(FIF.FOLDER_ADD, self.tr("New Folder"))
+
+        self.refreshaction.triggered.connect(
+            lambda: getattr(self.parent(), 'refresh', lambda: None)()
+        )
+        self.details_view_action.triggered.connect(
+            lambda: getattr(self.parent(), 'switch_view',
+                            lambda x: None)('details')
+        )
+        self.icon_view_action.triggered.connect(
+            lambda: getattr(self.parent(), 'switch_view',
+                            lambda x: None)('icon')
+        )
+        self.paste.triggered.connect(
+            lambda: getattr(self.parent(), 'handle_file_action',
+                            lambda a, b, c: None)('paste', '', '')
+        )
+        self.make_dir.triggered.connect(
+            lambda: getattr(self.parent(), 'handle_mkdir', lambda: None)()
+        )
+
+    def _get_details_menus(self):
+        menu = RoundMenu(parent=self)
+        menu.addActions([self.details_copy_action, self.details_cut_action,
+                         self.details_delete_action, self.details_download_action,
+                         self.details_copy_path, self.details_file_info, self.details_rename])
+        menu.addSeparator()
+        menu.addActions([self.paste, self.make_dir, self.refreshaction,
+                        self.details_view_action, self.icon_view_action])
+        return menu
+
+    def _add_files_to_details_view(self, files, clear_old=True):
+        self.details_model.setRowCount(0)
+        entries = _normalize_files_data(files)
+        # Sort by name, with directories first
+        entries.sort(key=lambda x: (not x[1], x[0].lower()))
+
+        for name, is_dir, size, mod_time, perms, owner in entries:
+            size_str = _format_size(size) if not is_dir and size else ""
+            item_name = QStandardItem(name)
+            # Store is_dir flag in the item itself for later retrieval
+            item_name.setData(is_dir, Qt.UserRole)
+
+            row = [
+                item_name,
+                QStandardItem(size_str),
+                QStandardItem(mod_time),
+                QStandardItem(perms),
+                QStandardItem(owner)
+            ]
+
+            self.details_model.appendRow(row)
+
+    def rename_selected_item(self):
+        """Make the selected file name editable"""
+        indexes = self.details_view.selectionModel().selectedRows()
+        if not indexes:
+            return
+
+        index = indexes[0]  # Only rename the first selected item
+        name_item = self.details_model.item(index.row(), 0)
+
+        self._rename_old_name = name_item.text()  # Record old name
+        name_item.setEditable(True)
+
+        self.details_view.edit(index)
+
+    def _on_data_changed(self, topLeft, bottomRight, roles):
+        """Fired when the user finishes editing"""
+        if roles and Qt.EditRole not in roles:
+            return
+
+        if topLeft.column() != 0:
+            return
+
+        new_name = self.details_model.item(topLeft.row(), 0).text()
+        old_name = self._rename_old_name
+
+        if new_name != old_name:
+            self.apply_rename(old_name, new_name)
+
+        self.details_model.item(topLeft.row(), 0).setEditable(False)
+        self._rename_old_name = None
+
+    def apply_rename(self, old_name, new_name):
+        print(f"Rename: {old_name} -> {new_name}")
+        self.action_triggered.emit("rename", old_name, False, new_name)
+        self.details_view.clearSelection()
+
+# ---------------- FileExplorer ----------------
+
+
+class FileExplorer(QWidget):
+    selected = pyqtSignal(dict)
+    # action type , path , copy_to path , cut?
+    file_action = pyqtSignal(str, object, str, bool)
+    upload_file = pyqtSignal(str, str)  # Source path , Target path
+    refresh_action = pyqtSignal()
+
+    def __init__(self, parent=None, path=None, icons=None):
+        super().__init__(parent)
+        self.view_mode = "icon"  # "icon" or "details"
+        self.copy_file_path = None
+        self.cut_ = False
+        self.icons = icons
+        self.path = path
+
+        # Icon view
+        self.scroll_area = ScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.container = QWidget()
+        self.flow_layout = FlowLayout(self.container)
+        self.container.setLayout(self.flow_layout)
+        self.scroll_area.setWidget(self.container)
+
+        # detaile
+        self.details = DetailItem(self)
+        self.details.action_triggered.connect(
+            lambda type_, name, is_dir, new_name: self._handle_file_action(type_, name, is_dir, new_name=new_name))
+
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(self.scroll_area)
-        main_layout.addWidget(self.details_view)
+        main_layout.addWidget(self.details.details_view)
         self.setLayout(main_layout)
         self.selected_items = set()
         self.rubberBand = QRubberBand(QRubberBand.Rectangle, self)
@@ -345,13 +606,10 @@ class FileExplorer(QWidget):
         self.start_pos = None
         self.setMouseTracking(True)
         self.setAcceptDrops(True)
-        self.paste = Action(FIF.PASTE, self.tr("Paste"))
-        self.paste.triggered.connect(
-            lambda: self._handle_file_action("paste", "", ""))
-        self.make_dir = Action(FIF.FOLDER_ADD, self.tr("New Folder"))
-        self.make_dir.triggered.connect(self._handle_mkdir)
+
         # self.make_dir.triggered.connect(
         #     lambda: self._handle_file_action("mkdir", "", ""))
+        self._init_actions()
 
     def _handle_mkdir(self):
         """Create a new folder placeholder and enter rename mode."""
@@ -380,11 +638,11 @@ class FileExplorer(QWidget):
         if view_type == "icon":
             self.view_mode = "icon"
             self.scroll_area.setVisible(True)
-            self.details_view.setVisible(False)
+            self.details.details_view.setVisible(False)
         elif view_type == "details":
             self.view_mode = "details"
             self.scroll_area.setVisible(False)
-            self.details_view.setVisible(True)
+            self.details.details_view.setVisible(True)
         # Refresh the view with current files
         self.refresh_action.emit()
 
@@ -399,7 +657,7 @@ class FileExplorer(QWidget):
         if self.view_mode == "icon":
             self._add_files_to_icon_view(files, clear_old)
         else:
-            self._add_files_to_details_view(files, clear_old)
+            self.details._add_files_to_details_view(files, clear_old)
 
     def _add_files_to_icon_view(self, files, clear_old=True):
         self.container.setUpdatesEnabled(False)
@@ -410,7 +668,7 @@ class FileExplorer(QWidget):
                     item.widget().deleteLater()
             self.selected_items.clear()
 
-        entries = self._normalize_files_data(files)
+        entries = _normalize_files_data(files)
         entries.sort(key=lambda x: (not x[1], x[0].lower()))
 
         for name, is_dir, *_ in entries:
@@ -431,74 +689,6 @@ class FileExplorer(QWidget):
         self.container.setUpdatesEnabled(True)
         self.container.update()
 
-    def _add_files_to_details_view(self, files, clear_old=True):
-        self.details_model.setRowCount(0)
-        entries = self._normalize_files_data(files)
-        # Sort by name, with directories first
-        entries.sort(key=lambda x: (not x[1], x[0].lower()))
-
-        for name, is_dir, size, mod_time, perms, owner in entries:
-            size_str = self._format_size(size) if not is_dir and size else ""
-            item_name = QStandardItem(name)
-            # Store is_dir flag in the item itself for later retrieval
-            item_name.setData(is_dir, Qt.UserRole)
-
-            row = [
-                item_name,
-                QStandardItem(size_str),
-                QStandardItem(mod_time),
-                QStandardItem(perms),
-                QStandardItem(owner)
-            ]
-            self.details_model.appendRow(row)
-
-    def _format_size(self, size_bytes):
-        """Format size in bytes to a human-readable string."""
-        if not size_bytes:
-            return ""
-        try:
-            size_bytes = int(size_bytes)
-            if size_bytes == 0:
-                return "0 B"
-            size_names = ("B", "KB", "MB", "GB", "TB")
-            i = 0
-            while size_bytes >= 1024 and i < len(size_names) - 1:
-                size_bytes /= 1024.0
-                i += 1
-            return f"{round(size_bytes, 2)} {size_names[i]}"
-        except (ValueError, TypeError):
-            return str(size_bytes)
-
-    def _normalize_files_data(self, files):
-        """Normalize different input formats to a standard list of tuples."""
-        entries = []
-        if not files:
-            return entries
-
-        if isinstance(files, dict):
-            # Assuming dict provides {name: is_dir}
-            for name, val in files.items():
-                is_dir = True if (
-                    val is True or isinstance(val, dict)) else False
-                entries.append(
-                    (str(name), is_dir, '', '', '', ''))
-        elif isinstance(files, (list, tuple)):
-            for entry in files:
-                if isinstance(entry, dict):
-                    name = entry.get("name", "")
-                    is_dir = entry.get("is_dir", False)
-                    size = entry.get("size", 0)
-                    mod_time = entry.get("mtime", "")
-                    perms = entry.get("perms", "")
-                    owner = entry.get("owner", "")
-                    entries.append((name, is_dir, size, mod_time, perms, owner))
-                elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
-                    # Basic ("name", is_dir) provided
-                    name, is_dir = entry[0], bool(entry[1])
-                    entries.append(
-                        (str(name), is_dir, '', '', '', ''))
-        return entries
-
     def select_item(self, item, ctrl=False):
         if ctrl:
             if item in self.selected_items:
@@ -515,65 +705,57 @@ class FileExplorer(QWidget):
             item.selected = True
         item.update()
 
-    def _handle_file_action(self, action_type, file_name, is_dir_str=None, new_name=None):
-        # Case 1: Paste action, operates on clipboard, not selection.
+    def _handle_file_action(self, action_type, file_name, is_dir=None, new_name=None):
+        # try:
+        #     file_name = list(file_name)  # Check if it's iterable
+        #     if not len(file_name) > 1:
+        #         KeyError
+        #     full_path = []
+        #     more_than_one = True
+        # except Exception:
+        #     more_than_one = False
+        full_path = []
+        if isinstance(file_name, list):
+            for name in file_name:
+                full_path_ = self._get_full_path(name)
+                full_path.append(full_path_)
+        else:
+            full_path = self._get_full_path(file_name)
+
+        # Only for detail mode
+        if action_type == "open":
+            self.selected.emit({file_name: is_dir})
+
         if action_type == "paste":
             if self.copy_file_path:  # A list of paths copied/cut earlier
-                self.file_action.emit(
-                    action_type, self.copy_file_path, self.path, self.cut_)
-                if self.cut_:
-                    self.cut_ = False
-                    self.copy_file_path = []  # Reset after paste
+                if isinstance(self.copy_file_path, list):
+                    for path in self.copy_file_path:
+                        self.file_action.emit(
+                            action_type, path, self.path, self.cut_)
+                else:
+                    self.file_action.emit(
+                        action_type, self.copy_file_path, self.path, self.cut_)
+
+                self.cut_ = False
+                self.copy_file_path = []  # Reset after paste
             return
 
-        # Case 2: Single-path, single-target actions.
         if action_type in ["rename", "mkdir"]:
-            full_path = self._get_full_path(file_name)
+            full_path = full_path
             if action_type == "rename" and new_name:
                 self.file_action.emit(action_type, full_path, new_name, False)
             elif action_type == "mkdir" and file_name:
                 self.file_action.emit(action_type, full_path, "", False)
             return
-
-        # Case 3: Actions that can operate on single or multiple items.
-        # First, determine the definitive list of target paths based on selection.
-        paths = []
-        if self.view_mode == 'icon' and self.selected_items:
-            # Use selected_items if any are selected in icon view
-            paths = [self._get_full_path(item.name)
-                     for item in self.selected_items]
-        elif self.view_mode == 'details' and self.details_view.selectionModel().hasSelection():
-            # Use selectionModel in details view
-            paths = [self._get_full_path(self.details_model.item(index.row(), 0).text())
-                     for index in self.details_view.selectionModel().selectedRows()]
-        elif file_name:
-            # Fallback to the single item that triggered the action if no selection is detected
-            paths = [self._get_full_path(file_name)]
-
-        if not paths:
-            return  # No valid target for the action
-
-        # Now, process the action for the determined list of paths.
+        print(action_type, full_path, new_name, )
         if action_type == "copy":
-            self.copy_file_path = paths
+            self.copy_file_path = full_path
             self.cut_ = False
         elif action_type == "cut":
-            self.copy_file_path = paths
+            self.copy_file_path = full_path
             self.cut_ = True
         else:  # Covers "delete", "download", "info", "copy_path", etc.
-            self.file_action.emit(action_type, paths, "", False)
-
-    # ---------------- Box selection logic ----------------
-
-    def _handle_details_view_double_click(self, index):
-        if not index.isValid():
-            return
-
-        name_item = self.details_model.item(index.row(), 0)
-        file_name = name_item.text()
-        is_dir = name_item.data(Qt.UserRole)
-        self.selected.emit({file_name: is_dir})
-        print(f"Double-click to open from details view: {file_name}")
+            self.file_action.emit(action_type, full_path, "", False)
 
     def _show_details_view_context_menu(self, pos):
         index = self.details_view.indexAt(pos)
@@ -598,11 +780,11 @@ class FileExplorer(QWidget):
 
         # Create a temporary FileItem to generate and show the context menu
         # This reuses the menu logic and now _emit_action handles multi-select
-        temp_item = FileItem(
-            file_name, is_dir, explorer=self, icons=self.icons)
-        # Connect the signal from the temporary item to the actual handler
-        temp_item.action_triggered.connect(self._handle_file_action)
-        menu = temp_item._create_context_menu()
+        # temp_item = FileItem(
+        #     file_name, is_dir, explorer=self, icons=self.icons)
+        # # Connect the signal from the temporary item to the actual handler
+        # temp_item.action_triggered.connect(self._handle_file_action)
+        menu = self.details_context_menu()
         menu.exec_(self.details_view.viewport().mapToGlobal(pos))
 
     def mousePressEvent(self, event):
@@ -668,28 +850,37 @@ class FileExplorer(QWidget):
             self.upload_file.emit(path, self.path)
         event.acceptProposedAction()
 
-    def _create_general_context_menu(self):
-        """Creates the context menu for empty space."""
-        menu = RoundMenu(parent=self)
-        refresh_action = Action(FIF.UPDATE, self.tr('Refresh the page'))
-        details_view_action = Action(FIF.VIEW, self.tr('Details View'))
-        icon_view_action = Action(FIF.APPLICATION, self.tr('Icon View'))
+    def _init_actions(self):
+        self.refreshaction = Action(FIF.UPDATE, self.tr('Refresh the page'))
+        self.details_view_action = Action(FIF.VIEW, self.tr('Details View'))
+        self.icon_view_action = Action(FIF.APPLICATION, self.tr('Icon View'))
+        self.paste = Action(FIF.PASTE, self.tr("Paste"))
+        self.make_dir = Action(FIF.FOLDER_ADD, self.tr("New Folder"))
 
-        refresh_action.triggered.connect(lambda: self.refresh_action.emit())
-        details_view_action.triggered.connect(
+        self.refreshaction.triggered.connect(
+            lambda: self.refresh_action.emit())
+        self.details_view_action.triggered.connect(
             lambda: self.switch_view("details"))
-        icon_view_action.triggered.connect(lambda: self.switch_view("icon"))
+        self.icon_view_action.triggered.connect(
+            lambda: self.switch_view("icon"))
+        self.paste.triggered.connect(
+            lambda: self._handle_file_action("paste", "", ""))
+        self.make_dir.triggered.connect(self._handle_mkdir)
 
-        menu.addActions([refresh_action, self.paste, self.make_dir])
+    def _get_menus(self):
+        menu = RoundMenu(parent=self)
+        menu.addActions(
+            [self.refreshaction, self.paste, self.make_dir])
         menu.addSeparator()
-        menu.addActions([details_view_action, icon_view_action])
+        menu.addActions(
+            [self.details_view_action, self.icon_view_action])
         return menu
 
     def contextMenuEvent(self, e):
         # This event now only handles the icon view's empty space.
         # Details view empty space is handled in _show_details_view_context_menu.
         if self.view_mode == 'icon':
-            menu = self._create_general_context_menu()
+            menu = self._get_menus()
             menu.exec_(e.globalPos())
 
     def _get_full_path(self, file_name):
@@ -707,9 +898,7 @@ class FileExplorer(QWidget):
             if self.view_mode == 'icon' and len(self.selected_items) == 1:
                 item = list(self.selected_items)[0]
                 item._start_rename()
-            elif self.view_mode == 'details' and len(self.details_view.selectionModel().selectedRows()) == 1:
-                # This part is complex because FileItem handles the LineEdit.
-                # A more robust solution would be needed to trigger rename from here.
-                print("F2 rename in details view needs a dedicated implementation.")
+            elif self.view_mode == 'details' and len(self.details.details_view.selectionModel().selectedRows()) == 1:
+                self.details.rename_selected_item()
         else:
             super().keyPressEvent(event)

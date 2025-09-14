@@ -228,9 +228,9 @@ class Widget(QWidget):
 
         try:
             self.file_explorer.add_files(file_dict)
-            # self.file_manager._add_path_to_tree(path, False)
-            # file_tree = self.file_manager.get_file_tree()
-            # self.disk_storage.refresh_tree(file_tree)
+        # self.file_manager._add_path_to_tree(path, False)
+        # file_tree = self.file_manager.get_file_tree()
+        # self.disk_storage.refresh_tree(file_tree)
         except Exception as e:
             print(f"_on_list_dir_finished error: {e}")
 

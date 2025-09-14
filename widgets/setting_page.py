@@ -486,7 +486,7 @@ class SettingPage(ScrollArea):
             icon=FluentIcon.VIEW,
             title=self.tr("Default file manager view"),
             content=self.tr("Set the default view of the file manager"),
-            texts=["Icon", "Info"]
+            texts=[self.tr("Icon"), self.tr("Info")]
         )
         self.default_view_card.comboBox.currentIndexChanged.connect(
             self._on_default_view_changed)
