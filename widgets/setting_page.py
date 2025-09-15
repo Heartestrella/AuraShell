@@ -1,19 +1,18 @@
 # setting_page.py
 import logging
-
 from PyQt5.QtCore import Qt, pyqtSignal, QCoreApplication
-from PyQt5.QtGui import QFontDatabase, QFont, QColor, QPalette, QKeySequence
+from PyQt5.QtGui import QFontDatabase, QFont, QColor, QPalette, QKeySequence, QIntValidator
 from PyQt5.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout,
     QListWidget, QListWidgetItem, QLabel, QPushButton, QShortcut,
-    QSizePolicy, QFrame, QFileDialog
+    QSizePolicy, QFrame, QFileDialog, QSpinBox, QSlider
 )
 
 from qfluentwidgets import (
     FluentIcon, ComboBoxSettingCard, OptionsConfigItem, SearchLineEdit, ScrollArea,
     SwitchSettingCard, PushSettingCard, QConfig, InfoBar, InfoBarPosition,
     LineEdit, RangeConfigItem, RangeValidator, RangeSettingCard,
-    OptionsValidator, ColorDialog
+    OptionsValidator, ColorDialog, SettingCard
 )
 
 from tools.font_config import font_config
@@ -509,25 +508,35 @@ class SettingPage(ScrollArea):
         self.unbelievable_button.clicked.connect(self._unbelievable)
         layout.addWidget(self.unbelievable_button)
 
+        # Create a custom setting card with a LineEdit for direct input
+        self.transfer_card = SettingCard(
+            FluentIcon.SPEED_HIGH,
+            self.tr("Max Concurrent Transfers"),
+            self.tr("Set the maximum number of concurrent uploads/downloads (must be > 0)")
+        )
+        self.transfer_edit = LineEdit(self.transfer_card)
+        self.transfer_edit.setValidator(QIntValidator(1, 2147483647))
+        self.transfer_edit.setFixedWidth(150)
+        self.transfer_edit.editingFinished.connect(self._save_transfer_value_from_edit)
+        self.transfer_card.hBoxLayout.addWidget(self.transfer_edit, 0, Qt.AlignRight)
+        layout.addWidget(self.transfer_card)
+
         self._restore_saved_settings()
 
     def _save_opacity_value(self, value: int):
         configer.revise_config("background_opacity", value)
 
+    def _save_transfer_value_from_edit(self):
+        text = self.transfer_edit.text()
+        if text.isdigit():
+            value = int(text)
+            if value > 0:
+                configer.revise_config("max_concurrent_transfers", value)
+
     def _on_default_view_changed(self, index: int):
         view_map = {0: ("icon", "图标"), 1: ("details", "详情")}
         value_to_save, display_name = view_map.get(index, ("icon", "图标"))
-
         configer.revise_config("default_view", value_to_save)
-        InfoBar.success(
-            title="设置已保存",
-            content=f"默认视图已设置为 {display_name}",
-            orient=Qt.Horizontal,
-            isClosable=True,
-            position=InfoBarPosition.TOP_RIGHT,
-            duration=2000,
-            parent=self
-        )
 
     def _unbelievable(self):
         InfoBar.error(
@@ -596,6 +605,7 @@ class SettingPage(ScrollArea):
         self.opacityEdit.setValue(self.config["background_opacity"])
         self.cfg.default_view.value = "Icon" if self.config.get(
             "default_view", "icon") == "icon" else "Info"
+        self.transfer_edit.setText(str(self.config.get("max_concurrent_transfers", 4)))
         # Achieve results
         self._lock_ratio = self.config["locked_ratio"]
         self._restore_background_opacity(self.config["background_opacity"])
@@ -682,3 +692,4 @@ class SettingPage(ScrollArea):
 
     def _restart(self):
         pass
+

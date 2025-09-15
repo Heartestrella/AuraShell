@@ -1,6 +1,6 @@
 
 from PyQt5.QtWidgets import (QApplication, QWidget, QLayout, QSizePolicy, QFileDialog,
-                             QRubberBand,  QVBoxLayout, QTableView, QHeaderView)
+                             QRubberBand,  QVBoxLayout, QTableView, QHeaderView, QAbstractItemDelegate)
 from PyQt5.QtGui import QFont, QPainter, QColor, QStandardItemModel, QStandardItem
 from PyQt5.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
 from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit, ScrollArea, TableView
@@ -117,6 +117,54 @@ class FlowLayout(QLayout):
             lineHeight = max(lineHeight, wid.sizeHint().height())
         return y + lineHeight - rect.y()
 
+class FileActionsManager:
+    """Manages the creation and connection of file operation actions."""
+
+    def __init__(self, action_emitter, rename_handler, action_factory):
+        """
+        Initializes the action manager.
+
+        Args:
+            action_emitter (callable): A function to call when an action is triggered.
+                                     It should accept action_type and an optional parameter.
+            rename_handler (callable): A specific function to call for the rename action.
+            action_factory (callable): A function that returns a dictionary of new QActions.
+        """
+        self.actions = action_factory()
+        self.copy = self.actions["copy"]
+        self.delete = self.actions["delete"]
+        self.cut = self.actions["cut"]
+        self.download = self.actions["download"]
+        self.download_compression = self.actions["download_compression"]
+        self.copy_path = self.actions["copy_path"]
+        self.info = self.actions["info"]
+        self.rename = self.actions["rename"]
+
+        self.copy.triggered.connect(lambda: action_emitter('copy'))
+        self.delete.triggered.connect(lambda: action_emitter('delete'))
+        self.cut.triggered.connect(lambda: action_emitter('cut'))
+        self.download.triggered.connect(lambda: action_emitter('download'))
+        self.download_compression.triggered.connect(
+            lambda: action_emitter('download', True))
+        self.copy_path.triggered.connect(
+            lambda: action_emitter('copy_path'))
+        self.info.triggered.connect(lambda: action_emitter('info'))
+        self.rename.triggered.connect(rename_handler)
+
+    def get_all_actions(self):
+        """Returns a list of all managed actions for menu creation."""
+        return [
+            self.copy,
+            self.cut,
+            self.delete,
+            self.download,
+            self.download_compression,
+            self.copy_path,
+            self.info,
+            self.rename
+        ]
+
+
 # ---------------- FileItem ----------------
 
 # Icons mode
@@ -223,45 +271,16 @@ class FileItem(QWidget):
             print(f"Double-click to open: {self.name}")
 
     def _init_actions(self):
-        self.copy_action = Action(FIF.COPY, self.tr("Copy"))
-        self.delete_action = Action(FIF.DELETE, self.tr("Delete"))
-        self.cut_action = Action(FIF.CUT, self.tr("Cut"))
-        self.download_action = Action(FIF.DOWNLOAD, self.tr("Download"))
-        self.download_compression_action = Action(
-            FIF.DOWNLOAD, self.tr("Download (compression)")
+        self.actions_manager = FileActionsManager(
+            action_emitter=self._emit_action,
+            rename_handler=self._start_rename,
+            action_factory=self.parent_explorer._create_file_op_actions
         )
-        self.copy_path_action = Action(FIF.FLAG, self.tr("Copy Path"))
-        self.file_info_action = Action(FIF.INFO, self.tr("File Info"))
-        self.renameaction = Action(FIF.LABEL, self.tr("Rename"))
-
-        self.copy_action.triggered.connect(lambda: self._emit_action('copy'))
-        self.delete_action.triggered.connect(
-            lambda: self._emit_action('delete'))
-        self.cut_action.triggered.connect(lambda: self._emit_action('cut'))
-        self.download_action.triggered.connect(
-            lambda: self._emit_action('download'))
-        self.download_compression_action.triggered.connect(
-            lambda: self._emit_action('download', True))
-        self.copy_path_action.triggered.connect(
-            lambda: self._emit_action('copy_path'))
-        self.file_info_action.triggered.connect(
-            lambda: self._emit_action('info'))
-        self.renameaction.triggered.connect(
-            lambda: self._emit_action('rename'))
 
     def _create_context_menu(self):
         """Creates and returns the context menu for the file item."""
         menu = RoundMenu(parent=self)
-        menu.addActions([
-            self.copy_action,
-            self.cut_action,
-            self.delete_action,
-            self.download_action,
-            self.download_compression_action,
-            self.copy_path_action,
-            self.file_info_action,
-            self.renameaction
-        ])
+        menu.addActions(self.actions_manager.get_all_actions())
         return menu
 
     def contextMenuEvent(self, e):
@@ -346,7 +365,7 @@ class DetailItem(QWidget):
         self.details_view.setContextMenuPolicy(Qt.CustomContextMenu)
 
         self.details_view.customContextMenuRequested.connect(
-            self._on_row_right_click)
+            self._show_context_menu)
         self.details_view.doubleClicked.connect(
             self._on_row_double_click)
         self.details_view.verticalHeader().setVisible(False)
@@ -407,9 +426,17 @@ class DetailItem(QWidget):
                 }
             """)
 
-        self._init_details_actions()
+        self.actions_manager = FileActionsManager(
+            action_emitter=self._emit_action,
+            rename_handler=self.rename_selected_item,
+            action_factory=self.parent()._create_file_op_actions
+        )
         self.details_model.dataChanged.connect(self._on_data_changed)
         self._rename_old_name = None
+        self.is_mkdir = False
+        self._editing_index = None
+        self.details_view.itemDelegate().closeEditor.connect(
+            lambda editor, hint: self._on_editor_closed(editor, hint))
 
     def _emit_action(self, action_type, parameter=None):
         indexes = self.details_view.selectionModel().selectedRows()
@@ -448,11 +475,17 @@ class DetailItem(QWidget):
         self.action_triggered.emit("open", file_name, is_dir, "")
         print(file_name, "mode", is_dir)
 
-    def _on_row_right_click(self, pos):
+    def _show_context_menu(self, pos):
         index = self.details_view.indexAt(pos)
-        if not index.isValid():
-            return
+        if index.isValid():
+            self._show_item_context_menu(pos, index)
+        else:
+            # Show the general context menu for blank areas, provided by the parent
+            menu = self.parent()._get_menus()
+            menu.exec_(self.details_view.viewport().mapToGlobal(pos))
 
+    def _show_item_context_menu(self, pos, index):
+        """Show context menu for a specific item in the details view."""
         selection_model = self.details_view.selectionModel()
 
         if not selection_model.isSelected(index):
@@ -465,81 +498,10 @@ class DetailItem(QWidget):
         menu = self._get_details_menus()
         menu.exec_(self.details_view.viewport().mapToGlobal(pos))
 
-    def _init_details_actions(self):
-        self.details_copy_action = Action(FIF.COPY, self.tr("Copy"))
-        self.details_delete_action = Action(FIF.DELETE, self.tr("Delete"))
-        self.details_cut_action = Action(FIF.CUT, self.tr("Cut"))
-        self.details_download_action = Action(
-            FIF.DOWNLOAD, self.tr("Download"))
-        self.details_download_compression_action = Action(
-            FIF.DOWNLOAD, self.tr("Download (compression)")
-        )
-        self.details_copy_path = Action(FIF.FLAG, self.tr("Copy Path"))
-        self.details_file_info = Action(FIF.INFO, self.tr("File Info"))
-        self.details_rename = Action(FIF.LABEL, self.tr("Rename"))
-
-        self.details_copy_action.triggered.connect(
-            lambda: self._emit_action('copy'))
-        self.details_cut_action.triggered.connect(
-            lambda: self._emit_action('cut'))
-        self.details_delete_action.triggered.connect(
-            lambda: self._emit_action('delete'))
-        self.details_download_action.triggered.connect(
-            lambda: self._emit_action('download'))
-        self.details_download_compression_action.triggered.connect(
-            lambda: self._emit_action('download', True))
-        self.details_copy_path.triggered.connect(
-            lambda: self._emit_action('copy_path'))
-        self.details_file_info.triggered.connect(
-            lambda: self._emit_action('info'))
-        self.details_rename.triggered.connect(self.rename_selected_item)
-
-        # General actions Because the general menu cannot be called up when the object is full
-
-        self.refreshaction = Action(FIF.UPDATE, self.tr('Refresh the page'))
-        self.details_view_action = Action(FIF.VIEW, self.tr('Details View'))
-        self.icon_view_action = Action(FIF.APPLICATION, self.tr('Icon View'))
-        self.paste = Action(FIF.PASTE, self.tr("Paste"))
-        self.make_dir = Action(FIF.FOLDER_ADD, self.tr("New Folder"))
-        self.uploads = Action(FIF.UP, self.tr("Upload files(compression)"))
-        self.upload = Action(FIF.UP, self.tr("Upload files"))
-        self.refreshaction.triggered.connect(
-            lambda: getattr(self.parent(), 'refresh', lambda: None)()
-        )
-        self.details_view_action.triggered.connect(
-            lambda: getattr(self.parent(), 'switch_view',
-                            lambda x: None)('details')
-        )
-        self.icon_view_action.triggered.connect(
-            lambda: getattr(self.parent(), 'switch_view',
-                            lambda x: None)('icon')
-        )
-        self.paste.triggered.connect(
-            lambda: getattr(self.parent(), 'handle_file_action',
-                            lambda a, b, c: None)('paste', '', '')
-        )
-        self.make_dir.triggered.connect(
-            lambda: getattr(self.parent(), 'handle_mkdir', lambda: None)()
-        )
-        self.uploads.triggered.connect(
-            lambda: getattr(self.parent(), '_pick_upload_files',
-                            lambda a, b, c: None)(True)
-        )
-        self.upload.triggered.connect(
-            lambda: getattr(self.parent(), '_pick_upload_files',
-                            lambda a, b, c: None)(False)
-        )
 
     def _get_details_menus(self):
         menu = RoundMenu(parent=self)
-        menu.addActions([self.details_copy_action, self.details_cut_action,
-                         self.details_delete_action, self.details_download_action, self.details_download_compression_action,
-                         self.details_copy_path, self.details_file_info, self.details_rename])
-        menu.addSeparator()
-        menu.addActions([self.paste, self.make_dir, self.refreshaction, self.uploads, self.upload,
-                         ])
-        menu.addSeparator()
-        menu.addActions([self.details_view_action, self.icon_view_action])
+        menu.addActions(self.actions_manager.get_all_actions())
         return menu
 
     def _add_files_to_details_view(self, files, clear_old=True):
@@ -574,6 +536,7 @@ class DetailItem(QWidget):
         name_item = self.details_model.item(index.row(), 0)
 
         self._rename_old_name = name_item.text()  # Record old name
+        self._editing_index = index
         name_item.setEditable(True)
 
         self.details_view.edit(index)
@@ -586,19 +549,74 @@ class DetailItem(QWidget):
         if topLeft.column() != 0:
             return
 
-        new_name = self.details_model.item(topLeft.row(), 0).text()
+        row = topLeft.row()
+        model = self.details_model
+        item = model.item(row, 0)
+        if not item:
+            return
+
+        new_name = item.text().strip()
         old_name = self._rename_old_name
 
-        if new_name != old_name:
-            self.apply_rename(old_name, new_name)
-
-        self.details_model.item(topLeft.row(), 0).setEditable(False)
+        # Always finish editing first
+        item.setEditable(False)
         self._rename_old_name = None
 
-    def apply_rename(self, old_name, new_name):
+        if self.is_mkdir:
+            self.is_mkdir = False
+            model.removeRow(row)
+            if new_name:
+                self.action_triggered.emit("mkdir", new_name, True, "")
+        elif old_name and new_name and new_name != old_name:
+            is_dir = item.data(Qt.UserRole)
+            self.apply_rename(old_name, new_name, is_dir)
+
+    def apply_rename(self, old_name, new_name, is_dir):
         print(f"Rename: {old_name} -> {new_name}")
-        self.action_triggered.emit("rename", old_name, False, new_name)
+        self.action_triggered.emit("rename", old_name, is_dir, new_name)
         self.details_view.clearSelection()
+
+    def _on_editor_closed(self, editor, hint):
+        """Handle editor closing, for mkdir when name is not changed."""
+        if not self._editing_index or not self.is_mkdir:
+            return
+
+        index_row = self._editing_index.row()
+        self._editing_index = None  # Reset
+
+        # On cancel (ESC)
+        if hint == QAbstractItemDelegate.RevertModelCache:
+            self.details_model.removeRow(index_row)
+            self.is_mkdir = False
+            return
+
+        # Handle submit when name is unchanged (dataChanged won't fire)
+        item = self.details_model.item(index_row, 0)
+        if not item:
+            return
+
+        new_name = editor.text().strip()
+        old_name = item.text()
+
+        if new_name == old_name:
+            self.details_model.removeRow(index_row)
+            self.is_mkdir = False
+            if new_name:
+                self.action_triggered.emit("mkdir", new_name, True, "")
+
+    def _show_general_context_menu_on_blank(self, pos):
+        """Show general context menu when clicking on a blank area of the details view."""
+        # Check if the click is on an item. If so, do nothing.
+        if self.details_view.indexAt(pos).isValid():
+            return
+
+        menu = RoundMenu(parent=self)
+        menu.addActions([
+            self.paste, self.make_dir, self.refreshaction, self.uploads, self.upload,
+        ])
+        menu.addSeparator()
+        menu.addActions([self.details_view_action, self.icon_view_action])
+        menu.exec_(self.details_view.viewport().mapToGlobal(pos))
 
 # ---------------- FileExplorer ----------------
 
@@ -650,25 +668,82 @@ class FileExplorer(QWidget):
 
     def _handle_mkdir(self):
         """Create a new folder placeholder and enter rename mode."""
-        new_folder_name = "New Folder"
+        new_folder_name = "NewFolder"
 
-        # Make sure the name is unique to prevent existing folders with the same name
-        existing_names = {self.flow_layout.itemAt(
-            i).widget().name for i in range(self.flow_layout.count())}
-        counter = 1
-        candidate_name = new_folder_name
-        while candidate_name in existing_names:
-            candidate_name = f"{new_folder_name} ({counter})"
-            counter += 1
+        if self.view_mode == "icon":
+            existing_names = {self.flow_layout.itemAt(
+                i).widget().name for i in range(self.flow_layout.count())}
+            counter = 1
+            candidate_name = new_folder_name
+            while candidate_name in existing_names:
+                candidate_name = f"{new_folder_name} ({counter})"
+                counter += 1
 
-        self.add_files([(candidate_name, True)], clear_old=False)
+            self.add_files([(candidate_name, True)], clear_old=False)
 
-        new_item = self.flow_layout.itemAt(
-            self.flow_layout.count() - 1).widget()
+            new_item = self.flow_layout.itemAt(
+                self.flow_layout.count() - 1).widget()
 
-        self.select_item(new_item)
-        new_item.mkdir = True
-        new_item._start_rename()
+            self.select_item(new_item)
+            new_item.mkdir = True
+            new_item._start_rename()
+        else:  # Details view
+            model = self.details.details_model
+            existing_names = {model.item(
+                i, 0).text() for i in range(model.rowCount())}
+            counter = 1
+            candidate_name = new_folder_name
+            while candidate_name in existing_names:
+                candidate_name = f"{new_folder_name} ({counter})"
+                counter += 1
+
+            item_name = QStandardItem(candidate_name)
+            item_name.setData(True, Qt.UserRole)  # is_dir = True
+
+            row_items = [
+                item_name, QStandardItem(""), QStandardItem(""),
+                QStandardItem(""), QStandardItem("")
+            ]
+
+            # Maintain sort order: insert at the correct position
+            entries = []
+            for r in range(model.rowCount()):
+                name = model.item(r, 0).text()
+                is_dir = model.item(r, 0).data(Qt.UserRole)
+                entries.append((name, is_dir))
+
+            entries.append((candidate_name, True))
+            entries.sort(key=lambda x: (not x[1], x[0].lower()))
+            new_row_index = entries.index((candidate_name, True))
+
+            model.insertRow(new_row_index, row_items)
+            new_item_index = model.index(new_row_index, 0)
+
+            # Select and scroll to the new item
+            selection_model = self.details.details_view.selectionModel()
+            selection_model.clearSelection()
+            selection_model.select(
+                new_item_index, selection_model.Select | selection_model.Rows)
+            self.details.details_view.scrollTo(new_item_index)
+
+            # Start the renaming process
+            self.details.is_mkdir = True
+            self.details.rename_selected_item()
+
+    def _create_file_op_actions(self):
+        """Creates a dictionary of file operation actions."""
+        return {
+            "copy": Action(FIF.COPY, self.tr("Copy")),
+            "delete": Action(FIF.DELETE, self.tr("Delete")),
+            "cut": Action(FIF.CUT, self.tr("Cut")),
+            "download": Action(FIF.DOWNLOAD, self.tr("Download")),
+            "download_compression": Action(
+                FIF.DOWNLOAD, self.tr("Download (compression)")
+            ),
+            "copy_path": Action(FIF.FLAG, self.tr("Copy Path")),
+            "info": Action(FIF.INFO, self.tr("File Info")),
+            "rename": Action(FIF.LABEL, self.tr("Rename")),
+        }
 
     def switch_view(self, view_type):
         """Switch between icon and details view."""
@@ -937,9 +1012,21 @@ class FileExplorer(QWidget):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Delete:
-            # Call the handler directly. Pass a dummy file_name as it will be ignored
-            # in multi-select scenarios and is not needed for single-select delete.
-            self._handle_file_action('delete', '')
+            selected_names = []
+            if self.view_mode == 'icon':
+                if not self.selected_items:
+                    return
+                selected_names = [item.name for item in self.selected_items]
+
+            elif self.view_mode == 'details':
+                indexes = self.details.details_view.selectionModel().selectedRows()
+                if not indexes:
+                    return
+                selected_names = [self.details.details_model.item(
+                    index.row(), 0).text() for index in indexes]
+
+            if selected_names:
+                self._handle_file_action('delete', selected_names, False, None)
 
         elif event.key() == Qt.Key_F2:
             # F2 rename should only work for a single selection
