@@ -433,6 +433,7 @@ class DetailItem(QWidget):
         )
         self.details_model.dataChanged.connect(self._on_data_changed)
         self._rename_old_name = None
+        self.is_mkdir = False
 
     def _emit_action(self, action_type, parameter=None):
         indexes = self.details_view.selectionModel().selectedRows()
@@ -544,18 +545,31 @@ class DetailItem(QWidget):
         if topLeft.column() != 0:
             return
 
-        new_name = self.details_model.item(topLeft.row(), 0).text()
+        row = topLeft.row()
+        model = self.details_model
+        item = model.item(row, 0)
+        if not item:
+            return
+
+        new_name = item.text().strip()
         old_name = self._rename_old_name
 
-        if new_name != old_name:
-            self.apply_rename(old_name, new_name)
-
-        self.details_model.item(topLeft.row(), 0).setEditable(False)
+        # Always finish editing first
+        item.setEditable(False)
         self._rename_old_name = None
 
-    def apply_rename(self, old_name, new_name):
+        if self.is_mkdir:
+            self.is_mkdir = False
+            model.removeRow(row)
+            if new_name:
+                self.action_triggered.emit("mkdir", new_name, True, "")
+        elif old_name and new_name and new_name != old_name:
+            is_dir = item.data(Qt.UserRole)
+            self.apply_rename(old_name, new_name, is_dir)
+
+    def apply_rename(self, old_name, new_name, is_dir):
         print(f"Rename: {old_name} -> {new_name}")
-        self.action_triggered.emit("rename", old_name, False, new_name)
+        self.action_triggered.emit("rename", old_name, is_dir, new_name)
         self.details_view.clearSelection()
 
     def _show_general_context_menu_on_blank(self, pos):
@@ -624,23 +638,65 @@ class FileExplorer(QWidget):
         """Create a new folder placeholder and enter rename mode."""
         new_folder_name = "NewFolder"
 
-        # Make sure the name is unique to prevent existing folders with the same name
-        existing_names = {self.flow_layout.itemAt(
-            i).widget().name for i in range(self.flow_layout.count())}
-        counter = 1
-        candidate_name = new_folder_name
-        while candidate_name in existing_names:
-            candidate_name = f"{new_folder_name} ({counter})"
-            counter += 1
+        if self.view_mode == "icon":
+            existing_names = {self.flow_layout.itemAt(
+                i).widget().name for i in range(self.flow_layout.count())}
+            counter = 1
+            candidate_name = new_folder_name
+            while candidate_name in existing_names:
+                candidate_name = f"{new_folder_name} ({counter})"
+                counter += 1
 
-        self.add_files([(candidate_name, True)], clear_old=False)
+            self.add_files([(candidate_name, True)], clear_old=False)
 
-        new_item = self.flow_layout.itemAt(
-            self.flow_layout.count() - 1).widget()
+            new_item = self.flow_layout.itemAt(
+                self.flow_layout.count() - 1).widget()
 
-        self.select_item(new_item)
-        new_item.mkdir = True
-        new_item._start_rename()
+            self.select_item(new_item)
+            new_item.mkdir = True
+            new_item._start_rename()
+        else:  # Details view
+            model = self.details.details_model
+            existing_names = {model.item(
+                i, 0).text() for i in range(model.rowCount())}
+            counter = 1
+            candidate_name = new_folder_name
+            while candidate_name in existing_names:
+                candidate_name = f"{new_folder_name} ({counter})"
+                counter += 1
+
+            item_name = QStandardItem(candidate_name)
+            item_name.setData(True, Qt.UserRole)  # is_dir = True
+
+            row_items = [
+                item_name, QStandardItem(""), QStandardItem(""),
+                QStandardItem(""), QStandardItem("")
+            ]
+
+            # Maintain sort order: insert at the correct position
+            entries = []
+            for r in range(model.rowCount()):
+                name = model.item(r, 0).text()
+                is_dir = model.item(r, 0).data(Qt.UserRole)
+                entries.append((name, is_dir))
+
+            entries.append((candidate_name, True))
+            entries.sort(key=lambda x: (not x[1], x[0].lower()))
+            new_row_index = entries.index((candidate_name, True))
+
+            model.insertRow(new_row_index, row_items)
+            new_item_index = model.index(new_row_index, 0)
+
+            # Select and scroll to the new item
+            selection_model = self.details.details_view.selectionModel()
+            selection_model.clearSelection()
+            selection_model.select(
+                new_item_index, selection_model.Select | selection_model.Rows)
+            self.details.details_view.scrollTo(new_item_index)
+
+            # Start the renaming process
+            self.details.is_mkdir = True
+            self.details.rename_selected_item()
 
     def _create_file_op_actions(self):
         """Creates a dictionary of file operation actions."""
