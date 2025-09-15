@@ -241,6 +241,7 @@ class WebTerminal(QWidget):
     def __init__(self, parent=None, cols=120, rows=30, text_color="white", bg_color="transparent", text_shadow=False, font_name=None, user_name=None):
         super().__init__(parent)
         self._rows = int(rows)
+        self._cols = cols
         # Means not set color
         if text_color == "white":
             pass
