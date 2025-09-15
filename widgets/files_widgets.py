@@ -117,6 +117,54 @@ class FlowLayout(QLayout):
             lineHeight = max(lineHeight, wid.sizeHint().height())
         return y + lineHeight - rect.y()
 
+class FileActionsManager:
+    """Manages the creation and connection of file operation actions."""
+
+    def __init__(self, action_emitter, rename_handler, action_factory):
+        """
+        Initializes the action manager.
+
+        Args:
+            action_emitter (callable): A function to call when an action is triggered.
+                                     It should accept action_type and an optional parameter.
+            rename_handler (callable): A specific function to call for the rename action.
+            action_factory (callable): A function that returns a dictionary of new QActions.
+        """
+        self.actions = action_factory()
+        self.copy = self.actions["copy"]
+        self.delete = self.actions["delete"]
+        self.cut = self.actions["cut"]
+        self.download = self.actions["download"]
+        self.download_compression = self.actions["download_compression"]
+        self.copy_path = self.actions["copy_path"]
+        self.info = self.actions["info"]
+        self.rename = self.actions["rename"]
+
+        self.copy.triggered.connect(lambda: action_emitter('copy'))
+        self.delete.triggered.connect(lambda: action_emitter('delete'))
+        self.cut.triggered.connect(lambda: action_emitter('cut'))
+        self.download.triggered.connect(lambda: action_emitter('download'))
+        self.download_compression.triggered.connect(
+            lambda: action_emitter('download', True))
+        self.copy_path.triggered.connect(
+            lambda: action_emitter('copy_path'))
+        self.info.triggered.connect(lambda: action_emitter('info'))
+        self.rename.triggered.connect(rename_handler)
+
+    def get_all_actions(self):
+        """Returns a list of all managed actions for menu creation."""
+        return [
+            self.copy,
+            self.cut,
+            self.delete,
+            self.download,
+            self.download_compression,
+            self.copy_path,
+            self.info,
+            self.rename
+        ]
+
+
 # ---------------- FileItem ----------------
 
 # Icons mode
@@ -223,44 +271,16 @@ class FileItem(QWidget):
             print(f"Double-click to open: {self.name}")
 
     def _init_actions(self):
-        actions = self.parent_explorer._create_file_op_actions()
-        self.copy_action = actions["copy"]
-        self.delete_action = actions["delete"]
-        self.cut_action = actions["cut"]
-        self.download_action = actions["download"]
-        self.download_compression_action = actions["download_compression"]
-        self.copy_path_action = actions["copy_path"]
-        self.file_info_action = actions["info"]
-        self.renameaction = actions["rename"]
-
-        self.copy_action.triggered.connect(lambda: self._emit_action('copy'))
-        self.delete_action.triggered.connect(
-            lambda: self._emit_action('delete'))
-        self.cut_action.triggered.connect(lambda: self._emit_action('cut'))
-        self.download_action.triggered.connect(
-            lambda: self._emit_action('download'))
-        self.download_compression_action.triggered.connect(
-            lambda: self._emit_action('download', True))
-        self.copy_path_action.triggered.connect(
-            lambda: self._emit_action('copy_path'))
-        self.file_info_action.triggered.connect(
-            lambda: self._emit_action('info'))
-        self.renameaction.triggered.connect(
-            lambda: self._emit_action('rename'))
+        self.actions_manager = FileActionsManager(
+            action_emitter=self._emit_action,
+            rename_handler=self._start_rename,
+            action_factory=self.parent_explorer._create_file_op_actions
+        )
 
     def _create_context_menu(self):
         """Creates and returns the context menu for the file item."""
         menu = RoundMenu(parent=self)
-        menu.addActions([
-            self.copy_action,
-            self.cut_action,
-            self.delete_action,
-            self.download_action,
-            self.download_compression_action,
-            self.copy_path_action,
-            self.file_info_action,
-            self.renameaction
-        ])
+        menu.addActions(self.actions_manager.get_all_actions())
         return menu
 
     def contextMenuEvent(self, e):
@@ -406,31 +426,11 @@ class DetailItem(QWidget):
                 }
             """)
 
-        actions = self.parent()._create_file_op_actions()
-        self.details_copy_action = actions["copy"]
-        self.details_delete_action = actions["delete"]
-        self.details_cut_action = actions["cut"]
-        self.details_download_action = actions["download"]
-        self.details_download_compression_action = actions["download_compression"]
-        self.details_copy_path = actions["copy_path"]
-        self.details_file_info = actions["info"]
-        self.details_rename = actions["rename"]
-
-        self.details_copy_action.triggered.connect(
-            lambda: self._emit_action('copy'))
-        self.details_cut_action.triggered.connect(
-            lambda: self._emit_action('cut'))
-        self.details_delete_action.triggered.connect(
-            lambda: self._emit_action('delete'))
-        self.details_download_action.triggered.connect(
-            lambda: self._emit_action('download'))
-        self.details_download_compression_action.triggered.connect(
-            lambda: self._emit_action('download', True))
-        self.details_copy_path.triggered.connect(
-            lambda: self._emit_action('copy_path'))
-        self.details_file_info.triggered.connect(
-            lambda: self._emit_action('info'))
-        self.details_rename.triggered.connect(self.rename_selected_item)
+        self.actions_manager = FileActionsManager(
+            action_emitter=self._emit_action,
+            rename_handler=self.rename_selected_item,
+            action_factory=self.parent()._create_file_op_actions
+        )
         self.details_model.dataChanged.connect(self._on_data_changed)
         self._rename_old_name = None
 
@@ -497,9 +497,7 @@ class DetailItem(QWidget):
 
     def _get_details_menus(self):
         menu = RoundMenu(parent=self)
-        menu.addActions([self.details_copy_action, self.details_cut_action,
-                         self.details_delete_action, self.details_download_action, self.details_download_compression_action,
-                         self.details_copy_path, self.details_file_info, self.details_rename])
+        menu.addActions(self.actions_manager.get_all_actions())
         return menu
 
     def _add_files_to_details_view(self, files, clear_old=True):
