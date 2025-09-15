@@ -1,12 +1,15 @@
 
-from PyQt5.QtWidgets import (QApplication, QWidget, QLayout, QSizePolicy, QFileDialog,
+from PyQt5.QtWidgets import (QApplication, QWidget, QLayout, QSizePolicy,
                              QRubberBand,  QVBoxLayout, QTableView, QHeaderView, QAbstractItemDelegate)
 from PyQt5.QtGui import QFont, QPainter, QColor, QStandardItemModel, QStandardItem
 from PyQt5.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
-from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit, ScrollArea, TableView
+from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit, ScrollArea, TableView, CheckableMenu
 import os
 from functools import partial
 from qfluentwidgets import isDarkTheme
+from tools.setting_config import SCM
+
+configer = SCM()
 
 
 def _format_size(size_bytes):
@@ -116,6 +119,7 @@ class FlowLayout(QLayout):
             x = nextX
             lineHeight = max(lineHeight, wid.sizeHint().height())
         return y + lineHeight - rect.y()
+
 
 class FileActionsManager:
     """Manages the creation and connection of file operation actions."""
@@ -498,7 +502,6 @@ class DetailItem(QWidget):
         menu = self._get_details_menus()
         menu.exec_(self.details_view.viewport().mapToGlobal(pos))
 
-
     def _get_details_menus(self):
         menu = RoundMenu(parent=self)
         menu.addActions(self.actions_manager.get_all_actions())
@@ -604,19 +607,19 @@ class DetailItem(QWidget):
             if new_name:
                 self.action_triggered.emit("mkdir", new_name, True, "")
 
-    def _show_general_context_menu_on_blank(self, pos):
-        """Show general context menu when clicking on a blank area of the details view."""
-        # Check if the click is on an item. If so, do nothing.
-        if self.details_view.indexAt(pos).isValid():
-            return
+    # def _show_general_context_menu_on_blank(self, pos):
+    #     """Show general context menu when clicking on a blank area of the details view."""
+    #     # Check if the click is on an item. If so, do nothing.
+    #     if self.details_view.indexAt(pos).isValid():
+    #         return
 
-        menu = RoundMenu(parent=self)
-        menu.addActions([
-            self.paste, self.make_dir, self.refreshaction, self.uploads, self.upload,
-        ])
-        menu.addSeparator()
-        menu.addActions([self.details_view_action, self.icon_view_action])
-        menu.exec_(self.details_view.viewport().mapToGlobal(pos))
+    #     menu = RoundMenu(parent=self)
+    #     menu.addActions([
+    #         self.paste, self.make_dir, self.refreshaction, self.uploads, self.upload,
+    #     ])
+    #     menu.addSeparator()
+    #     menu.addActions([self.details_view_action, self.icon_view_action])
+    #     menu.exec_(self.details_view.viewport().mapToGlobal(pos))
 
 # ---------------- FileExplorer ----------------
 
@@ -956,14 +959,18 @@ class FileExplorer(QWidget):
 
     def dropEvent(self, event):
         urls = event.mimeData().urls()
-        file_dict = {}
-        for url in urls:
-            path = url.toLocalFile()
-            print("Drag in the file path:", path)
-            is_dir = os.path.isdir(path)
-            filename = os.path.basename(path)
-            file_dict[filename] = is_dir
-            self.upload_file.emit(path, self.path, False)
+        file_paths = [url.toLocalFile() for url in urls]
+        # file_dict = {}
+        # for url in urls:
+        #     path = url.toLocalFile()
+        #     print("Drag in the file path:", path)
+        #     is_dir = os.path.isdir(path)
+        #     filename = os.path.basename(path)
+        #     file_dict[filename] = is_dir
+        if file_paths:
+            # print(file_paths, type(file_paths))
+            self.upload_file.emit(
+                file_paths, self.path, configer.read_config()["compress_upload"])
         event.acceptProposedAction()
 
     def _init_actions(self):
@@ -972,8 +979,11 @@ class FileExplorer(QWidget):
         self.icon_view_action = Action(FIF.APPLICATION, self.tr('Icon View'))
         self.paste = Action(FIF.PASTE, self.tr("Paste"))
         self.make_dir = Action(FIF.FOLDER_ADD, self.tr("New Folder"))
-        self.uploads = Action(FIF.UP, self.tr("Upload files(compression)"))
-        self.upload = Action(FIF.UP, self.tr("Upload files"))
+        self.upload_mode_switch = Action(
+            FIF.UP, self.tr("Upload files(compression mode)"), checkable=True)
+        self.upload_mode_switch.setChecked(
+            configer.read_config()["compress_upload"])
+
         self.refreshaction.triggered.connect(
             lambda: self.refresh_action.emit())
         self.details_view_action.triggered.connect(
@@ -983,17 +993,13 @@ class FileExplorer(QWidget):
         self.paste.triggered.connect(
             lambda: self._handle_file_action("paste", "", ""))
         self.make_dir.triggered.connect(self._handle_mkdir)
-        self.uploads.triggered.connect(
-            lambda: self._pick_upload_files(True)
-        )
-        self.upload.triggered.connect(
-            lambda: self._pick_upload_files(False)
-        )
+        self.upload_mode_switch.toggled.connect(lambda checked:
+                                                configer.revise_config("compress_upload", checked))
 
     def _get_menus(self):
-        menu = RoundMenu(parent=self)
+        menu = CheckableMenu(parent=self)
         menu.addActions(
-            [self.refreshaction, self.paste, self.make_dir, self.uploads, self.upload])
+            [self.refreshaction, self.paste, self.make_dir, self.upload_mode_switch])
         menu.addSeparator()
         menu.addActions(
             [self.details_view_action, self.icon_view_action])
@@ -1037,14 +1043,3 @@ class FileExplorer(QWidget):
                 self.details.rename_selected_item()
         else:
             super().keyPressEvent(event)
-
-    def _pick_upload_files(self, compression=False):
-        paths, _ = QFileDialog.getOpenFileNames(
-            self,
-            self.tr("Select files u want to upload"),
-            "",
-            self.tr("All files (*)1")
-        )
-        print(f"Background file selected: {paths}")
-        if paths:
-            self.upload_file.emit(paths, self.path, compression)

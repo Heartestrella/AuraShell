@@ -7,12 +7,14 @@ import tarfile
 import tempfile
 from PyQt5.QtCore import QObject, QRunnable, pyqtSignal
 
+
 class TransferSignals(QObject):
     """
     Defines signals available for a transfer worker.
     """
     progress = pyqtSignal(str, int)  # local_path_or_identifier, percentage
-    finished = pyqtSignal(str, bool, str)  # local_path_or_identifier, success, message
+    # local_path_or_identifier, success, message
+    finished = pyqtSignal(str, bool, str)
     # target_zip_path (for compression)
     start_to_compression = pyqtSignal(str)
     # remote_path (for uncompression)
@@ -66,17 +68,20 @@ class TransferWorker(QRunnable):
             if self.action == 'upload':
                 # The identifier for signals will be the original local_path (str or list)
                 identifier = str(self.local_path)
-                self._handle_upload_task(identifier, self.local_path, self.remote_path, self.compression)
+                self._handle_upload_task(
+                    identifier, self.local_path, self.remote_path, self.compression)
             elif self.action == 'download':
-                 # The identifier for signals will be the original remote_path (str or list)
+                # The identifier for signals will be the original remote_path (str or list)
                 identifier = str(self.remote_path)
-                self._download_files(identifier, self.remote_path, self.compression)
+                self._download_files(
+                    identifier, self.remote_path, self.compression)
 
         except Exception as e:
             tb = traceback.format_exc()
             error_msg = f"TransferWorker Error: {e}\n{tb}"
             print(f"❌ {error_msg}")
-            identifier = str(self.local_path if self.action == 'upload' else self.remote_path)
+            identifier = str(self.local_path if self.action ==
+                             'upload' else self.remote_path)
             self.signals.finished.emit(identifier, False, error_msg)
         finally:
             if self.sftp:
@@ -93,7 +98,8 @@ class TransferWorker(QRunnable):
             if isinstance(local_path, list):
                 if compression:
                     # For compressed lists, the whole list is one task.
-                    self._upload_list_compressed(identifier, local_path, remote_path)
+                    self._upload_list_compressed(
+                        identifier, local_path, remote_path)
                 else:
                     # For uncompressed lists, each item is a sub-task.
                     all_successful = True
@@ -101,7 +107,8 @@ class TransferWorker(QRunnable):
                     for path in local_path:
                         # Each item will emit its own finished signal.
                         # We capture the result here to give a final status for the whole batch.
-                        success, message = self._upload_item(path, path, remote_path, compression=False)
+                        success, message = self._upload_item(
+                            path, path, remote_path, compression=False)
                         if not success:
                             all_successful = False
                             error_messages.append(message)
@@ -109,7 +116,8 @@ class TransferWorker(QRunnable):
                     # but individual signals are now sent. For now, we rely on individual signals.
 
             elif isinstance(local_path, str):
-                self._upload_item(identifier, local_path, remote_path, compression)
+                self._upload_item(identifier, local_path,
+                                  remote_path, compression)
 
         except Exception as e:
             tb = traceback.format_exc()
@@ -141,6 +149,7 @@ class TransferWorker(QRunnable):
             return False, error_msg
 
     def _upload_list_compressed(self, identifier, path_list, remote_path):
+
         tmp_fd, tmp_tar_path = tempfile.mkstemp(suffix=".tar.gz")
         os.close(tmp_fd)
         self.signals.start_to_compression.emit(tmp_tar_path)
@@ -151,11 +160,10 @@ class TransferWorker(QRunnable):
                         continue
                     arcname = os.path.basename(path)
                     tf.add(path, arcname=arcname)
-            
             self._upload_file(identifier, tmp_tar_path, remote_path)
             remote_zip_path = f"{remote_path.rstrip('/')}/{os.path.basename(tmp_tar_path)}"
             self._remote_untar(remote_zip_path, remote_path)
-        
+
         except Exception as e:
             raise e
         finally:
@@ -175,24 +183,26 @@ class TransferWorker(QRunnable):
             remote_zip_path = f"{remote_path.rstrip('/')}/{os.path.basename(tmp_tar_path)}"
             self._remote_untar(remote_zip_path, remote_path)
         except Exception as e:
-             raise e
+            raise e
         finally:
             if os.path.exists(tmp_tar_path):
                 os.remove(tmp_tar_path)
 
     def _upload_file(self, identifier, local_path, remote_path):
         remote_filename = os.path.basename(local_path)
-        full_remote_path = os.path.join(remote_path, remote_filename).replace('\\', '/')
-        
+        full_remote_path = os.path.join(
+            remote_path, remote_filename).replace('\\', '/')
+
         try:
             self._ensure_remote_directory_exists(remote_path)
-            
+
             def progress_callback(bytes_so_far, total_bytes):
                 if total_bytes > 0:
                     progress = int((bytes_so_far / total_bytes) * 100)
                     self.signals.progress.emit(identifier, progress)
 
-            self.sftp.put(local_path, full_remote_path, callback=progress_callback)
+            self.sftp.put(local_path, full_remote_path,
+                          callback=progress_callback)
             self.signals.finished.emit(identifier, True, "")
 
         except Exception as e:
@@ -203,29 +213,35 @@ class TransferWorker(QRunnable):
     def _upload_directory(self, identifier, local_dir, remote_dir):
         try:
             dir_name = os.path.basename(local_dir)
-            target_remote_dir = os.path.join(remote_dir, dir_name).replace('\\', '/')
+            target_remote_dir = os.path.join(
+                remote_dir, dir_name).replace('\\', '/')
             self._ensure_remote_directory_exists(target_remote_dir)
 
-            total_size = sum(os.path.getsize(os.path.join(root, file)) for root, _, files in os.walk(local_dir) for file in files)
+            total_size = sum(os.path.getsize(os.path.join(root, file))
+                             for root, _, files in os.walk(local_dir) for file in files)
             uploaded_size = 0
 
             for root, dirs, files in os.walk(local_dir):
                 relative_path = os.path.relpath(root, local_dir)
-                current_remote_dir = os.path.join(target_remote_dir, relative_path).replace('\\', '/') if relative_path != '.' else target_remote_dir
-                
+                current_remote_dir = os.path.join(target_remote_dir, relative_path).replace(
+                    '\\', '/') if relative_path != '.' else target_remote_dir
+
                 self._ensure_remote_directory_exists(current_remote_dir)
-                
+
                 for file in files:
                     local_file_path = os.path.join(root, file)
-                    remote_file_path = os.path.join(current_remote_dir, file).replace('\\', '/')
-                    
+                    remote_file_path = os.path.join(
+                        current_remote_dir, file).replace('\\', '/')
+
                     file_size = os.path.getsize(local_file_path)
                     self.sftp.put(local_file_path, remote_file_path)
                     uploaded_size += file_size
-                    progress = int((uploaded_size / total_size) * 100) if total_size > 0 else 100
+                    progress = int((uploaded_size / total_size)
+                                   * 100) if total_size > 0 else 100
                     self.signals.progress.emit(identifier, progress)
 
-            self.signals.finished.emit(identifier, True, "Directory upload completed.")
+            self.signals.finished.emit(
+                identifier, True, "Directory upload completed.")
         except Exception as e:
             tb = traceback.format_exc()
             error_msg = f"Directory upload error: {e}\n{tb}"
@@ -242,57 +258,60 @@ class TransferWorker(QRunnable):
                 remote_tar = self._remote_tar(paths)
                 if not remote_tar:
                     raise Exception("Failed to create remote tar file.")
-                
-                local_tar_path = os.path.join(local_base, os.path.basename(remote_tar))
-                
+
+                local_tar_path = os.path.join(
+                    local_base, os.path.basename(remote_tar))
+
                 def progress_callback(bytes_so_far, total_bytes):
                     if total_bytes > 0:
                         progress = int((bytes_so_far / total_bytes) * 100)
                         # We can perhaps divide progress for different stages
-                        self.signals.progress.emit(identifier, progress) # Assuming download is the main part
+                        # Assuming download is the main part
+                        self.signals.progress.emit(identifier, progress)
 
-                self.sftp.get(remote_tar, local_tar_path, callback=progress_callback)
-                
+                self.sftp.get(remote_tar, local_tar_path,
+                              callback=progress_callback)
+
                 with tarfile.open(local_tar_path, "r:gz") as tar:
                     tar.extractall(local_base)
-                
+
                 self._exec_remote_command(f'rm -f "{remote_tar}"')
                 os.remove(local_tar_path)
-                
+
                 self.signals.finished.emit(identifier, True, local_base)
 
-            else: # Non-compressed
+            else:  # Non-compressed
                 for p in paths:
                     self._download_item(f"{identifier}::{p}", p, local_base)
-                self.signals.finished.emit(identifier, True, "All files processed.")
-        
+                self.signals.finished.emit(
+                    identifier, True, "All files processed.")
+
         except Exception as e:
             tb = traceback.format_exc()
             error_msg = f"Error during download task: {e}\n{tb}"
             print(f"❌ {error_msg}")
             self.signals.finished.emit(identifier, False, error_msg)
 
-
     def _download_item(self, identifier, remote_item_path, local_base_path):
-        local_target = os.path.join(local_base_path, os.path.basename(remote_item_path.rstrip("/")))
+        local_target = os.path.join(
+            local_base_path, os.path.basename(remote_item_path.rstrip("/")))
         try:
             attr = self.sftp.stat(remote_item_path)
             if stat.S_ISDIR(attr.st_mode):
-                self._download_directory(identifier, remote_item_path, local_target)
+                self._download_directory(
+                    identifier, remote_item_path, local_target)
             else:
                 self._download_file(identifier, remote_item_path, local_target)
         except Exception as e:
             raise e
-
 
     def _download_file(self, identifier, remote_file, local_file):
         def progress_callback(bytes_so_far, total_bytes):
             if total_bytes > 0:
                 progress = int((bytes_so_far / total_bytes) * 100)
                 self.signals.progress.emit(identifier, progress)
-        
-        self.sftp.get(remote_file, local_file, callback=progress_callback)
 
+        self.sftp.get(remote_file, local_file, callback=progress_callback)
 
     def _download_directory(self, identifier, remote_dir, local_dir):
         os.makedirs(local_dir, exist_ok=True)
@@ -304,25 +323,25 @@ class TransferWorker(QRunnable):
             if stat.S_ISDIR(entry.st_mode):
                 self._download_directory(identifier, remote_item, local_item)
             else:
-                self.sftp.get(remote_item, local_item) # No progress for individual files in a dir download for now
-
+                # No progress for individual files in a dir download for now
+                self.sftp.get(remote_item, local_item)
 
     def _remote_tar(self, paths):
-        if not paths: return None
-        
-        common_path = os.path.dirname(paths[0]).replace('\\','/')
+        if not paths:
+            return None
+
+        common_path = os.path.dirname(paths[0]).replace('\\', '/')
         tar_name = f"archive_{os.path.basename(paths[0])}.tar.gz"
         remote_tar_path = f"{common_path}/{tar_name}"
-        
+
         files_to_tar = ' '.join([f'"{os.path.basename(p)}"' for p in paths])
-        
+
         cmd = f'cd "{common_path}" && tar -czf "{tar_name}" {files_to_tar}'
         out, err = self._exec_remote_command(cmd)
         if err:
             print(f"Error creating remote tar: {err}")
             return None
         return remote_tar_path
-
 
     def _ensure_remote_directory_exists(self, remote_dir):
         parts = remote_dir.strip('/').split('/')

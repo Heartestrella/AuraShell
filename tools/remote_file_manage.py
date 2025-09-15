@@ -236,11 +236,14 @@ class RemoteFileManager(QThread):
             # We also need to trigger a refresh on success.
             worker.signals.finished.connect(self.upload_finished)
             worker.signals.finished.connect(
-                lambda path, success, msg: self.refresh_paths([remote_path]) if success else None
+                lambda path, success, msg: self.refresh_paths(
+                    [remote_path]) if success else None
             )
             worker.signals.progress.connect(self.upload_progress)
-            worker.signals.start_to_compression.connect(self.start_to_compression)
-            worker.signals.start_to_uncompression.connect(self.start_to_uncompression)
+            worker.signals.start_to_compression.connect(
+                self.start_to_compression)
+            worker.signals.start_to_uncompression.connect(
+                self.start_to_uncompression)
 
         elif action == 'download':
             # The worker's finished signal is (identifier, success, message)
@@ -253,7 +256,7 @@ class RemoteFileManager(QThread):
             )
             # Note: Progress for downloads is not forwarded as the signals don't match perfectly.
             # This can be implemented if detailed download progress is needed.
-        
+
         self.thread_pool.start(worker)
 
     # ---------------------------
@@ -498,11 +501,11 @@ class RemoteFileManager(QThread):
 
                 # common executable-related MIME strings
                 if ("executable" in mime_out
-                    or "x-executable" in mime_out
-                    or mime_out.startswith("application/x-sharedlib")
-                    or "x-mach-binary" in mime_out
-                    or "pe" in mime_out  # covers various PE-like mimes
-                    ):
+                        or "x-executable" in mime_out
+                        or mime_out.startswith("application/x-sharedlib")
+                        or "x-mach-binary" in mime_out
+                        or "pe" in mime_out  # covers various PE-like mimes
+                        ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
 
@@ -604,7 +607,6 @@ class RemoteFileManager(QThread):
             self.mkdir_finished.emit(path, False, error_msg)
             if callback:
                 callback(False, error_msg)
-
 
     def _ensure_remote_directory_exists(self, remote_dir: str) -> Tuple[bool, str]:
         """
@@ -801,7 +803,6 @@ class RemoteFileManager(QThread):
             import traceback
             traceback.print_exc()
             self.copy_finished.emit(source_path, target_path, False, error_msg)
-
 
     def _add_path_to_tree(self, path: str, update_tree_sign: bool = True):
         parts = [p for p in path.strip("/").split("/") if p]

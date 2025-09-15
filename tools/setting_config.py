@@ -22,7 +22,8 @@ class SCM:
             "follow_cd": False,  # bool
             "language": "system",  # system, EN, CN, JP, RU
             "default_view": "icon",  # icon or details
-            "max_concurrent_transfers": 10  # int 1-10
+            "max_concurrent_transfers": 10,  # int 1-10
+            "compress_upload": False  # bool compress_upload
         }
         self.config_path = Path.home() / ".config" / "setting-config.json"
         if not os.path.exists(self.config_path):
@@ -55,6 +56,7 @@ class SCM:
     def revise_config(self, key, value):
         config = self.read_config()
         config[key] = value
+        # print(config)
         self.write_config(config)
 
     def read_config(self) -> dict:
