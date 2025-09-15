@@ -15,6 +15,8 @@ class SSHWorker(QThread):
     sys_resource = pyqtSignal(dict)
     file_tree_updated = pyqtSignal(dict)
 
+    stop_timer_sig = pyqtSignal()
+
     def __init__(self, session_info, parent=None, for_resources=False, for_file=False):
         super().__init__(parent)
         self.host = session_info.host
@@ -122,6 +124,7 @@ class SSHWorker(QThread):
                         f"resources pre-check/upload 出错: {e}")
 
             self.timer = QTimer()
+            self.stop_timer_sig.connect(self.timer.stop)
             self.timer.timeout.connect(self._check_output)
             self.timer.start(100)
             if self.for_resources:
@@ -144,10 +147,11 @@ class SSHWorker(QThread):
 
     def _cleanup(self):
         try:
-            if self.timer:
-                self.timer.stop()
+            if hasattr(self, "stop_timer_sig"):
+                self.stop_timer_sig.emit()
         except Exception:
             pass
+
         try:
             if self.channel:
                 self.channel.close()
@@ -158,7 +162,25 @@ class SSHWorker(QThread):
                 self.conn.close()
         except Exception:
             pass
-        self.quit()
+        # try:
+        #     signals = [
+        #         'result_ready', 'connected', 'error_occurred', 'sys_resource', 'file_tree_updated', 'stop_timer_sig'
+        #     ]
+        #     for sig_name in signals:
+        #         sig = getattr(self, sig_name, None)
+        #         if sig:
+        #             try:
+        #                 sig.disconnect()
+        #             except Exception:
+        #                 pass
+        # except Exception:
+        #     pass
+        try:
+            if self.isRunning():
+                self.quit()
+                # self.wait(2000)
+        except Exception:
+            pass
 
     def _check_output(self):
         try:

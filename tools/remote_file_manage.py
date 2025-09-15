@@ -10,10 +10,6 @@ import os
 from typing import Tuple
 from datetime import datetime
 import shlex
-import tarfile
-import tempfile
-import random
-import string
 
 
 class RemoteFileManager(QThread):
@@ -218,6 +214,28 @@ class RemoteFileManager(QThread):
     # ---------------------------
     # Transfer Worker Management
     # ---------------------------
+        # try:
+        #     signals = [
+        #         'file_tree_updated', 'error_occurred', 'sftp_ready', 'upload_progress',
+        #         'upload_finished', 'delete_finished', 'list_dir_finished', 'path_check_result',
+        #         'download_finished', 'copy_finished', 'rename_finished', 'file_info_ready',
+        #         'file_type_ready', 'mkdir_finished', 'start_to_compression', 'start_to_uncompression'
+        #     ]
+        #     for sig_name in signals:
+        #         sig = getattr(self, sig_name, None)
+        #         if sig:
+        #             try:
+        #                 sig.disconnect()
+        #             except Exception:
+        #                 pass
+        # except Exception:
+        #     pass
+        try:
+            if self.isRunning():
+                self.quit()
+                # self.wait(2000)
+        except Exception:
+            pass
 
     def _dispatch_transfer_task(self, action, local_path, remote_path, compression, open_it=False):
         """Creates and starts a TransferWorker for uploads or downloads."""
@@ -501,10 +519,10 @@ class RemoteFileManager(QThread):
 
                 # common executable-related MIME strings
                 if ("executable" in mime_out
-                        or "x-executable" in mime_out
-                        or mime_out.startswith("application/x-sharedlib")
-                        or "x-mach-binary" in mime_out
-                        or "pe" in mime_out  # covers various PE-like mimes
+                            or "x-executable" in mime_out
+                            or mime_out.startswith("application/x-sharedlib")
+                            or "x-mach-binary" in mime_out
+                            or "pe" in mime_out  # covers various PE-like mimes
                         ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"

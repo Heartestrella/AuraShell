@@ -319,3 +319,24 @@ class Widget(QWidget):
                 return
             parent = parent.parent()
         print("Unable to find parent window or delete method")
+
+    def _cleanup(self):
+        try:
+            self.disk_storage.directory_selected.disconnect()
+        except Exception:
+            pass
+        try:
+            self.file_bar.bar_path_changed.disconnect()
+        except Exception:
+            pass
+        try:
+            self.file_explorer.selected.disconnect()
+            self.file_explorer.refresh_action.disconnect()
+        except Exception:
+            pass
+        try:
+            self.ssh_widget.directoryChanged.disconnect()
+        except Exception:
+            pass
+        for child in self.findChildren(QWidget):
+            child.deleteLater()

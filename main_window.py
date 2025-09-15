@@ -651,17 +651,56 @@ class Window(FramelessWindow):
                 widget_name = widget.objectName()
                 parent = widget_name.split("-")[0].strip()
             if close_sub_all == True:
-
+                # remove and close widget
                 for widget_name in self.session_widgets[parent].keys():
                     if widget_name != "widget":
                         self.navigationInterface.removeWidget(
                             routeKey=widget_name)
                         remove_keys.append(widget_name)
                 for widget_name in remove_keys:
-                    self.session_widgets[parent].pop(widget_name, None)
+                    ssh_widget = self.session_widgets[parent].pop(
+                        widget_name, None)
+                    if ssh_widget:
+                        ssh_widget._cleanup()
+                # remove and close ssh
+                keys_to_remove = [
+                    key for key in self.ssh_session if key.startswith(parent)]
+
+                for key in keys_to_remove:
+                    worker = self.ssh_session.pop(key, None)
+                    if worker:
+                        worker.close()
+
+                keys_to_remove_files = [
+                    key for key, value in self.file_tree_object.items() if key.startswith(parent)]
+                for key in keys_to_remove_files:
+                    file_manager = self.file_tree_object.pop(key, None)
+                    if file_manager:
+                        file_manager._cleanup()
+                # for key, ssh_session in self.ssh_session.items():
+                #     if key.startswith(parent):
+                #         remove_ssh_sessions[key] = ssh_session
+                # for key, ssh_session in remove_ssh_sessions.items():
+                #     self.ssh_session.pop(key, None)
+                #     ssh_session.close()
+
             else:
                 self.navigationInterface.removeWidget(routeKey=widget_name)
-                self.session_widgets[parent].pop(widget_name, None)
+                ssh_widget = self.session_widgets[parent].pop(
+                    widget_name, None)
+                if ssh_widget:
+                    ssh_widget._cleanup()
+                worker = self.ssh_session.pop(widget_name, None)
+                worker_processes = self.ssh_session.pop(
+                    f'{widget_name}-processes', None)
+                if worker:
+                    worker.close()
+                if worker_processes:
+                    worker_processes.close()
+                file_manager = self.file_tree_object.pop(widget_name, None)
+                if file_manager:
+                    file_manager._cleanup()
+            print(f"After close {self.ssh_session} {self.file_tree_object}")
             if not parent_id:
                 self.switchTo(self.session_widgets[parent]["widget"])
             close_count = 1 if len(remove_keys) == 0 else len(remove_keys)
