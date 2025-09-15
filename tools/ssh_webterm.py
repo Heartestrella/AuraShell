@@ -22,12 +22,11 @@ Usage:
 """
 import base64
 import json
-from PyQt5.QtCore import Qt, QObject, pyqtSignal, pyqtSlot, QUrl, QTimer
+from PyQt5.QtCore import Qt, QObject, pyqtSignal, pyqtSlot, QUrl
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QSizePolicy, QHBoxLayout, QApplication
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtWebChannel import QWebChannel
-from qfluentwidgets import Slider
 import PyQt5.QtCore as qc
 from tools.setting_config import SCM
 import re
@@ -60,7 +59,6 @@ class TerminalBridge(QObject):
     """
     output = pyqtSignal(str)
     ready = pyqtSignal()
-    scrollPositionChanged = pyqtSignal(int)
     directoryChanged = pyqtSignal(str)
 
     def __init__(self, parent=None, user_name=None, home_path=None):
@@ -242,7 +240,6 @@ class WebTerminal(QWidget):
 
     def __init__(self, parent=None, cols=120, rows=30, text_color="white", bg_color="transparent", text_shadow=False, font_name=None, user_name=None):
         super().__init__(parent)
-        self._cols = int(cols)
         self._rows = int(rows)
         # Means not set color
         if text_color == "white":
@@ -292,37 +289,7 @@ class WebTerminal(QWidget):
 
         self.view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        # 自定义滚动条
-        self.scroll_bar = Slider(Qt.Vertical, self)
-        self.scroll_bar.setRange(0, self._max_scroll)
-        self.scroll_bar.setValue(0)
-        self.scroll_bar.setFixedWidth(12)
-        self.scroll_bar.valueChanged.connect(self._on_scroll_changed)
-        self.scroll_bar.setStyleSheet("""
-            Slider {
-                background: transparent;
-                border: none;
-            }
-            Slider::groove:vertical {
-                background: rgba(100, 100, 100, 50);
-                width: 6px;
-                border-radius: 3px;
-            }
-            Slider::handle:vertical {
-                background: rgba(150, 150, 150, 150);
-                width: 10px;
-                height: 20px;
-                border-radius: 5px;
-                margin: 0 -2px;
-            }
-            Slider::handle:vertical:hover {
-                background: rgba(180, 180, 180, 200);
-            }
-        """)
-
-        # 添加到布局
         self.terminal_layout.addWidget(self.view, 1)
-        self.terminal_layout.addWidget(self.scroll_bar, 0)
         self.main_layout.addLayout(self.terminal_layout)
 
         try:
@@ -363,31 +330,6 @@ class WebTerminal(QWidget):
             }
         `;
         document.head.appendChild(style);
-
-        // 隐藏 xterm.js 的滚动条
-        const hideXtermScrollbars = () => {
-            const viewports = document.querySelectorAll('.xterm-viewport');
-            viewports.forEach(viewport => {
-                viewport.style.overflow = 'hidden !important';
-                viewport.style.scrollbarWidth = 'none !important';
-                viewport.style.msOverflowStyle = 'none !important';
-            });
-
-            const scrollbars = document.querySelectorAll('.xterm-scrollbar');
-            scrollbars.forEach(scrollbar => {
-                scrollbar.style.display = 'none !important';
-            });
-        };
-
-        // 初始隐藏
-        hideXtermScrollbars();
-
-        // 监听 DOM 变化，确保新创建的滚动条也被隐藏
-        const observer = new MutationObserver(hideXtermScrollbars);
-        observer.observe(document.body, { childList: true, subtree: true });
-
-        // 定期检查（防止某些动态创建的滚动条）
-        setInterval(hideXtermScrollbars, 1000);
         """
 
         # Load HTML
@@ -492,90 +434,7 @@ class WebTerminal(QWidget):
         # 隐藏原生滚动条
         self.view.page().runJavaScript(self.hide_scrollbars_js)
 
-        # 设置滚动事件监听
-        self._setup_scroll_listener()
-
-    # 修改 _setup_scroll_listener 方法
-    # 修改 _setup_scroll_listener 方法
-    def _setup_scroll_listener(self):
-        """设置 JavaScript 滚动事件监听"""
-        # 连接信号
-        self.bridge.scrollPositionChanged.connect(self._on_js_scroll_changed)
-
-        scroll_listener_js = """
-      // 监听终端内容的滚动
-      (function() {
-          const terminalEl = document.getElementById('terminal');
-          if (terminalEl) {
-              const viewport = terminalEl.querySelector('.xterm-viewport');
-              if (viewport) {
-                  let lastScrollTop = -1;
-                  
-                  // 检查滚动位置的函数
-                  const checkScrollPosition = function() {
-                      const scrollTop = viewport.scrollTop;
-                      const scrollHeight = viewport.scrollHeight;
-                      const clientHeight = viewport.clientHeight;
-                      const maxScroll = scrollHeight - clientHeight;
-                      
-                      // 只有当滚动位置发生变化时才发送
-                      if (scrollTop !== lastScrollTop) {
-                          lastScrollTop = scrollTop;
-                          const scrollPercent = maxScroll > 0 ? (scrollTop / maxScroll) * 1000 : 0;
-                          
-                          // 发送滚动位置到 Python
-                          if (window.bridge && window.bridge.scrollPositionChanged) {
-                              window.bridge.scrollPositionChanged(Math.round(scrollPercent));
-                          }
-                      }
-                  };
-
-                  // 添加各种滚动事件监听
-                  viewport.addEventListener('scroll', checkScrollPosition);
-                  viewport.addEventListener('wheel', checkScrollPosition, { passive: true });
-                  viewport.addEventListener('touchmove', checkScrollPosition, { passive: true });
-
-                  // 设置轮询检查（确保所有滚动方式都能被捕获）
-                  setInterval(checkScrollPosition, 100);
-
-                  // 初始设置一次滚动位置
-                  setTimeout(checkScrollPosition, 100);
-              }
-          }
-      })();
-      """
-
-        # 执行 JavaScript 代码
-        self.view.page().runJavaScript(scroll_listener_js)
-
-    def _on_js_scroll_changed(self, position):
-        """JavaScript 端的滚动位置变化"""
-        self.scroll_bar.blockSignals(True)
-        self.scroll_bar.setValue(position)
-        self.scroll_bar.blockSignals(False)
-
-    def _on_scroll_changed(self, value):
-        """自定义滚动条的值变化"""
-        # 将滚动位置发送到 JavaScript
-        scroll_js = f"""
-        (function() {{
-            const terminalEl = document.getElementById('terminal');
-            if (terminalEl) {{
-                const viewport = terminalEl.querySelector('.xterm-viewport');
-                if (viewport) {{
-                    const scrollHeight = viewport.scrollHeight;
-                    const clientHeight = viewport.clientHeight;
-                    const maxScroll = scrollHeight - clientHeight;
-                    const scrollTop = (maxScroll * {value}) / 1000;
-                    viewport.scrollTop = scrollTop;
-                }}
-            }}
-        }})();
-        """
-        self.view.page().runJavaScript(scroll_js)
-
     def _html_escape(self, s: str) -> str:
-        # 确保颜色字符串安全地嵌入到 JS 字面量中
         return json.dumps(s)
 
     def _build_html(self) -> str:
@@ -668,7 +527,7 @@ class WebTerminal(QWidget):
             -webkit-user-select: text !important;
         }}
 
-        .xterm .xterm-viewport,
+
         .xterm .xterm-screen,
         .xterm .xterm-text-layer,
         .xterm .xterm-rows,
@@ -676,21 +535,6 @@ class WebTerminal(QWidget):
             background: transparent !important;
             background-color: transparent !important;
             font-family: {font_family}, monospace !important;
-            /* 允许文本选择 */
-            user-select: text !important;
-            -webkit-user-select: text !important;
-        }}
-
-        /* 修改滚动条隐藏策略，不影响文本选择 */
-        .xterm-viewport::-webkit-scrollbar {{
-            display: none !important;
-            width: 0 !important;
-            height: 0 !important;
-        }}
-        
-        .xterm-viewport {{
-            scrollbar-width: none !important;
-            -ms-overflow-style: none !important;
             /* 允许文本选择 */
             user-select: text !important;
             -webkit-user-select: text !important;
@@ -871,11 +715,6 @@ class WebTerminal(QWidget):
             }}
           }}
 
-          var _resizeTimer = null;
-          window.addEventListener('resize', function() {{
-            if (_resizeTimer) clearTimeout(_resizeTimer);
-            _resizeTimer = setTimeout(function() {{ notifySize(); _resizeTimer = null; }}, 120);
-          }});
 
           // initial sizing & apply initial fallback bg & shadow
           setTimeout(function() {{
