@@ -1,6 +1,6 @@
 
 from PyQt5.QtWidgets import (QApplication, QWidget, QLayout, QSizePolicy, QFileDialog,
-                             QRubberBand,  QVBoxLayout, QTableView, QHeaderView)
+                             QRubberBand,  QVBoxLayout, QTableView, QHeaderView, QAbstractItemDelegate)
 from PyQt5.QtGui import QFont, QPainter, QColor, QStandardItemModel, QStandardItem
 from PyQt5.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
 from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit, ScrollArea, TableView
@@ -434,6 +434,9 @@ class DetailItem(QWidget):
         self.details_model.dataChanged.connect(self._on_data_changed)
         self._rename_old_name = None
         self.is_mkdir = False
+        self._editing_index = None
+        self.details_view.itemDelegate().closeEditor.connect(
+            lambda editor, hint: self._on_editor_closed(editor, hint))
 
     def _emit_action(self, action_type, parameter=None):
         indexes = self.details_view.selectionModel().selectedRows()
@@ -533,6 +536,7 @@ class DetailItem(QWidget):
         name_item = self.details_model.item(index.row(), 0)
 
         self._rename_old_name = name_item.text()  # Record old name
+        self._editing_index = index
         name_item.setEditable(True)
 
         self.details_view.edit(index)
@@ -571,6 +575,34 @@ class DetailItem(QWidget):
         print(f"Rename: {old_name} -> {new_name}")
         self.action_triggered.emit("rename", old_name, is_dir, new_name)
         self.details_view.clearSelection()
+
+    def _on_editor_closed(self, editor, hint):
+        """Handle editor closing, for mkdir when name is not changed."""
+        if not self._editing_index or not self.is_mkdir:
+            return
+
+        index_row = self._editing_index.row()
+        self._editing_index = None  # Reset
+
+        # On cancel (ESC)
+        if hint == QAbstractItemDelegate.RevertModelCache:
+            self.details_model.removeRow(index_row)
+            self.is_mkdir = False
+            return
+
+        # Handle submit when name is unchanged (dataChanged won't fire)
+        item = self.details_model.item(index_row, 0)
+        if not item:
+            return
+
+        new_name = editor.text().strip()
+        old_name = item.text()
+
+        if new_name == old_name:
+            self.details_model.removeRow(index_row)
+            self.is_mkdir = False
+            if new_name:
+                self.action_triggered.emit("mkdir", new_name, True, "")
 
     def _show_general_context_menu_on_blank(self, pos):
         """Show general context menu when clicking on a blank area of the details view."""
