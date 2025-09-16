@@ -23,7 +23,7 @@ from widgets.sync_widget import SycnWidget
 import os
 import subprocess
 from tools.atool import resource_path
-from widgets.file_load_window import FileWindow
+from widgets.transfer_progress_widget import TransferProgressWidget
 font_ = font_config()
 
 
@@ -31,7 +31,7 @@ class Window(FramelessWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.files_window = FileWindow()
+        self.active_transfers = {}
         self._resize_timer = QTimer(self)
         self._resize_timer.setSingleShot(True)
         self._resize_timer.timeout.connect(self.apply_locked_ratio)
@@ -168,129 +168,116 @@ class Window(FramelessWindow):
             print(e)
 
     def _show_info(self, path: str = None, status: bool = None, msg: str = None, type_: str = None, child_key: str = None, local_path: str = None, open_it: bool = False):
-        # print(f"_show_info type : {type_}")
-        no_refresh_types = ["download",
-                            "start_upload", "start_download", "info"]
-        if type_ == "upload":
-            duration = 10000
-            if status:
-                status_msg = self.tr("Upload Successful")
-            else:
-                status_msg = self.tr("Upload Failed")
-                duration = -1
-            title = self.tr(f'File: {path} Status: {status_msg}\n')
+        no_refresh_types = ["download", "start_upload", "start_download", "info"]
 
-        elif type_ in ("compression", "uncompression"):
-            duration = 2000
-            title = self.tr(f"Start to {type_} : {path}")
-            msg = ""
+        parent_key = child_key.split("-")[0].strip()
+        session_widget = self.session_widgets.get(parent_key, {}).get(child_key)
+        if not session_widget:
+            return
+
+        if type_ == "upload":
+            paths = path if isinstance(path, list) else [path]
+            for p in paths:
+                file_id = f"{child_key}_{os.path.basename(p)}"
+                if status:
+                    self.active_transfers[file_id] = {
+                        "type": "completed",
+                        "filename": os.path.basename(p),
+                        "progress": 100
+                    }
+                else:
+                    if file_id in self.active_transfers:
+                        del self.active_transfers[file_id]
+            session_widget.transfer_progress.update_transfers(self.active_transfers)
 
         elif type_ == "start_upload":
-            duration = 2000
-            title = self.tr(f"Start uploading {local_path} to {path}")
-            msg = ""
-
-        elif type_ == "delete":
-            duration = 2000
-            if status:
-                title = self.tr(f"Deleted {path} successfully\n")
-            else:
-                title = self.tr(f"Failed to delete {path}\n{msg}")
-                duration = -1
+            paths = local_path if isinstance(local_path, list) else [local_path]
+            for p in paths:
+                file_id = f"{child_key}_{os.path.basename(p)}"
+                self.active_transfers[file_id] = {
+                    "type": "upload",
+                    "filename": os.path.basename(p),
+                    "progress": 0
+                }
+            session_widget.transfer_progress.update_transfers(self.active_transfers)
 
         elif type_ == "start_download":
-            duration = 2000
-            title = self.tr(f"Start downloading {path}")
-            msg = ""
+            paths = path if isinstance(path, list) else [path]
+            for p in paths:
+                file_id = f"{child_key}_{os.path.basename(p)}"
+                self.active_transfers[file_id] = {
+                    "type": "download",
+                    "filename": os.path.basename(p),
+                    "progress": 0
+                }
+            session_widget.transfer_progress.update_transfers(self.active_transfers)
 
         elif type_ == "download":
-            duration = 2000
-            if status:
-                title = self.tr(f"Downloaded {path} successfully")
-                msg = self.tr(f"Successfully downloaded to {local_path}")
-                if open_it:
-                    if sys.platform.startswith('darwin'):   # macOS
-                        subprocess.call(('open', local_path),
-                                        start_new_session=True)
-                    elif os.name == 'nt':  # Windows
-                        subprocess.Popen(['rundll32', 'shell32.dll,OpenAs_RunDLL', local_path], creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
-                                         close_fds=True)
-                    elif os.name == 'posix':  # Linux
-                        subprocess.call(('xdg-open', local_path))
-            else:
-                title = self.tr(f"Failed to download {path}\n")
-                duration = -1
+            paths = path if isinstance(path, list) else [path]
+            for p in paths:
+                file_id = f"{child_key}_{os.path.basename(p)}"
+                if status:
+                    self.active_transfers[file_id] = {
+                        "type": "completed",
+                        "filename": os.path.basename(p),
+                        "progress": 100
+                    }
+                    if open_it:
+                        if sys.platform.startswith('darwin'):
+                            subprocess.call(('open', local_path), start_new_session=True)
+                        elif os.name == 'nt':
+                            os.startfile(local_path)
+                        elif os.name == 'posix':
+                            subprocess.call(('xdg-open', local_path))
+                else:
+                    if file_id in self.active_transfers:
+                        del self.active_transfers[file_id]
+            session_widget.transfer_progress.update_transfers(self.active_transfers)
 
-        elif type_ == "paste":
-            duration = 2000
-            if status:
-                title = self.tr("Paste Successful")
-                msg = self.tr(f"Pasted {path} to {local_path}")
-            else:
-                title = self.tr("Paste Failed")
-                duration = -1
+        else:
+            duration = 5000
+            title = ""
+            if type_ in ("compression", "uncompression"):
+                title = self.tr(f"Start to {type_} : {path}")
+                msg = ""
+            elif type_ == "delete":
+                if status:
+                    title = self.tr(f"Deleted {path} successfully")
+                else:
+                    title = self.tr(f"Failed to delete {path}\n{msg}")
+                    duration = -1
+            elif type_ == "paste":
+                if status:
+                    title = self.tr("Paste Successful")
+                    msg = self.tr(f"Pasted {path} to {local_path}")
+                else:
+                    title = self.tr("Paste Failed")
+                    duration = -1
+            elif type_ == "rename":
+                if status:
+                    title = self.tr("Rename Successful")
+                    msg = self.tr(f"Renamed {path} to {local_path}")
+                else:
+                    title = self.tr("Rename Failed")
+                    duration = -1
+            elif type_ == "mkdir":
+                if status:
+                    title = self.tr(f"Created directory {path} successfully")
+                else:
+                    title = self.tr(f"Failed to create directory {path}\n{msg}")
+                    duration = -1
+            
+            if title:
+                InfoBar.info(
+                    title=title,
+                    content=msg,
+                    orient=Qt.Horizontal,
+                    isClosable=True,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=duration,
+                    parent=self.window()
+                )
 
-        elif type_ == "rename":
-            duration = 2000
-            if status:
-                title = self.tr("Rename Successful")
-                msg = self.tr(f"Renamed {path} to {local_path}")
-            else:
-                title = self.tr("Rename Failed")
-                duration = -1
-
-        elif type_ == "info":
-            duration = 20000
-            if status:
-                def format_file_info(info: dict) -> str:
-                    if not info:
-                        return self.tr("File info is empty")
-
-                    lines = [
-                        self.tr(f"Path: {info.get('path')}"),
-                        self.tr(f"Filename: {info.get('filename')}"),
-                        self.tr(f"Size: {info.get('size')}"),
-                        self.tr(f"Owner: {info.get('owner')}"),
-                        self.tr(f"Group: {info.get('group')}"),
-                        self.tr(f"Permissions: {info.get('permissions')}"),
-                        self.tr(
-                            f"Executable: {'Yes' if info.get('is_executable') else 'No'}"),
-                        self.tr(f"Last Modified: {info.get('last_modified')}"),
-                        self.tr(
-                            f"Is Directory: {'Yes' if info.get('is_directory') else 'No'}"),
-                        self.tr(
-                            f"Is Symlink: {'Yes' if info.get('is_symlink') else 'No'}")
-                    ]
-
-                    if info.get('is_symlink'):
-                        lines.append(
-                            self.tr(f"Symlink Target: {info.get('symlink_target')}"))
-
-                    return "\n".join(lines)
-
-                title = self.tr(f"File {path} info:")
-                msg = format_file_info(local_path)
-            else:
-                duration = -1
-                title = self.tr(f"Failed to get detailed info for {path}")
-
-        elif type_ == "mkdir":
-            duration = 2000
-            if status:
-                title = self.tr(f"Created directory {path} successfully")
-            else:
-                title = self.tr(f"Failed to create directory {path}\n{msg}")
-                duration = -1
-
-        InfoBar.info(
-            title=title,
-            content=msg,
-            orient=Qt.Horizontal,
-            isClosable=True,
-            position=InfoBarPosition.BOTTOM_RIGHT,
-            duration=duration,
-            parent=self.window()
-        )
         if type_ not in no_refresh_types and child_key:
             self._refresh_paths(child_key)
 
@@ -302,11 +289,18 @@ class Window(FramelessWindow):
         except (ValueError, SyntaxError):
             lst = [paths]
 
+        parent_key = child_key.split("-")[0].strip()
+        session_widget = self.session_widgets.get(parent_key, {}).get(child_key)
+        if not session_widget:
+            return
+
         for path in lst:
             file_name = os.path.basename(path)
             file_id = f"{child_key}_{file_name}"
-            # print(file_id, percentage)
-            self.files_window.set_processes(percentage, file_id)
+            if file_id in self.active_transfers:
+                self.active_transfers[file_id]["progress"] = percentage
+        
+        session_widget.transfer_progress.update_transfers(self.active_transfers)
 
     def _start_ssh_connect(self, session, child_key):
 
@@ -351,7 +345,8 @@ class Window(FramelessWindow):
         file_manager.upload_progress.connect(
             lambda path, percentage: self._show_progresses(path, percentage, child_key=child_key))
         session_widget.file_explorer.upload_file.connect(
-            lambda path, target_path, compression: self._show_info(type_="start_upload", child_key=child_key, local_path=path, path=target_path))
+            lambda path, target_path, compression: self._show_info(type_="start_upload", child_key=child_key, local_path=path, path=target_path)
+        )
         session_widget.file_explorer.upload_file.connect(
             file_manager.upload_file)
 

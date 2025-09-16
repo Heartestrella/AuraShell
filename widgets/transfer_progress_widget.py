@@ -42,12 +42,6 @@ class TransferProgressWidget(QWidget):
         self.content_layout.setContentsMargins(10, 5, 10, 10)
         self.content_layout.setSpacing(5)
 
-        # Add dummy data for testing based on the new design
-        self.add_transfer_item("upload", "important_document_final_v2.docx", 99)
-        self.add_transfer_item("upload", "summer_vacation_photos.zip", 20)
-        self.add_transfer_item("download", "project_presentation_video.mp4", 85)
-        self.add_transfer_item("completed", "annual_report.pdf", 100)
-        self.add_transfer_item("upload", "design_mockups.fig", 45)
 
         # Initial state: collapsed
         self.content_area.setVisible(False)
@@ -58,70 +52,88 @@ class TransferProgressWidget(QWidget):
         
         self._apply_stylesheet()
 
-    def add_transfer_item(self, transfer_type, filename, progress):
-        item_widget = QFrame()
-        item_widget.setObjectName("itemWidget")
-        item_layout = QHBoxLayout(item_widget)
-        item_layout.setContentsMargins(8, 5, 8, 5)
-
-        # --- Left Icon ---
-        if transfer_type == "upload":
-            icon = FIF.UP
-            color = QColor("#0078D4")
-        elif transfer_type == "download":
-            icon = FIF.DOWN
-            color = QColor("#D83B01")
-        else: # completed
-            icon = FIF.ACCEPT
-            color = QColor("#107C10")
-
-        status_icon = IconWidget(icon, item_widget)
-        status_icon.setFixedSize(16, 16)
-        status_icon.setStyleSheet(f"color: {color.name()}; background-color: transparent;")
-
-        # --- Filename ---
-        filename_label = QLabel(filename)
-        filename_label.setWordWrap(True)
-
-        item_layout.addWidget(status_icon)
-        item_layout.addSpacing(10)
-        item_layout.addWidget(filename_label)
-        item_layout.addStretch(1)
-
-        # --- Right Percentage Label (if not completed) ---
-        if transfer_type != "completed":
-            progress_label = QLabel(f"{progress}%")
-            progress_label.setObjectName("progressLabel")
-            item_layout.addWidget(progress_label)
-
-        # --- Dynamic Background Style ---
-        stop_pos = progress / 100.0
-        base_bg = "#3C3C3C"
+    def update_transfers(self, transfers: dict):
+        # Clear existing items
+        while self.content_layout.count():
+            child = self.content_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
         
-        if stop_pos <= 0:
-            bg_style = f"background-color: {base_bg};"
-        elif stop_pos >= 1:
-            bg_style = f"background-color: {color.name()};"
-        else:
-            # The small increment (0.001) creates a sharp dividing line
-            bg_style = f"""
-                background-color: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:0,
-                    stop:{stop_pos} {color.name()}, stop:{stop_pos + 0.001} {base_bg}
-                );
-            """
-
-        item_widget.setStyleSheet(f"""
-            #itemWidget {{
-                {bg_style}
-                border-radius: 6px;
-            }}
-            #itemWidget > QLabel {{
-                background-color: transparent;
-            }}
-        """)
+        if not transfers:
+            self.setVisible(False)
+            return
         
-        self.content_layout.addWidget(item_widget)
+        self.setVisible(True)
+
+        # Add updated items
+        for file_id, data in transfers.items():
+            transfer_type = data.get("type", "upload")
+            filename = data.get("filename", "Unknown File")
+            progress = data.get("progress", 0)
+            
+            item_widget = QFrame()
+            item_widget.setObjectName("itemWidget")
+            item_layout = QHBoxLayout(item_widget)
+            item_layout.setContentsMargins(8, 5, 8, 5)
+
+            # --- Left Icon ---
+            if transfer_type == "upload":
+                icon = FIF.UP
+                color = QColor("#0078D4")
+            elif transfer_type == "download":
+                icon = FIF.DOWN
+                color = QColor("#D83B01")
+            else:  # completed
+                icon = FIF.ACCEPT
+                color = QColor("#107C10")
+
+            status_icon = IconWidget(icon, item_widget)
+            status_icon.setFixedSize(16, 16)
+            status_icon.setStyleSheet(f"color: {color.name()}; background-color: transparent;")
+
+            # --- Filename ---
+            filename_label = QLabel(filename)
+            filename_label.setWordWrap(True)
+
+            item_layout.addWidget(status_icon)
+            item_layout.addSpacing(10)
+            item_layout.addWidget(filename_label)
+            item_layout.addStretch(1)
+
+            # --- Right Percentage Label (if not completed) ---
+            if transfer_type != "completed":
+                progress_label = QLabel(f"{progress}%")
+                progress_label.setObjectName("progressLabel")
+                item_layout.addWidget(progress_label)
+
+            # --- Dynamic Background Style ---
+            stop_pos = progress / 100.0
+            base_bg = "#3C3C3C"
+
+            if stop_pos <= 0:
+                bg_style = f"background-color: {base_bg};"
+            elif stop_pos >= 1:
+                bg_style = f"background-color: {color.name()};"
+            else:
+                # The small increment (0.001) creates a sharp dividing line
+                bg_style = f"""
+                    background-color: qlineargradient(
+                        x1:0, y1:0, x2:1, y2:0,
+                        stop:{stop_pos} {color.name()}, stop:{stop_pos + 0.001} {base_bg}
+                    );
+                """
+
+            item_widget.setStyleSheet(f"""
+                #itemWidget {{
+                    {bg_style}
+                    border-radius: 6px;
+                }}
+                #itemWidget > QLabel {{
+                    background-color: transparent;
+                }}
+            """)
+
+            self.content_layout.addWidget(item_widget)
 
     def toggle_view(self):
         self.is_expanded = not self.is_expanded

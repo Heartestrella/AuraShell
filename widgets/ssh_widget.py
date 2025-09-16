@@ -419,17 +419,4 @@ class Widget(QWidget):
             child.deleteLater()
 
     def show_file_action(self, action_type, file_paths):
-        parent = self.parent()
-        for file_path in file_paths:
-            file_name = os.path.basename(file_path)
-            file_id = f"{self.child_key}_{file_name}"
-            print(file_id)
-            while parent:
-                if hasattr(parent, "files_window"):
-                    parent.files_window.add_card(
-                        title=file_name, content=file_id, file_id=file_id, action_type=action_type)
-                    parent.files_window.show()
-                    parent.files_window.raise_()
-                    parent.files_window.activateWindow()
-                    break
-                parent = parent.parent()
+        pass
