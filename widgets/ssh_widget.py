@@ -146,7 +146,7 @@ class Widget(QWidget):
             self.file_bar = File_Navigation_Bar(self.file_manage)
             self.file_bar.bar_path_changed.connect(self._update_file_explorer)
             self.file_bar.setObjectName("file_bar")
-            self.file_bar.setFixedHeight(50)
+            self.file_bar.setFixedHeight(45)  # Reduce height for a more compact look
             self.file_bar.setStyleSheet("""
                 QFrame#file_bar {
                     background-color: rgba(240, 240, 240, 0.8);

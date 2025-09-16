@@ -1,6 +1,7 @@
 from qfluentwidgets import BreadcrumbBar, LineEdit
 from typing import Dict, Optional
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QStyle
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QStyle, QFrame
+from qfluentwidgets import isDarkTheme
 from PyQt5.QtCore import Qt, pyqtSignal
 from qfluentwidgets import TreeWidget, RoundMenu, Action, FluentIcon as FIF
 from typing import Optional, Dict, Set
@@ -29,13 +30,46 @@ class File_Navigation_Bar(QWidget):
         self.current_path = "/"
         self._is_submitting = False
 
-        self.breadcrumbBar = BreadcrumbBar(self)
+        # Create a container for the border
+        self.breadcrumb_container = QFrame(self)
+        
+        # Beautify the container with QSS
+        if isDarkTheme():
+            self.breadcrumb_container.setStyleSheet("""
+                QFrame {
+                    border: 1px solid #4a4a4a;
+                    border-radius: 4px;
+                    background-color: transparent;
+                }
+                QFrame:hover {
+                    background-color: rgba(255, 255, 255, 0.08);
+                }
+            """)
+        else:
+            self.breadcrumb_container.setStyleSheet("""
+                QFrame {
+                    border: 1px solid #dcdcdc;
+                    border-radius: 4px;
+                    background-color: transparent;
+                }
+                QFrame:hover {
+                    background-color: rgba(0, 0, 0, 0.05);
+                }
+            """)
+        
+        # Place the BreadcrumbBar inside the container
+        container_layout = QHBoxLayout(self.breadcrumb_container)
+        container_layout.setContentsMargins(2, 2, 2, 2)
+        self.breadcrumbBar = BreadcrumbBar(self.breadcrumb_container)
+        self.breadcrumbBar.setStyleSheet("background-color: transparent; border: none;")
+        container_layout.addWidget(self.breadcrumbBar)
+        
         self.path_edit = LineEdit(self)
         self.path_edit.hide()
-
+        
         self.hBoxLayout = QHBoxLayout(self)
         self.hBoxLayout.setContentsMargins(10, 5, 10, 5)
-        self.hBoxLayout.addWidget(self.breadcrumbBar)
+        self.hBoxLayout.addWidget(self.breadcrumb_container)
         self.hBoxLayout.addWidget(self.path_edit)
 
         self.breadcrumbBar.currentItemChanged.connect(self.updatePathLabel)
@@ -43,9 +77,9 @@ class File_Navigation_Bar(QWidget):
         self.path_edit.editingFinished.connect(self._submit_path_from_edit)
 
     def mousePressEvent(self, event):
-        if not self.path_edit.isVisible() and self.breadcrumbBar.geometry().contains(event.pos()):
+        if not self.path_edit.isVisible() and self.breadcrumb_container.geometry().contains(event.pos()):
             self.path_edit.setText(self.current_path)
-            self.breadcrumbBar.hide()
+            self.breadcrumb_container.hide()
             self.path_edit.show()
             self.path_edit.setFocus()
             self.path_edit.selectAll()
@@ -64,7 +98,7 @@ class File_Navigation_Bar(QWidget):
 
     def _hide_path_edit(self):
         self.path_edit.hide()
-        self.breadcrumbBar.show()
+        self.breadcrumb_container.show()
 
     def updatePathLabel(self, *_):
         if self.send_signal:
