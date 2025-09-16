@@ -1,6 +1,7 @@
-from PyQt5.QtCore import Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, QEvent
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QProgressBar
-from qfluentwidgets import FluentIcon as FIF
+from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QEvent
+from PyQt5.QtGui import QColor
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
+from qfluentwidgets import FluentIcon as FIF, IconWidget
 
 class TransferProgressWidget(QWidget):
     """ File Transfer Progress Widget """
@@ -32,7 +33,6 @@ class TransferProgressWidget(QWidget):
         self.header_layout.addWidget(self.title_label)
         self.header_layout.addStretch(1)
 
-        # Make the header clickable
         self.header.installEventFilter(self)
 
         # Content area (collapsible)
@@ -40,14 +40,14 @@ class TransferProgressWidget(QWidget):
         self.content_area.setObjectName("contentArea")
         self.content_layout = QVBoxLayout(self.content_area)
         self.content_layout.setContentsMargins(10, 5, 10, 10)
-        self.content_layout.setSpacing(8)
+        self.content_layout.setSpacing(5)
 
-        # Add dummy data for testing
-        self._add_transfer_item("upload", "Uploading (3/5)", 60)
-        self._add_file_item("important_document_final_v2.docx", 65)
-        self._add_file_item("summer_vacation_photos.zip", 20)
-        self._add_transfer_item("download", "Downloading (1/2)", 50)
-        self._add_file_item("project_presentation_video.mp4", 85)
+        # Add dummy data for testing based on the new design
+        self.add_transfer_item("upload", "important_document_final_v2.docx", 99)
+        self.add_transfer_item("upload", "summer_vacation_photos.zip", 20)
+        self.add_transfer_item("download", "project_presentation_video.mp4", 85)
+        self.add_transfer_item("completed", "annual_report.pdf", 100)
+        self.add_transfer_item("upload", "design_mockups.fig", 45)
 
         # Initial state: collapsed
         self.content_area.setVisible(False)
@@ -58,45 +58,70 @@ class TransferProgressWidget(QWidget):
         
         self._apply_stylesheet()
 
-
-    def _add_transfer_item(self, type_, text, value):
-        container = QWidget()
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(0, 5, 0, 0)
-        layout.setSpacing(2)
-
-        label = QLabel(text)
-        progress_bar = QProgressBar()
-        progress_bar.setValue(value)
-        
-        if type_ == "upload":
-            progress_bar.setStyleSheet("QProgressBar::chunk { background-color: #0078D4; }")
-        else:
-            progress_bar.setStyleSheet("QProgressBar::chunk { background-color: #107C10; }")
-
-        layout.addWidget(label)
-        layout.addWidget(progress_bar)
-        self.content_layout.addWidget(container)
-
-
-    def _add_file_item(self, filename, progress):
-        item_widget = QWidget()
+    def add_transfer_item(self, transfer_type, filename, progress):
+        item_widget = QFrame()
+        item_widget.setObjectName("itemWidget")
         item_layout = QHBoxLayout(item_widget)
-        item_layout.setContentsMargins(15, 0, 0, 0)
+        item_layout.setContentsMargins(8, 5, 8, 5)
 
-        # Here you could add a file type icon
-        # icon_label = QLabel()
-        # item_layout.addWidget(icon_label)
+        # --- Left Icon ---
+        if transfer_type == "upload":
+            icon = FIF.UP
+            color = QColor("#0078D4")
+        elif transfer_type == "download":
+            icon = FIF.DOWN
+            color = QColor("#D83B01")
+        else: # completed
+            icon = FIF.ACCEPT
+            color = QColor("#107C10")
 
+        status_icon = IconWidget(icon, item_widget)
+        status_icon.setFixedSize(16, 16)
+        status_icon.setStyleSheet(f"color: {color.name()}; background-color: transparent;")
+
+        # --- Filename ---
         filename_label = QLabel(filename)
         filename_label.setWordWrap(True)
-        progress_label = QLabel(f"{progress}%")
-        
+
+        item_layout.addWidget(status_icon)
+        item_layout.addSpacing(10)
         item_layout.addWidget(filename_label)
         item_layout.addStretch(1)
-        item_layout.addWidget(progress_label)
-        self.content_layout.addWidget(item_widget)
 
+        # --- Right Percentage Label (if not completed) ---
+        if transfer_type != "completed":
+            progress_label = QLabel(f"{progress}%")
+            progress_label.setObjectName("progressLabel")
+            item_layout.addWidget(progress_label)
+
+        # --- Dynamic Background Style ---
+        stop_pos = progress / 100.0
+        base_bg = "#3C3C3C"
+        
+        if stop_pos <= 0:
+            bg_style = f"background-color: {base_bg};"
+        elif stop_pos >= 1:
+            bg_style = f"background-color: {color.name()};"
+        else:
+            # The small increment (0.001) creates a sharp dividing line
+            bg_style = f"""
+                background-color: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:{stop_pos} {color.name()}, stop:{stop_pos + 0.001} {base_bg}
+                );
+            """
+
+        item_widget.setStyleSheet(f"""
+            #itemWidget {{
+                {bg_style}
+                border-radius: 6px;
+            }}
+            #itemWidget > QLabel {{
+                background-color: transparent;
+            }}
+        """)
+        
+        self.content_layout.addWidget(item_widget)
 
     def toggle_view(self):
         self.is_expanded = not self.is_expanded
@@ -147,14 +172,6 @@ class TransferProgressWidget(QWidget):
             }
             QLabel {
                 color: #E0E0E0;
-            }
-            QProgressBar {
-                border: 1px solid #555;
-                border-radius: 4px;
-                text-align: center;
-                height: 8px;
-            }
-            QProgressBar::chunk {
-                border-radius: 3px;
+                background-color: transparent;
             }
         """)
