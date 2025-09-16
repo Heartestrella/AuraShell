@@ -1,4 +1,4 @@
-from qfluentwidgets import BreadcrumbBar, LineEdit
+from qfluentwidgets import BreadcrumbBar, LineEdit, TransparentToolButton
 from typing import Dict, Optional
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QStyle, QFrame
 from qfluentwidgets import isDarkTheme
@@ -23,6 +23,8 @@ def _parse_linux_path(path: str):
 
 class File_Navigation_Bar(QWidget):
     bar_path_changed = pyqtSignal(str)
+    new_folder_clicked = pyqtSignal()
+    refresh_clicked = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -63,14 +65,24 @@ class File_Navigation_Bar(QWidget):
         self.breadcrumbBar = BreadcrumbBar(self.breadcrumb_container)
         self.breadcrumbBar.setStyleSheet("background-color: transparent; border: none;")
         container_layout.addWidget(self.breadcrumbBar)
-        
         self.path_edit = LineEdit(self)
         self.path_edit.hide()
         
         self.hBoxLayout = QHBoxLayout(self)
         self.hBoxLayout.setContentsMargins(10, 5, 10, 5)
-        self.hBoxLayout.addWidget(self.breadcrumb_container)
+        self.hBoxLayout.addWidget(self.breadcrumb_container, 1)
         self.hBoxLayout.addWidget(self.path_edit)
+
+        self.new_folder_button = TransparentToolButton(FIF.FOLDER_ADD, self)
+        self.new_folder_button.setToolTip(self.tr('New folder'))
+        self.refresh_button = TransparentToolButton(FIF.UPDATE, self)
+        self.refresh_button.setToolTip(self.tr('Refresh'))
+
+        self.hBoxLayout.addWidget(self.new_folder_button)
+        self.hBoxLayout.addWidget(self.refresh_button)
+
+        self.new_folder_button.clicked.connect(self.new_folder_clicked.emit)
+        self.refresh_button.clicked.connect(self.refresh_clicked.emit)
 
         self.breadcrumbBar.currentItemChanged.connect(self.updatePathLabel)
         self.path_edit.returnPressed.connect(self._submit_path_from_edit)
