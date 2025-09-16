@@ -23,7 +23,10 @@ class SCM:
             "language": "system",  # system, EN, CN, JP, RU
             "default_view": "icon",  # icon or details
             "max_concurrent_transfers": 10,  # int 1-10
-            "compress_upload": False  # bool compress_upload
+            "compress_upload": False,  # bool compress_upload
+            "splitter_lr_ratio": [0.2, 0.8],  # proportion
+            "splitter_tb_ratio": [0.6, 0.4]  # proportion
+
         }
         self.config_path = Path.home() / ".config" / "setting-config.json"
         if not os.path.exists(self.config_path):

@@ -22,18 +22,25 @@ class Widget(QWidget):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         # Main horizontal layout: left 30% (index 0), right 70% (index 1)
-        self.mainLayout = QHBoxLayout(self)
+        self.mainLayout = QVBoxLayout(self)
         self.mainLayout.setContentsMargins(0, 0, 0, 0)
-        self.mainLayout.setSpacing(8)
+        self.mainLayout.setSpacing(0)
+
+        splitter_lr = QSplitter(Qt.Horizontal, self)
+        splitter_lr.setChildrenCollapsible(False)
+        splitter_lr.setHandleWidth(6)
 
         if parent_state:
             label = QLabel(text, self)
             label.setAlignment(Qt.AlignCenter)
             self.mainLayout.addWidget(label)
+        # 假设在你的类 __init__ 内部
+
         else:
             config = configer.read_config()
             self.file_manager = None
-            # --------- Left column: sys_resources + disk_storage (stacked vertically) ---------
+
+            # --------- 左侧容器 ---------
             leftContainer = QFrame(self)
             leftContainer.setObjectName("leftContainer")
             leftContainer.setSizePolicy(
@@ -43,7 +50,7 @@ class Widget(QWidget):
             leftLayout.setContentsMargins(0, 0, 0, 0)
             leftLayout.setSpacing(0)
 
-            # sys_resources (UP)
+            # sys_resources
             self.sys_resources = ProcessTable(leftContainer)
             self.sys_resources.setObjectName("sys_resources")
             self.sys_resources.setMinimumHeight(80)
@@ -56,9 +63,9 @@ class Widget(QWidget):
                     border-radius: 6px;
                 }
             """)
-            # Task (MID)
-            self.task = Tasks(leftContainer)
 
+            # Task
+            self.task = Tasks(leftContainer)
             self.task.set_text_color(config["ssh_widget_text_color"])
             self.task.setObjectName("task")
             self.task.setMinimumHeight(80)
@@ -71,7 +78,8 @@ class Widget(QWidget):
                     border-radius: 6px;
                 }
             """)
-            # disk_storage（DOWN）
+
+            # disk_storage
             self.disk_storage = FileTreeWidget(leftContainer)
             self.disk_storage.setObjectName("disk_storage")
             self.disk_storage.setMinimumHeight(80)
@@ -86,37 +94,43 @@ class Widget(QWidget):
                 }
             """)
 
-            # Adjustable up/down ratio (here is 3:2)
+            # 左侧竖排布局（比例 2:3:5）
             leftLayout.addWidget(self.sys_resources, 2)
             leftLayout.addWidget(self.task, 3)
             leftLayout.addWidget(self.disk_storage, 5)
 
-            # --------- Right column: ssh_widget + file_manage (stretchable, vertically split) ---------
+            # --------- 右侧容器 ---------
             rightContainer = QFrame(self)
             rightContainer.setObjectName("rightContainer")
             rightContainer.setSizePolicy(
                 QSizePolicy.Expanding, QSizePolicy.Expanding)
+
             rightLayout = QVBoxLayout(rightContainer)
             rightLayout.setContentsMargins(0, 0, 0, 0)
             rightLayout.setSpacing(0)
 
+            # 上下 splitter（右边 ssh_widget / file_manage）
             splitter = QSplitter(Qt.Vertical, rightContainer)
-            # Prevent folding to 0 height
             splitter.setChildrenCollapsible(False)
             splitter.setHandleWidth(6)
             splitter.setStyleSheet("""
-    QSplitter::handle:vertical {
-        background-color: #cccccc;
-        height: 1px;
-        margin: 2px 0px;
-    }
-    QSplitter::handle:vertical:hover {
-        background-color: #999999;
-    }
-""")
-            # ssh_widget（UP）
+                QSplitter::handle:vertical {
+                    background-color: #cccccc;
+                    height: 1px;
+                    margin: 2px 0px;
+                }
+                QSplitter::handle:vertical:hover {
+                    background-color: #999999;
+                }
+            """)
+
+            # ssh_widget
             self.ssh_widget = WebTerminal(
-                splitter, font_name=font_name, user_name=user_name, text_color=config["ssh_widget_text_color"])
+                splitter,
+                font_name=font_name,
+                user_name=user_name,
+                text_color=config["ssh_widget_text_color"]
+            )
             self.ssh_widget.directoryChanged.connect(self._set_file_bar)
             self.ssh_widget.setObjectName("ssh_widget")
             self.ssh_widget.setSizePolicy(
@@ -128,11 +142,8 @@ class Widget(QWidget):
                     border-radius: 6px;
                 }
             """)
-            self.ssh_widget.view.page().runJavaScript(
-                "window.getComputedStyle(document.body).backgroundColor", print)
-            col = self.ssh_widget.view.page().backgroundColor()
-            print("page.bg alpha:", col.alpha())
-            # file_manage（DOWN）
+
+            # file_manage
             self.file_manage = QWidget(splitter)
             self.file_manage.setObjectName("file_manage")
             self.file_manage.setSizePolicy(
@@ -142,11 +153,11 @@ class Widget(QWidget):
             file_manage_layout.setContentsMargins(0, 0, 0, 0)
             file_manage_layout.setSpacing(0)
 
-            # Upper part: Navigation bar (fixed 50px)
+            # file_bar
             self.file_bar = File_Navigation_Bar(self.file_manage)
             self.file_bar.bar_path_changed.connect(self._update_file_explorer)
             self.file_bar.setObjectName("file_bar")
-            self.file_bar.setFixedHeight(45)  # Reduce height for a more compact look
+            self.file_bar.setFixedHeight(45)
             self.file_bar.setStyleSheet("""
                 QFrame#file_bar {
                     background-color: rgba(240, 240, 240, 0.8);
@@ -155,11 +166,9 @@ class Widget(QWidget):
                 }
             """)
 
-            # Lower part: File tree (occupies the remaining space)
-
+            # file_explorer
             self.file_explorer = FileExplorer(
                 self.file_manage, icons=self._get_icons())
-            # Set default view from settings
             default_view = config.get("default_view", "icon")
             self.file_explorer.switch_view(default_view)
             self.file_explorer.selected.connect(self._process_selected_path)
@@ -169,7 +178,8 @@ class Widget(QWidget):
             self.file_bar.new_folder_clicked.connect(
                 self.file_explorer._handle_mkdir)
             self.file_bar.view_switch_clicked.connect(self._switch_view_mode)
-            self.file_bar.update_view_switch_button(self.file_explorer.view_mode)
+            self.file_bar.update_view_switch_button(
+                self.file_explorer.view_mode)
             self.file_explorer.setObjectName("file_tree")
             self.file_explorer.setStyleSheet("""
                 QFrame#file_tree {
@@ -181,11 +191,52 @@ class Widget(QWidget):
 
             file_manage_layout.addWidget(self.file_bar)
             file_manage_layout.addWidget(self.file_explorer, 1)
+
             rightLayout.addWidget(splitter)
-            self.mainLayout.addWidget(leftContainer, 20)
-            self.mainLayout.addWidget(rightContainer, 80)
+
+            # --------- 左右 splitter ---------
+            splitter_lr = QSplitter(Qt.Horizontal, self)
+            splitter_lr.addWidget(leftContainer)
+            splitter_lr.addWidget(rightContainer)
+            self.mainLayout.addWidget(splitter_lr)
+
+            # ---- 默认比例 ----
+            total_w = max(400, self.width())
+            splitter_lr.setSizes([int(total_w * 0.2), int(total_w * 0.8)])
+
             total_h = max(200, self.height())
             splitter.setSizes([int(total_h * 0.6), int(total_h * 0.4)])
+
+            # ---- 拖动事件绑定，保存比例 ----
+            def save_lr_ratio(pos, index):
+                sizes = splitter_lr.sizes()
+                total = sum(sizes)
+                configer.revise_config("splitter_lr_ratio", [
+                                       s / total for s in sizes])
+
+            def save_tb_ratio(pos, index):
+                sizes = splitter.sizes()
+                total = sum(sizes)
+                print(f"rb total : {total}")
+                configer.revise_config("splitter_tb_ratio", [
+                                       s / total for s in sizes])
+                # config["splitter_tb_ratio"] = [s / total for s in sizes]
+                # configer.save_config(config)
+
+            splitter_lr.splitterMoved.connect(save_lr_ratio)
+            splitter.splitterMoved.connect(save_tb_ratio)
+
+            # ---- 恢复上次保存的比例 ----
+            if "splitter_lr_ratio" in config:
+                total_w = max(400, self.width())
+                r = config["splitter_lr_ratio"]
+                splitter_lr.setSizes(
+                    [int(total_w * r[0]), int(total_w * r[1])])
+
+            if "splitter_tb_ratio" in config:
+                total_h = max(200, self.height())
+                r = config["splitter_tb_ratio"]
+                splitter.setSizes([int(total_h * r[0]), int(total_h * r[1])])
 
     def _get_icons(self):
         parent = self.parent()
