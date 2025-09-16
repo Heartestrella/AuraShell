@@ -108,7 +108,15 @@ class Widget(QWidget):
             leftLayout.addWidget(self.sys_resources, 2)
             leftLayout.addWidget(self.task, 3)
             leftLayout.addWidget(self.disk_storage, 5)
-            leftLayout.addWidget(self.transfer_progress, 0)
+            leftLayout.addWidget(self.transfer_progress, 0) # Initially, no stretch
+
+            def toggle_transfer_stretch(is_expanded):
+                if is_expanded:
+                    leftLayout.setStretch(3, 10) # transfer_progress index is 3
+                else:
+                    leftLayout.setStretch(3, 0)
+
+            self.transfer_progress.expansionChanged.connect(toggle_transfer_stretch)
 
             # --------- 右侧容器 ---------
             rightContainer = QFrame(self)
