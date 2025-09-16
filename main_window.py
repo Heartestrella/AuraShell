@@ -1,4 +1,5 @@
 # coding:utf-8
+import ast
 import sys
 import ctypes
 from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl
@@ -22,6 +23,7 @@ from widgets.sync_widget import SycnWidget
 import os
 import subprocess
 from tools.atool import resource_path
+from widgets.file_load_window import FileWindow
 font_ = font_config()
 
 
@@ -29,6 +31,7 @@ class Window(FramelessWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        self.files_window = FileWindow()
         self._resize_timer = QTimer(self)
         self._resize_timer.setSingleShot(True)
         self._resize_timer.timeout.connect(self.apply_locked_ratio)
@@ -291,6 +294,14 @@ class Window(FramelessWindow):
         if type_ not in no_refresh_types and child_key:
             self._refresh_paths(child_key)
 
+    def _show_progresses(self, paths, percentage, child_key):
+        lst = ast.literal_eval(paths)
+        for path in lst:
+            file_name = os.path.basename(path)
+            file_id = f"{child_key}_{file_name}"
+            # print(file_id, percentage)
+            self.files_window.set_processes(percentage, file_id)
+
     def _start_ssh_connect(self, session, child_key):
 
         parent_key = child_key.split("-")[0].strip()
@@ -331,6 +342,8 @@ class Window(FramelessWindow):
             lambda path: self._show_info(path=path, type_="compression"))
         file_manager.start_to_compression.connect(
             lambda path: self._show_info(path=path, type_="uncompression"))
+        file_manager.upload_progress.connect(
+            lambda path, percentage: self._show_progresses(path, percentage, child_key=child_key))
         session_widget.file_explorer.upload_file.connect(
             lambda path, target_path, compression: self._show_info(type_="start_upload", child_key=child_key, local_path=path, path=target_path))
         session_widget.file_explorer.upload_file.connect(
@@ -875,9 +888,10 @@ if __name__ == '__main__':
 
         QApplication.setAttribute(Qt.AA_UseOpenGLES)
         app = QApplication(sys.argv)
-        
+
         # set icon
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("su8aru.remmotessh.1.0.0")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "su8aru.remmotessh.1.0.0")
 
         config = configer.read_config()
         lang = language_code_to_locale(config.get("language", "system"))

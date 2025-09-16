@@ -7,6 +7,8 @@ from tools.ssh_webterm import WebTerminal
 from widgets.file_tree_widget import File_Navigation_Bar, FileTreeWidget
 from widgets.files_widgets import FileExplorer
 from tools.setting_config import SCM
+import os
+from functools import partial
 configer = SCM()
 
 
@@ -37,6 +39,7 @@ class Widget(QWidget):
         # 假设在你的类 __init__ 内部
 
         else:
+
             config = configer.read_config()
             self.file_manager = None
 
@@ -165,10 +168,11 @@ class Widget(QWidget):
                     border-radius: 6px 6px 0 0;
                 }
             """)
-
             # file_explorer
             self.file_explorer = FileExplorer(
                 self.file_manage, icons=self._get_icons())
+            self.file_explorer.upload_file.connect(
+                lambda source_path, _: self.show_file_action("upload", source_path))
             default_view = config.get("default_view", "icon")
             self.file_explorer.switch_view(default_view)
             self.file_explorer.selected.connect(self._process_selected_path)
@@ -200,12 +204,13 @@ class Widget(QWidget):
             splitter_lr.addWidget(rightContainer)
             self.mainLayout.addWidget(splitter_lr)
 
-            # ---- 默认比例 ----
-            total_w = max(400, self.width())
-            splitter_lr.setSizes([int(total_w * 0.2), int(total_w * 0.8)])
+            # ---- 上下 splitter 默认比例 ----
+            splitter.setStretchFactor(0, 3)   # ssh_widget
+            splitter.setStretchFactor(1, 2)   # file_manage
 
-            total_h = max(200, self.height())
-            splitter.setSizes([int(total_h * 0.6), int(total_h * 0.4)])
+            # ---- 左右 splitter 默认比例 ----
+            splitter_lr.setStretchFactor(0, 2)  # 左侧面板
+            splitter_lr.setStretchFactor(1, 8)  # 右侧主区
 
             # ---- 拖动事件绑定，保存比例 ----
             def save_lr_ratio(pos, index):
@@ -404,3 +409,19 @@ class Widget(QWidget):
             pass
         for child in self.findChildren(QWidget):
             child.deleteLater()
+
+    def show_file_action(self, action_type, file_paths):
+        parent = self.parent()
+        for file_path in file_paths:
+            file_name = os.path.basename(file_path)
+            file_id = f"{self.child_key}_{file_name}"
+            print(file_id)
+            while parent:
+                if hasattr(parent, "files_window"):
+                    parent.files_window.add_card(
+                        title=file_name, content=file_id, file_id=file_id, action_type=action_type)
+                    parent.files_window.show()
+                    parent.files_window.raise_()
+                    parent.files_window.activateWindow()
+                    break
+                parent = parent.parent()

@@ -142,9 +142,9 @@ class RemoteFileManager(QThread):
                                 open_it=task["open_it"]
                             )
                         elif ttype == 'list_dir':
-                            print(f"Handle:{[task['path']]}")
+                            # print(f"Handle:{[task['path']]}")
                             result = self.list_dir_detailed(task['path'])
-                            print(f"List dir : {result}")
+                            # print(f"List dir : {result}")
                             self.list_dir_finished.emit(
                                 task['path'], result or [])
                         elif ttype == 'check_path':
