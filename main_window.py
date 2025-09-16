@@ -295,7 +295,13 @@ class Window(FramelessWindow):
             self._refresh_paths(child_key)
 
     def _show_progresses(self, paths, percentage, child_key):
-        lst = ast.literal_eval(paths)
+        try:
+            lst = ast.literal_eval(paths)
+            if not isinstance(lst, list):
+                lst = [lst]
+        except (ValueError, SyntaxError):
+            lst = [paths]
+
         for path in lst:
             file_name = os.path.basename(path)
             file_id = f"{child_key}_{file_name}"
