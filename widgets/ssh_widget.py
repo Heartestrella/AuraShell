@@ -165,6 +165,11 @@ class Widget(QWidget):
             self.file_explorer.selected.connect(self._process_selected_path)
             self.file_explorer.refresh_action.connect(
                 self._update_file_explorer)
+            self.file_bar.refresh_clicked.connect(self._update_file_explorer)
+            self.file_bar.new_folder_clicked.connect(
+                self.file_explorer._handle_mkdir)
+            self.file_bar.view_switch_clicked.connect(self._switch_view_mode)
+            self.file_bar.update_view_switch_button(self.file_explorer.view_mode)
             self.file_explorer.setObjectName("file_tree")
             self.file_explorer.setStyleSheet("""
                 QFrame#file_tree {
@@ -188,6 +193,14 @@ class Widget(QWidget):
             if hasattr(parent, 'icons'):
                 return parent.icons
             parent = parent.parent()
+
+    def _switch_view_mode(self):
+        if self.file_explorer.view_mode == "icon":
+            new_mode = "details"
+        else:
+            new_mode = "icon"
+        self.file_explorer.switch_view(new_mode)
+        self.file_bar.update_view_switch_button(new_mode)
 
     def _process_selected_path(self, path_dict: dict):
         # print(f"选中了: {path_dict}")

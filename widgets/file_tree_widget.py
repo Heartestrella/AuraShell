@@ -25,6 +25,7 @@ class File_Navigation_Bar(QWidget):
     bar_path_changed = pyqtSignal(str)
     new_folder_clicked = pyqtSignal()
     refresh_clicked = pyqtSignal()
+    view_switch_clicked = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -73,6 +74,9 @@ class File_Navigation_Bar(QWidget):
         self.hBoxLayout.addWidget(self.breadcrumb_container, 1)
         self.hBoxLayout.addWidget(self.path_edit)
 
+        self.view_switch_button = TransparentToolButton(FIF.VIEW, self)
+        self.hBoxLayout.addWidget(self.view_switch_button)
+
         self.new_folder_button = TransparentToolButton(FIF.FOLDER_ADD, self)
         self.new_folder_button.setToolTip(self.tr('New folder'))
         self.refresh_button = TransparentToolButton(FIF.UPDATE, self)
@@ -83,10 +87,19 @@ class File_Navigation_Bar(QWidget):
 
         self.new_folder_button.clicked.connect(self.new_folder_clicked.emit)
         self.refresh_button.clicked.connect(self.refresh_clicked.emit)
+        self.view_switch_button.clicked.connect(self.view_switch_clicked.emit)
 
         self.breadcrumbBar.currentItemChanged.connect(self.updatePathLabel)
         self.path_edit.returnPressed.connect(self._submit_path_from_edit)
         self.path_edit.editingFinished.connect(self._submit_path_from_edit)
+
+    def update_view_switch_button(self, current_mode: str):
+        if current_mode == "icon":
+            self.view_switch_button.setIcon(FIF.VIEW)
+            self.view_switch_button.setToolTip(self.tr('Details View'))
+        else:
+            self.view_switch_button.setIcon(FIF.APPLICATION)
+            self.view_switch_button.setToolTip(self.tr('Icon View'))
 
     def mousePressEvent(self, event):
         if not self.path_edit.isVisible() and self.breadcrumb_container.geometry().contains(event.pos()):
