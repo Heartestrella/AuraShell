@@ -1,6 +1,6 @@
 from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QEvent
 from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QScrollArea
 from qfluentwidgets import FluentIcon as FIF, IconWidget
 
 class TransferProgressWidget(QWidget):
@@ -36,11 +36,52 @@ class TransferProgressWidget(QWidget):
         self.header.installEventFilter(self)
 
         # Content area (collapsible)
+        # Content area (collapsible) with ScrollArea
         self.content_area = QFrame(self)
         self.content_area.setObjectName("contentArea")
-        self.content_layout = QVBoxLayout(self.content_area)
+        self.content_area_layout = QVBoxLayout(self.content_area)
+        self.content_area_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_area_layout.setSpacing(0)
+
+        self.scroll_area = QScrollArea(self.content_area)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll_area.setStyleSheet("""
+            QScrollArea {
+                background-color: transparent;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #2A2A2A;
+                width: 8px;
+                margin: 0px 0px 0px 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #555555;
+                min-height: 20px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #666666;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                border: none;
+                background: none;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: none;
+            }
+        """)
+        
+        self.scroll_content = QWidget()
+        self.content_layout = QVBoxLayout(self.scroll_content)
         self.content_layout.setContentsMargins(10, 5, 10, 10)
         self.content_layout.setSpacing(5)
+        self.content_layout.addStretch(1)
+
+        self.scroll_area.setWidget(self.scroll_content)
+        self.content_area_layout.addWidget(self.scroll_area)
 
 
         # Initial state: collapsed
@@ -133,13 +174,32 @@ class TransferProgressWidget(QWidget):
                 }}
             """)
 
-            self.content_layout.addWidget(item_widget)
+            # Insert new items at the top
+            self.content_layout.insertWidget(0, item_widget)
 
     def toggle_view(self):
         self.is_expanded = not self.is_expanded
-        
+
+        # Calculate the target height based on content
+        if self.is_expanded:
+            # Adjust the maximum height of the scroll area content.
+            # 5 items * (height per item + spacing)
+            item_height = 30
+            spacing = self.content_layout.spacing()
+            count = self.content_layout.count() -1 # Exclude stretch
+            
+            # Limit the maximum displayed items to 5
+            display_count = min(count, 5)
+            
+            end_height = display_count * (item_height + spacing) + self.content_layout.contentsMargins().top() + self.content_layout.contentsMargins().bottom()
+            # If there are fewer items, calculate the height based on the actual number of items.
+            if count < 5:
+                end_height = self.scroll_content.sizeHint().height()
+
+        else:
+            end_height = 0
+
         start_height = self.content_area.height()
-        end_height = self.content_area.sizeHint().height() if self.is_expanded else 0
 
         self.content_area.setVisible(True)
 
@@ -148,7 +208,7 @@ class TransferProgressWidget(QWidget):
         animation.setStartValue(start_height)
         animation.setEndValue(end_height)
         animation.setEasingCurve(QEasingCurve.InOutQuart)
-        
+
         def on_animation_finished():
             if not self.is_expanded:
                 self.content_area.setVisible(False)
