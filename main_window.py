@@ -1,7 +1,8 @@
 # coding:utf-8
 import sys
+import ctypes
 from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl
-from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices
+from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget
 
 from qfluentwidgets import (NavigationInterface, NavigationItemPosition, InfoBar,
@@ -36,9 +37,9 @@ class Window(FramelessWindow):
         self.setTitleBar(StandardTitleBar(self))
         self._bg_ratio = None
         self.setWindowTitle("RemmoteSSH Beta @su8aru")
-        # icon = QIcon(resource_path("resource/icons/icon.ico"))
-        # self.setWindowIcon(icon)
-        # QApplication.setWindowIcon(icon)
+        icon = QIcon(resource_path("resource/icons/icon.ico"))
+        self.setWindowIcon(icon)
+        QApplication.setWindowIcon(icon)
         self.titleBar.raise_()
         self.connect_status_dict = {}
         self.ssh_session = {}
@@ -874,6 +875,9 @@ if __name__ == '__main__':
 
         QApplication.setAttribute(Qt.AA_UseOpenGLES)
         app = QApplication(sys.argv)
+        
+        # set icon
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("su8aru.remmotessh.1.0.0")
 
         config = configer.read_config()
         lang = language_code_to_locale(config.get("language", "system"))

@@ -1,6 +1,7 @@
-from qfluentwidgets import BreadcrumbBar, LineEdit
+from qfluentwidgets import BreadcrumbBar, LineEdit, TransparentToolButton
 from typing import Dict, Optional
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QStyle
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QStyle, QFrame
+from qfluentwidgets import isDarkTheme
 from PyQt5.QtCore import Qt, pyqtSignal
 from qfluentwidgets import TreeWidget, RoundMenu, Action, FluentIcon as FIF
 from typing import Optional, Dict, Set
@@ -22,6 +23,9 @@ def _parse_linux_path(path: str):
 
 class File_Navigation_Bar(QWidget):
     bar_path_changed = pyqtSignal(str)
+    new_folder_clicked = pyqtSignal()
+    refresh_clicked = pyqtSignal()
+    view_switch_clicked = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -29,23 +33,78 @@ class File_Navigation_Bar(QWidget):
         self.current_path = "/"
         self._is_submitting = False
 
-        self.breadcrumbBar = BreadcrumbBar(self)
+        # Create a container for the border
+        self.breadcrumb_container = QFrame(self)
+        
+        # Beautify the container with QSS
+        if isDarkTheme():
+            self.breadcrumb_container.setStyleSheet("""
+                QFrame {
+                    border: 1px solid #4a4a4a;
+                    border-radius: 4px;
+                    background-color: transparent;
+                }
+                QFrame:hover {
+                    background-color: rgba(255, 255, 255, 0.08);
+                }
+            """)
+        else:
+            self.breadcrumb_container.setStyleSheet("""
+                QFrame {
+                    border: 1px solid #dcdcdc;
+                    border-radius: 4px;
+                    background-color: transparent;
+                }
+                QFrame:hover {
+                    background-color: rgba(0, 0, 0, 0.05);
+                }
+            """)
+        
+        # Place the BreadcrumbBar inside the container
+        container_layout = QHBoxLayout(self.breadcrumb_container)
+        container_layout.setContentsMargins(2, 2, 2, 2)
+        self.breadcrumbBar = BreadcrumbBar(self.breadcrumb_container)
+        self.breadcrumbBar.setStyleSheet("background-color: transparent; border: none;")
+        container_layout.addWidget(self.breadcrumbBar)
         self.path_edit = LineEdit(self)
         self.path_edit.hide()
-
+        
         self.hBoxLayout = QHBoxLayout(self)
         self.hBoxLayout.setContentsMargins(10, 5, 10, 5)
-        self.hBoxLayout.addWidget(self.breadcrumbBar)
+        self.hBoxLayout.addWidget(self.breadcrumb_container, 1)
         self.hBoxLayout.addWidget(self.path_edit)
+
+        self.view_switch_button = TransparentToolButton(FIF.VIEW, self)
+        self.hBoxLayout.addWidget(self.view_switch_button)
+
+        self.new_folder_button = TransparentToolButton(FIF.FOLDER_ADD, self)
+        self.new_folder_button.setToolTip(self.tr('New folder'))
+        self.refresh_button = TransparentToolButton(FIF.UPDATE, self)
+        self.refresh_button.setToolTip(self.tr('Refresh'))
+
+        self.hBoxLayout.addWidget(self.new_folder_button)
+        self.hBoxLayout.addWidget(self.refresh_button)
+
+        self.new_folder_button.clicked.connect(self.new_folder_clicked.emit)
+        self.refresh_button.clicked.connect(self.refresh_clicked.emit)
+        self.view_switch_button.clicked.connect(self.view_switch_clicked.emit)
 
         self.breadcrumbBar.currentItemChanged.connect(self.updatePathLabel)
         self.path_edit.returnPressed.connect(self._submit_path_from_edit)
         self.path_edit.editingFinished.connect(self._submit_path_from_edit)
 
+    def update_view_switch_button(self, current_mode: str):
+        if current_mode == "icon":
+            self.view_switch_button.setIcon(FIF.VIEW)
+            self.view_switch_button.setToolTip(self.tr('Details View'))
+        else:
+            self.view_switch_button.setIcon(FIF.APPLICATION)
+            self.view_switch_button.setToolTip(self.tr('Icon View'))
+
     def mousePressEvent(self, event):
-        if not self.path_edit.isVisible() and self.breadcrumbBar.geometry().contains(event.pos()):
+        if not self.path_edit.isVisible() and self.breadcrumb_container.geometry().contains(event.pos()):
             self.path_edit.setText(self.current_path)
-            self.breadcrumbBar.hide()
+            self.breadcrumb_container.hide()
             self.path_edit.show()
             self.path_edit.setFocus()
             self.path_edit.selectAll()
@@ -64,7 +123,7 @@ class File_Navigation_Bar(QWidget):
 
     def _hide_path_edit(self):
         self.path_edit.hide()
-        self.breadcrumbBar.show()
+        self.breadcrumb_container.show()
 
     def updatePathLabel(self, *_):
         if self.send_signal:
