@@ -39,7 +39,7 @@ class Window(FramelessWindow):
         self.setMinimumSize(800, 600)
         self.setTitleBar(StandardTitleBar(self))
         self._bg_ratio = None
-        self.setWindowTitle("RemmoteSSH Beta @su8aru")
+        self.setWindowTitle("AuraShell Beta")
         icon = QIcon(resource_path("resource/icons/icon.ico"))
         self.setWindowIcon(icon)
         QApplication.setWindowIcon(icon)
