@@ -6,6 +6,7 @@ from widgets.task_widget import Tasks
 from tools.ssh_webterm import WebTerminal
 from widgets.file_tree_widget import File_Navigation_Bar, FileTreeWidget
 from widgets.files_widgets import FileExplorer
+from widgets.transfer_progress_widget import TransferProgressWidget
 from tools.setting_config import SCM
 import os
 from functools import partial
@@ -196,7 +197,14 @@ class Widget(QWidget):
             file_manage_layout.addWidget(self.file_bar)
             file_manage_layout.addWidget(self.file_explorer, 1)
 
+            # Transfer Progress Widget
+            self.transfer_progress = TransferProgressWidget(rightContainer)
+            self.transfer_progress.setObjectName("transfer_progress")
+            
             rightLayout.addWidget(splitter)
+            rightLayout.addWidget(self.transfer_progress)
+            rightLayout.setStretchFactor(splitter, 1)
+            rightLayout.setStretchFactor(self.transfer_progress, 0)
 
             # --------- 左右 splitter ---------
             splitter_lr = QSplitter(Qt.Horizontal, self)
