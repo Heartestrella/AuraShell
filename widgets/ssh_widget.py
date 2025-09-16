@@ -98,10 +98,17 @@ class Widget(QWidget):
                 }
             """)
 
+            # Transfer Progress Widget
+            self.transfer_progress = TransferProgressWidget(leftContainer)
+            self.transfer_progress.setObjectName("transfer_progress")
+            self.transfer_progress.setSizePolicy(
+                QSizePolicy.Expanding, QSizePolicy.Preferred)
+
             # 左侧竖排布局（比例 2:3:5）
             leftLayout.addWidget(self.sys_resources, 2)
             leftLayout.addWidget(self.task, 3)
             leftLayout.addWidget(self.disk_storage, 5)
+            leftLayout.addWidget(self.transfer_progress, 0)
 
             # --------- 右侧容器 ---------
             rightContainer = QFrame(self)
@@ -197,14 +204,7 @@ class Widget(QWidget):
             file_manage_layout.addWidget(self.file_bar)
             file_manage_layout.addWidget(self.file_explorer, 1)
 
-            # Transfer Progress Widget
-            self.transfer_progress = TransferProgressWidget(rightContainer)
-            self.transfer_progress.setObjectName("transfer_progress")
-            
             rightLayout.addWidget(splitter)
-            rightLayout.addWidget(self.transfer_progress)
-            rightLayout.setStretchFactor(splitter, 1)
-            rightLayout.setStretchFactor(self.transfer_progress, 0)
 
             # --------- 左右 splitter ---------
             splitter_lr = QSplitter(Qt.Horizontal, self)

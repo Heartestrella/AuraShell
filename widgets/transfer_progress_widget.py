@@ -1,6 +1,6 @@
-from PyQt5.QtCore import Qt, pyqtSignal, QPropertyAnimation, QEasingCurve
+from PyQt5.QtCore import Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, QEvent
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QProgressBar
-from qfluentwidgets import PushButton, FluentIcon as FIF
+from qfluentwidgets import FluentIcon as FIF
 
 class TransferProgressWidget(QWidget):
     """ File Transfer Progress Widget """
@@ -22,18 +22,18 @@ class TransferProgressWidget(QWidget):
         self.header.setObjectName("header")
         self.header_layout = QHBoxLayout(self.header)
         self.header_layout.setContentsMargins(10, 5, 10, 5)
+        self.header.setCursor(Qt.PointingHandCursor)
 
         self.title_label = QLabel("File Transfers", self.header)
         self.title_label.setObjectName("titleLabel")
+        self.title_label.setWordWrap(True)
 
-        self.toggle_button = PushButton(self.header)
-        self.toggle_button.setIcon(FIF.UP)
-        self.toggle_button.setFixedSize(30, 30)
-        self.toggle_button.clicked.connect(self.toggle_view)
-        
+        self.header_layout.addStretch(1)
         self.header_layout.addWidget(self.title_label)
         self.header_layout.addStretch(1)
-        self.header_layout.addWidget(self.toggle_button)
+
+        # Make the header clickable
+        self.header.installEventFilter(self)
 
         # Content area (collapsible)
         self.content_area = QFrame(self)
@@ -85,10 +85,11 @@ class TransferProgressWidget(QWidget):
         item_layout.setContentsMargins(15, 0, 0, 0)
 
         # Here you could add a file type icon
-        # icon_label = QLabel() 
+        # icon_label = QLabel()
         # item_layout.addWidget(icon_label)
 
         filename_label = QLabel(filename)
+        filename_label.setWordWrap(True)
         progress_label = QLabel(f"{progress}%")
         
         item_layout.addWidget(filename_label)
@@ -99,8 +100,6 @@ class TransferProgressWidget(QWidget):
 
     def toggle_view(self):
         self.is_expanded = not self.is_expanded
-        
-        self.toggle_button.setIcon(FIF.DOWN if self.is_expanded else FIF.UP)
         
         start_height = self.content_area.height()
         end_height = self.content_area.sizeHint().height() if self.is_expanded else 0
@@ -122,6 +121,11 @@ class TransferProgressWidget(QWidget):
         self._animations.append(animation)
         animation.start(QPropertyAnimation.DeleteWhenStopped)
 
+    def eventFilter(self, obj, event):
+        if obj is self.header and event.type() == QEvent.MouseButtonPress:
+            self.toggle_view()
+            return True
+        return super().eventFilter(obj, event)
 
     def _apply_stylesheet(self):
         self.setStyleSheet("""
