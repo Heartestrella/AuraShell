@@ -20,6 +20,7 @@ class TransferSignals(QObject):
     start_to_compression = pyqtSignal(str)
     # remote_path (for uncompression)
     start_to_uncompression = pyqtSignal(str)
+    compression_finished = pyqtSignal(str, str)
 
 
 class TransferWorker(QRunnable):
@@ -28,7 +29,7 @@ class TransferWorker(QRunnable):
     in a separate thread from the QThreadPool.
     """
 
-    def __init__(self, connection, action, local_path, remote_path, compression, download_context=None, upload_context=None):
+    def __init__(self, connection, action, local_path, remote_path, compression, download_context=None, upload_context=None, task_id=None):
         super().__init__()
         self.conn = connection  # Now receives an active connection
         self.action = action
@@ -37,6 +38,7 @@ class TransferWorker(QRunnable):
         self.compression = compression
         self.download_context = download_context
         self.upload_context = upload_context
+        self.task_id = task_id
         self.signals = TransferSignals()
         self.sftp = None
         self.is_stopped = False
@@ -53,8 +55,11 @@ class TransferWorker(QRunnable):
         """The main work of the thread. Uses a pre-established SSH connection to perform the transfer."""
         retry_delay = 1  # Delay in seconds between retries
         attempts = 0
-        identifier = str(
-            self.local_path if self.action == 'upload' else self.remote_path)
+        if self.task_id:
+            identifier = self.task_id
+        else:
+            identifier = str(
+                self.local_path if self.action == 'upload' else self.remote_path)
         self.signals.progress.emit(identifier, -1)  # Emit waiting signal
 
         while not self.is_stopped:
@@ -182,6 +187,8 @@ class TransferWorker(QRunnable):
                         continue
                     arcname = os.path.basename(path)
                     tf.add(path, arcname=arcname)
+            self.signals.compression_finished.emit(
+                identifier, os.path.basename(tmp_tar_path))
             self._upload_file(identifier, tmp_tar_path, remote_path)
             remote_zip_path = f"{remote_path.rstrip('/')}/{os.path.basename(tmp_tar_path)}"
             self._remote_untar(remote_zip_path, remote_path)
@@ -203,6 +210,8 @@ class TransferWorker(QRunnable):
                 arcname = os.path.basename(local_path)
                 tf.add(local_path, arcname=arcname)
 
+            self.signals.compression_finished.emit(
+                identifier, os.path.basename(tmp_tar_path))
             self._upload_file(identifier, tmp_tar_path, remote_path)
             remote_zip_path = f"{remote_path.rstrip('/')}/{os.path.basename(tmp_tar_path)}"
             self._remote_untar(remote_zip_path, remote_path)

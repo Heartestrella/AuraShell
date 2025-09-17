@@ -44,6 +44,7 @@ class RemoteFileManager(QThread):
     start_to_compression = pyqtSignal(str)
     # remote_path_path
     start_to_uncompression = pyqtSignal(str)
+    compression_finished = pyqtSignal(str, str)
 
     def __init__(self, session_info, parent=None, child_key=None):
         super().__init__(parent)
@@ -138,7 +139,8 @@ class RemoteFileManager(QThread):
                                 'upload',
                                 task['local_path'],
                                 task['remote_path'],
-                                task['compression']
+                                task['compression'],
+                                task_id=task.get('task_id')
                             )
                         elif ttype == 'delete':
                             self._handle_delete_task(
@@ -253,21 +255,21 @@ class RemoteFileManager(QThread):
         except Exception:
             pass
 
-    def _dispatch_transfer_task(self, action, local_path, remote_path, compression, open_it=False):
+    def _dispatch_transfer_task(self, action, local_path, remote_path, compression, open_it=False, task_id=None):
         """Creates and starts TransferWorker(s) for uploads or downloads."""
         if action == 'upload':
             self._dispatch_upload_task(
-                local_path, remote_path, compression, open_it)
+                local_path, remote_path, compression, open_it, task_id=task_id)
         elif action == 'download':
             self._dispatch_download_task(
                 remote_path, compression, open_it)
 
-    def _dispatch_upload_task(self, local_path, remote_path, compression, open_it):
+    def _dispatch_upload_task(self, local_path, remote_path, compression, open_it, task_id=None):
         """Handles dispatching of upload tasks, expanding directories if necessary."""
         # If compression is on and we have a list of paths, treat it as a single batch job.
         if compression and isinstance(local_path, list):
             self._create_and_start_worker(
-                'upload', self.upload_conn, local_path, remote_path, compression, open_it)
+                'upload', self.upload_conn, local_path, remote_path, compression, open_it, task_id=task_id)
             return
 
         # Fallback to original logic for single items or non-compressed lists.
@@ -340,7 +342,7 @@ class RemoteFileManager(QThread):
                 file_paths.append(os.path.join(root, file))
         return file_paths
 
-    def _create_and_start_worker(self, action, connection, local_path, remote_path, compression, open_it=False, download_context=None, upload_context=None):
+    def _create_and_start_worker(self, action, connection, local_path, remote_path, compression, open_it=False, download_context=None, upload_context=None, task_id=None):
         """Helper to create, connect signals, and start a single TransferWorker."""
         worker = TransferWorker(
             connection,
@@ -349,7 +351,8 @@ class RemoteFileManager(QThread):
             remote_path,
             compression,
             download_context,
-            upload_context
+            upload_context,
+            task_id
         )
 
         if action == 'upload':
@@ -364,6 +367,8 @@ class RemoteFileManager(QThread):
                 self.start_to_compression)
             worker.signals.start_to_uncompression.connect(
                 self.start_to_uncompression)
+            worker.signals.compression_finished.connect(
+                self.compression_finished)
 
         elif action == 'download':
             worker.signals.finished.connect(
@@ -376,8 +381,11 @@ class RemoteFileManager(QThread):
         self.thread_pool.start(worker)
 
         # Track the worker
-        identifier = str(
-            local_path if action == 'upload' else remote_path)
+        if task_id:
+            identifier = task_id
+        else:
+            identifier = str(
+                local_path if action == 'upload' else remote_path)
         self.active_workers[identifier] = worker
 
     # ---------------------------
@@ -554,7 +562,7 @@ class RemoteFileManager(QThread):
         self.condition.wakeAll()
         self.mutex.unlock()
 
-    def upload_file(self, local_path, remote_path: str, compression: bool, callback=None):
+    def upload_file(self, local_path, remote_path: str, compression: bool, callback=None, task_id=None):
         """
         Uploads a local file to the remote server asynchronously.
 
@@ -582,7 +590,8 @@ class RemoteFileManager(QThread):
             'local_path': local_path,
             'remote_path': remote_path,
             'compression': compression,
-            'callback': callback
+            'callback': callback,
+            'task_id': task_id
         })
         self.condition.wakeAll()
         self.mutex.unlock()

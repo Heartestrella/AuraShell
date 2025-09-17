@@ -379,16 +379,16 @@ class Window(FramelessWindow):
             lambda path: self._show_info(path=path, type_="compression", child_key=child_key))
         file_manager.start_to_compression.connect(
             lambda path: self._show_info(path=path, type_="uncompression", child_key=child_key))
+        file_manager.compression_finished.connect(
+            lambda identifier, new_name: self._update_transfer_item_name(identifier, new_name, child_key))
         file_manager.upload_progress.connect(
             lambda path, percentage: self._show_progresses(path, percentage, child_key, 'upload'))
         file_manager.download_progress.connect(
             lambda path, percentage: self._show_progresses(path, percentage, child_key, 'download'))
         session_widget.file_explorer.upload_file.connect(
             lambda local_path, remote_path, compression: self._handle_upload_request(
-                child_key, local_path, remote_path, compression)
+                child_key, local_path, remote_path, compression, file_manager)
         )
-        session_widget.file_explorer.upload_file.connect(
-            file_manager.upload_file)
 
         def on_sftp_ready():
             global home_path
@@ -821,12 +821,14 @@ class Window(FramelessWindow):
         widget = self.stackWidget.widget(index)
         self.navigationInterface.setCurrentItem(widget.objectName())
 
-    def _handle_upload_request(self, child_key, local_path, remote_path, compression):
+    def _handle_upload_request(self, child_key, local_path, remote_path, compression, file_manager):
         """Pre-handles upload requests to determine if UI items should be pre-created."""
         # If compression is on and we have a list, create a single UI item for the batch.
         if compression and isinstance(local_path, list):
+            task_id = f"compress_upload_{time.time()}"
             self._add_transfer_item_if_not_exists(
-                child_key, local_path, 'upload')
+                child_key, local_path, 'upload', task_id=task_id)
+            file_manager.upload_file(local_path, remote_path, compression, task_id=task_id)
             return
 
         # Original logic for other cases (single files, non-compressed lists/dirs)
@@ -837,8 +839,9 @@ class Window(FramelessWindow):
             if not (os.path.isdir(p) and not compression):
                 self._add_transfer_item_if_not_exists(
                     child_key, p, 'upload')
+            file_manager.upload_file(p, remote_path, compression)
 
-    def _add_transfer_item_if_not_exists(self, child_key, path, transfer_type):
+    def _add_transfer_item_if_not_exists(self, child_key, path, transfer_type, task_id=None):
         """Helper to add a transfer item to the UI if it doesn't exist."""
         parent_key = child_key.split("-")[0].strip()
         session_widget = self.session_widgets.get(
@@ -848,7 +851,8 @@ class Window(FramelessWindow):
 
         # The unique identifier for a task is now the full path for single files,
         # or the string representation of the list for compressed batches.
-        task_identifier = str(path) if isinstance(path, list) else path
+        task_identifier = task_id if task_id else (
+            str(path) if isinstance(path, list) else path)
 
         if task_identifier in self.active_transfers:
             return  # Avoid creating duplicate entries
@@ -916,6 +920,20 @@ class Window(FramelessWindow):
                 background-color: transparent;
             }
         """)
+
+    def _update_transfer_item_name(self, identifier, new_name, child_key):
+        parent_key = child_key.split("-")[0].strip()
+        session_widget = self.session_widgets.get(
+            parent_key, {}).get(child_key)
+        if not session_widget:
+            return
+
+        if identifier in self.active_transfers:
+            file_id = self.active_transfers[identifier]["id"]
+            self.active_transfers[identifier]["filename"] = new_name
+            data = self.active_transfers[identifier]
+            session_widget.transfer_progress.update_transfer_item(
+                file_id, data)
 
     def set_ssh_session_text_color(self, color: str):
         try:

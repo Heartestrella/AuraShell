@@ -197,6 +197,8 @@ class TransferProgressWidget(QWidget):
         item_widget.setProperty("last_data", data)
         transfer_type = data.get("type", "upload")
         progress = data.get("progress", 0)
+        filename = data.get("filename", "")
+        filename_label = item_widget.findChild(QLabel)
         status_icon = item_widget.findChild(IconWidget, "statusIcon")
         progress_label = item_widget.findChild(QLabel, "progressLabel")
         completed_icon = item_widget.findChild(IconWidget, "completedIcon")
@@ -209,6 +211,9 @@ class TransferProgressWidget(QWidget):
         # Hide cancel icon unless it's being hovered
         if not item_widget.underMouse():
             cancel_icon.hide()
+
+        if filename_label and filename:
+            filename_label.setText(filename)
 
         # --- Update widgets based on transfer type ---
         if transfer_type == "completed":
