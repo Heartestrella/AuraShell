@@ -137,7 +137,7 @@ class RemoteFileManager(QThread):
                         elif ttype == "download_files":
                             self._dispatch_transfer_task(
                                 'download',
-                                None,  # local_path is not used by download worker
+                                None,  # local_path is not used for download tasks
                                 task['path'],
                                 task["compression"],
                                 open_it=task["open_it"]
@@ -240,32 +240,81 @@ class RemoteFileManager(QThread):
 
     def _dispatch_transfer_task(self, action, local_path, remote_path, compression, open_it=False):
         """Creates and starts TransferWorker(s) for uploads or downloads."""
-        
-        paths_to_process = []
         if action == 'upload':
-            paths_to_process = local_path if isinstance(local_path, list) else [local_path]
+            self._dispatch_upload_task(
+                local_path, remote_path, compression, open_it)
         elif action == 'download':
-            paths_to_process = remote_path if isinstance(remote_path, list) else [remote_path]
+            self._dispatch_download_task(
+                remote_path, compression, open_it)
 
-        # If compression is enabled for a list, treat it as a single task.
-        if compression and isinstance(paths_to_process, list) and len(paths_to_process) > 1:
-            self._create_and_start_worker(action, paths_to_process, remote_path, compression, open_it)
+    def _dispatch_upload_task(self, local_path, remote_path, compression, open_it):
+        """Handles dispatching of upload tasks."""
+        paths_to_process = local_path if isinstance(
+            local_path, list) else [local_path]
+        if compression and len(paths_to_process) > 1:
+            self._create_and_start_worker(
+                'upload', paths_to_process, remote_path, compression, open_it)
         else:
-            # For non-compressed lists or single items, create a worker for each item.
-            for path_item in paths_to_process:
-                item_local_path = path_item if action == 'upload' else None
-                item_remote_path = path_item if action == 'download' else remote_path
-                self._create_and_start_worker(action, item_local_path, item_remote_path, compression, open_it)
+            for item in paths_to_process:
+                self._create_and_start_worker(
+                    'upload', item, remote_path, compression, open_it)
 
-    def _create_and_start_worker(self, action, local_path, remote_path, compression, open_it=False):
+    def _dispatch_download_task(self, remote_path, compression, open_it):
+        """Handles dispatching of download tasks, expanding directories if necessary."""
+        paths_to_process = remote_path if isinstance(
+            remote_path, list) else [remote_path]
+        files_to_download = []
+        
+        for path_item in paths_to_process:
+            is_dir = self.check_path_type(path_item) == "directory"
+
+            if is_dir and not compression:
+                # Expand directory into a list of files for individual download
+                all_files, dirs_to_create = self._list_remote_files_recursive(
+                    path_item)
+                for file_path in all_files:
+                    # For each file, we pass the original directory as 'context'
+                    self._create_and_start_worker(
+                        'download', None, file_path, compression, open_it, download_context=path_item)
+            else:
+                # It's a single file, a list of files, or a compressed directory
+                # Let the worker handle it as a single task.
+                self._create_and_start_worker(
+                    'download', None, path_item, compression, open_it)
+
+    def _list_remote_files_recursive(self, remote_path):
+        """Recursively lists all files in a remote directory. Returns a tuple of (file_paths, dir_paths)."""
+        file_paths = []
+        dir_paths = [remote_path]
+        
+        items_to_scan = [remote_path]
+        
+        while items_to_scan:
+            current_path = items_to_scan.pop(0)
+            try:
+                for attr in self.sftp.listdir_attr(current_path):
+                    full_path = f"{current_path.rstrip('/')}/{attr.filename}"
+                    if stat.S_ISDIR(attr.st_mode):
+                        dir_paths.append(full_path)
+                        items_to_scan.append(full_path)
+                    else:
+                        file_paths.append(full_path)
+            except Exception as e:
+                print(f"Error listing remote directory {current_path}: {e}")
+                
+        return file_paths, dir_paths
+
+    def _create_and_start_worker(self, action, local_path, remote_path, compression, open_it=False, download_context=None):
         """Helper to create, connect signals, and start a single TransferWorker."""
         worker = TransferWorker(
             self.session_info,
             action,
             local_path,
             remote_path,
-            compression
+            compression,
+            download_context
         )
+
 
         if action == 'upload':
             worker.signals.finished.connect(self.upload_finished)

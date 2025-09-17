@@ -27,13 +27,14 @@ class TransferWorker(QRunnable):
     in a separate thread from the QThreadPool.
     """
 
-    def __init__(self, session_info, action, local_path, remote_path, compression):
+    def __init__(self, session_info, action, local_path, remote_path, compression, download_context=None):
         super().__init__()
         self.session_info = session_info
         self.action = action  # 'upload' or 'download'
         self.local_path = local_path
         self.remote_path = remote_path
         self.compression = compression
+        self.download_context = download_context
         self.signals = TransferSignals()
 
         # SSH/SFTP clients will be created in the run() method to ensure they are thread-local
@@ -295,20 +296,42 @@ class TransferWorker(QRunnable):
 
     def _download_item(self, identifier, remote_item_path, local_base_path):
         """Downloads a single item (file or directory) and emits a finished signal for it."""
-        local_target = os.path.join(
-            local_base_path, os.path.basename(remote_item_path.rstrip("/")))
         try:
+            # Determine local path, preserving directory structure if context is given
+            if self.download_context:
+                if remote_item_path.startswith(self.download_context):
+                    # The download root itself should be included in the local path
+                    download_root_name = os.path.basename(
+                        self.download_context.rstrip('/'))
+                    relative_path = os.path.relpath(
+                        remote_item_path, self.download_context)
+                    local_target = os.path.join(
+                        local_base_path, download_root_name, relative_path)
+                else:  # Fallback for safety
+                    local_target = os.path.join(
+                        local_base_path, os.path.basename(remote_item_path.rstrip("/")))
+            else:
+                local_target = os.path.join(
+                    local_base_path, os.path.basename(remote_item_path.rstrip("/")))
+
+            # Ensure local directory exists
+            os.makedirs(os.path.dirname(local_target), exist_ok=True)
+
+            # Since dispatcher now only sends files for non-compressed, we can simplify this.
+            # We still check to be robust.
             attr = self.sftp.stat(remote_item_path)
             if stat.S_ISDIR(attr.st_mode):
+                # This part should ideally not be hit in the new flow for non-compressed downloads
                 self._download_directory(
                     identifier, remote_item_path, local_target)
             else:
-                self._download_file(identifier, remote_item_path, local_target)
-            # Emit success signal for this individual item
+                self._download_file(
+                    identifier, remote_item_path, local_target)
+
             self.signals.finished.emit(identifier, True, local_target)
         except Exception as e:
-            error_msg = f"Failed to download {remote_item_path}: {e}"
-            # Emit failure signal for this individual item
+            tb = traceback.format_exc()
+            error_msg = f"Failed to download {remote_item_path}: {e}\n{tb}"
             self.signals.finished.emit(identifier, False, error_msg)
 
     def _download_file(self, identifier, remote_file, local_file):
