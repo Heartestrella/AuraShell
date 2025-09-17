@@ -207,6 +207,7 @@ class Widget(QWidget):
                     padding-left: 5px;
                 }
             """ % config["ssh_widget_text_color"])
+            self.command_icon.clicked.connect(self.ssh_widget.clear_screen)
             command_bar_layout.addWidget(self.command_icon)
             command_bar_layout.addWidget(self.command_input)
 
