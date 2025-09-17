@@ -1,6 +1,6 @@
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import QFrame,  QHBoxLayout, QLabel, QWidget, QVBoxLayout, QSizePolicy, QSplitter, QSpacerItem
-from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, ProgressRing
+from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, ProgressRing, TextEdit, PrimaryPushButton, ToolButton
 from widgets.system_resources_widget import ProcessTable
 from widgets.task_widget import Tasks
 from tools.ssh_webterm import WebTerminal
@@ -131,21 +131,27 @@ class Widget(QWidget):
             # 上下 splitter（右边 ssh_widget / file_manage）
             splitter = QSplitter(Qt.Vertical, rightContainer)
             splitter.setChildrenCollapsible(False)
-            splitter.setHandleWidth(6)
+            splitter.setHandleWidth(2)
             splitter.setStyleSheet("""
                 QSplitter::handle:vertical {
                     background-color: #cccccc;
                     height: 1px;
-                    margin: 2px 0px;
+                    margin: 0px;
                 }
                 QSplitter::handle:vertical:hover {
                     background-color: #999999;
                 }
             """)
 
+            # Top container for ssh_widget and command_bar
+            top_container = QFrame(splitter)
+            top_container_layout = QVBoxLayout(top_container)
+            top_container_layout.setContentsMargins(0, 0, 0, 0)
+            top_container_layout.setSpacing(0)
+
             # ssh_widget
             self.ssh_widget = WebTerminal(
-                splitter,
+                top_container,
                 font_name=font_name,
                 user_name=user_name,
                 text_color=config["ssh_widget_text_color"]
@@ -161,6 +167,32 @@ class Widget(QWidget):
                     border-radius: 6px;
                 }
             """)
+
+            # command input bar
+            self.command_bar = QFrame(top_container)
+            self.command_bar.setObjectName("command_bar")
+            self.command_bar.setFixedHeight(42)
+
+            command_bar_layout = QHBoxLayout(self.command_bar)
+            command_bar_layout.setContentsMargins(8, 5, 8, 5)
+            command_bar_layout.setSpacing(8)
+
+            self.command_icon = ToolButton(FIF.COMMAND_PROMPT, self.command_bar)
+
+            self.command_input = TextEdit(self.command_bar)
+            self.command_input.setObjectName("command_input")
+            self.command_input.setPlaceholderText(self.tr("Enter command here, Shift+Enter for new line"))
+            self.command_input.setFixedHeight(32)
+
+            self.execute_button = PrimaryPushButton(self.tr("Execute"), self.command_bar)
+            self.execute_button.setFixedWidth(100)
+
+            command_bar_layout.addWidget(self.command_icon)
+            command_bar_layout.addWidget(self.command_input)
+            command_bar_layout.addWidget(self.execute_button)
+
+            top_container_layout.addWidget(self.ssh_widget)
+            top_container_layout.addWidget(self.command_bar)
 
             # file_manage
             self.file_manage = QWidget(splitter)
@@ -221,7 +253,7 @@ class Widget(QWidget):
             self.mainLayout.addWidget(splitter_lr)
 
             # ---- 上下 splitter 默认比例 ----
-            splitter.setStretchFactor(0, 3)   # ssh_widget
+            splitter.setStretchFactor(0, 3)   # top_container
             splitter.setStretchFactor(1, 2)   # file_manage
 
             # ---- 左右 splitter 默认比例 ----
@@ -238,9 +270,9 @@ class Widget(QWidget):
             def save_tb_ratio(pos, index):
                 sizes = splitter.sizes()
                 total = sum(sizes)
-                print(f"rb total : {total}")
-                configer.revise_config("splitter_tb_ratio", [
-                                       s / total for s in sizes])
+                if total > 0:
+                    configer.revise_config("splitter_tb_ratio", [
+                                        s / total for s in sizes])
                 # config["splitter_tb_ratio"] = [s / total for s in sizes]
                 # configer.save_config(config)
 
@@ -257,7 +289,13 @@ class Widget(QWidget):
             if "splitter_tb_ratio" in config:
                 total_h = max(200, self.height())
                 r = config["splitter_tb_ratio"]
-                splitter.setSizes([int(total_h * r[0]), int(total_h * r[1])])
+                if len(r) == 2:  # New format
+                    splitter.setSizes([int(total_h * r[0]), int(total_h * r[1])])
+                elif len(r) == 3:  # For compatibility with old config
+                    top_size_ratio = r[0] + r[1]
+                    bottom_size_ratio = r[2]
+                    splitter.setSizes([int(total_h * top_size_ratio),
+                                      int(total_h * bottom_size_ratio)])
 
     def _get_icons(self):
         parent = self.parent()
