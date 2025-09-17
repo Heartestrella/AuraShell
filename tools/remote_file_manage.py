@@ -238,7 +238,26 @@ class RemoteFileManager(QThread):
             pass
 
     def _dispatch_transfer_task(self, action, local_path, remote_path, compression, open_it=False):
-        """Creates and starts a TransferWorker for uploads or downloads."""
+        """Creates and starts TransferWorker(s) for uploads or downloads."""
+        
+        paths_to_process = []
+        if action == 'upload':
+            paths_to_process = local_path if isinstance(local_path, list) else [local_path]
+        elif action == 'download':
+            paths_to_process = remote_path if isinstance(remote_path, list) else [remote_path]
+
+        # If compression is enabled for a list, treat it as a single task.
+        if compression and isinstance(paths_to_process, list) and len(paths_to_process) > 1:
+            self._create_and_start_worker(action, paths_to_process, remote_path, compression, open_it)
+        else:
+            # For non-compressed lists or single items, create a worker for each item.
+            for path_item in paths_to_process:
+                item_local_path = path_item if action == 'upload' else None
+                item_remote_path = path_item if action == 'download' else remote_path
+                self._create_and_start_worker(action, item_local_path, item_remote_path, compression, open_it)
+
+    def _create_and_start_worker(self, action, local_path, remote_path, compression, open_it=False):
+        """Helper to create, connect signals, and start a single TransferWorker."""
         worker = TransferWorker(
             self.session_info,
             action,
@@ -248,32 +267,23 @@ class RemoteFileManager(QThread):
         )
 
         if action == 'upload':
-            # The worker's finished signal is (local_path, success, message)
-            # The filemanager's upload_finished signal is (local_path, success, error_msg)
-            # The signatures now match, we can connect them directly.
-            # We also need to trigger a refresh on success.
             worker.signals.finished.connect(self.upload_finished)
+            # Refresh the parent directory of the remote path upon successful upload.
             worker.signals.finished.connect(
                 lambda path, success, msg: self.refresh_paths(
-                    [remote_path]) if success else None
+                    [os.path.dirname(remote_path.rstrip('/'))]) if success and remote_path else None
             )
             worker.signals.progress.connect(self.upload_progress)
-            worker.signals.start_to_compression.connect(
-                self.start_to_compression)
-            worker.signals.start_to_uncompression.connect(
-                self.start_to_uncompression)
+            worker.signals.start_to_compression.connect(self.start_to_compression)
+            worker.signals.start_to_uncompression.connect(self.start_to_uncompression)
 
         elif action == 'download':
-            # The worker's finished signal is (identifier, success, message)
-            # On success, message is the local path. On failure, it's the error message.
-            # The filemanager's download_finished is (remote_path, local_path, status, error_msg, open_it)
             worker.signals.finished.connect(
                 lambda identifier, success, msg: self.download_finished.emit(
                     identifier, msg if success else "", success, "" if success else msg, open_it
                 )
             )
-            # Note: Progress for downloads is not forwarded as the signals don't match perfectly.
-            # This can be implemented if detailed download progress is needed.
+            # ToDo: Connect progress signal for downloads if needed.
 
         self.thread_pool.start(worker)
 
