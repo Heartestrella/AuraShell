@@ -13,7 +13,7 @@ class TransferProgressWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setObjectName("transferProgressWidget")
-
+        self.setMaximumHeight(200)
         self.is_expanded = False
         self._animations = []
         self.transfer_items = {}

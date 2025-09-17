@@ -1,5 +1,5 @@
 # remote_file_manage.py
-from PyQt5.QtCore import pyqtSignal, QThread, QMutex, QWaitCondition, QThreadPool
+from PyQt5.QtCore import pyqtSignal, QThread, QMutex, QWaitCondition, QThreadPool, QTimer
 from tools.transfer_worker import TransferWorker
 from tools.setting_config import SCM
 import paramiko
@@ -253,14 +253,39 @@ class RemoteFileManager(QThread):
         except Exception:
             pass
 
-    def _dispatch_transfer_task(self, action, local_path, remote_path, compression, open_it=False):
-        """Creates and starts TransferWorker(s) for uploads or downloads."""
+    def _dispatch_transfer_task(self, action, local_path, remote_path, compression, open_it=False, interval=2000):
+        """Creates and starts TransferWorker(s) for uploads or downloads with optional interval."""
         if action == 'upload':
             self._dispatch_upload_task(
                 local_path, remote_path, compression, open_it)
         elif action == 'download':
-            self._dispatch_download_task(
-                remote_path, compression, open_it)
+            # 构建下载队列
+            paths_to_process = remote_path if isinstance(
+                remote_path, list) else [remote_path]
+            download_queue = []
+
+            for path_item in paths_to_process:
+                is_dir = self.check_path_type(path_item) == "directory"
+                if is_dir and not compression:
+                    all_files, dirs_to_create = self._list_remote_files_recursive(
+                        path_item)
+                    for file_path in all_files:
+                        download_queue.append((file_path, path_item))
+                else:
+                    download_queue.append((path_item, None))
+
+            # 定义递归调度函数
+            def schedule_next(index=0):
+                if index >= len(download_queue):
+                    return
+                file_path, context = download_queue[index]
+                self._create_and_start_worker(
+                    'download', self.download_conn, None, file_path, compression, open_it, download_context=context
+                )
+                QTimer.singleShot(interval, lambda: schedule_next(index + 1))
+
+            # 启动第一个任务
+            schedule_next()
 
     def _dispatch_upload_task(self, local_path, remote_path, compression, open_it):
         """Handles dispatching of upload tasks, expanding directories if necessary."""
@@ -623,10 +648,10 @@ class RemoteFileManager(QThread):
 
                 # common executable-related MIME strings
                 if ("executable" in mime_out
-                    or "x-executable" in mime_out
-                    or mime_out.startswith("application/x-sharedlib")
-                    or "x-mach-binary" in mime_out
-                    or "pe" in mime_out  # covers various PE-like mimes
+                        or "x-executable" in mime_out
+                        or mime_out.startswith("application/x-sharedlib")
+                        or "x-mach-binary" in mime_out
+                        or "pe" in mime_out  # covers various PE-like mimes
                     ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
