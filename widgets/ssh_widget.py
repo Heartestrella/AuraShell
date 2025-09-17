@@ -1,6 +1,7 @@
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import QFrame,  QHBoxLayout, QLabel, QWidget, QVBoxLayout, QSizePolicy, QSplitter, QSpacerItem
 from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, ProgressRing, TextEdit, PrimaryPushButton, ToolButton
+from widgets.command_input import CommandInput
 from widgets.system_resources_widget import ProcessTable
 from widgets.task_widget import Tasks
 from tools.ssh_webterm import WebTerminal
@@ -170,7 +171,7 @@ class Widget(QWidget):
             # command input bar
             self.command_bar = QFrame(top_container)
             self.command_bar.setObjectName("command_bar")
-            self.command_bar.setFixedHeight(42)
+            # self.command_bar.setFixedHeight(42) # Remove fixed height
 
             self.command_bar.setStyleSheet("""
                 QFrame#command_bar {
@@ -189,14 +190,16 @@ class Widget(QWidget):
 
             self.command_icon = ToolButton(FIF.BROOM, self.command_bar)
 
-            self.command_input = TextEdit(self.command_bar)
+            self.command_input = CommandInput(self.command_bar)
             self.command_input.setObjectName("command_input")
             self.command_input.setPlaceholderText(self.tr("Enter command here,Shift+Enter for new line,Enter to sendExec"))
-            self.command_input.setFixedHeight(32)
+            # self.command_input.setFixedHeight(32) # Remove fixed height
             self.command_input.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self.command_input.textChanged.connect(self.adjust_input_height)
+            self.command_input.executeCommand.connect(self.send_command_to_ssh)
 
             self.command_input.setStyleSheet("""
-                TextEdit#command_input {
+                CommandInput#command_input {
                     background-color: transparent;
                     border: none;
                     color: %s;
@@ -209,6 +212,7 @@ class Widget(QWidget):
 
             top_container_layout.addWidget(self.ssh_widget)
             top_container_layout.addWidget(self.command_bar)
+            self.adjust_input_height()
 
             # file_manage
             self.file_manage = QWidget(splitter)
@@ -312,6 +316,36 @@ class Widget(QWidget):
                     bottom_size_ratio = r[2]
                     splitter.setSizes([int(total_h * top_size_ratio),
                                       int(total_h * bottom_size_ratio)])
+
+    def adjust_input_height(self):
+        doc = self.command_input.document()
+        # Get the required height from the document's layout
+        content_height = int(doc.size().height())
+
+        # The document margin is the internal padding of the TextEdit
+        margin = int(self.command_input.document().documentMargin()) * 2
+
+        # Calculate the total required height
+        required_height = content_height + margin
+
+        # Define min/max heights
+        font_metrics = self.command_input.fontMetrics()
+        line_height = font_metrics.lineSpacing()
+        # Min height for at least one line
+        min_height = line_height + margin
+        # Max height for 5 lines
+        max_height = (line_height * 5) + margin + 5  # A bit of extra padding for max
+
+        # Clamp the final height
+        final_height = min(max(required_height, min_height), max_height)
+
+        # Update the heights of the input and its container
+        self.command_input.setFixedHeight(final_height)
+        self.command_bar.setFixedHeight(final_height + 10)  # 10 for container's padding
+
+    def send_command_to_ssh(self, command):
+        if self.ssh_widget and command:
+            self.ssh_widget.send_command(command + '\n')
 
     def _get_icons(self):
         parent = self.parent()
