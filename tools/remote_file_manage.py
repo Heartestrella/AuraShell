@@ -20,6 +20,7 @@ class RemoteFileManager(QThread):
     error_occurred = pyqtSignal(str)
     sftp_ready = pyqtSignal()
     upload_progress = pyqtSignal(str, int)  # File path, progress percentage
+    download_progress = pyqtSignal(str, int)  # File path, progress percentage
     # File path, success, error message
     upload_finished = pyqtSignal(str, bool, str)
     # Path, success, error message
@@ -56,6 +57,8 @@ class RemoteFileManager(QThread):
 
         self.conn = None
         self.sftp = None
+        self.upload_conn = None
+        self.download_conn = None
 
         # File_tree
         self.file_tree: Dict = {}
@@ -75,32 +78,41 @@ class RemoteFileManager(QThread):
         config = SCM().read_config()
         max_threads = config.get("max_concurrent_transfers", 4)
         self.thread_pool.setMaxThreadCount(max_threads)
+        self.active_workers = {}  # To track active TransferWorker instances
 
     # ---------------------------
     # Main thread loop
     # ---------------------------
+    def _create_ssh_connection(self):
+        """Helper function to create and configure an SSH connection."""
+        conn = paramiko.SSHClient()
+        conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        if self.auth_type == "password":
+            conn.connect(
+                self.host,
+                port=self.port,
+                username=self.user,
+                password=self.password,
+                timeout=30,
+                banner_timeout=30
+            )
+        else:
+            conn.connect(
+                self.host,
+                port=self.port,
+                username=self.user,
+                key_filename=self.key_path,
+                timeout=30,
+                banner_timeout=30
+            )
+        return conn
+
     def run(self):
         try:
-            self.conn = paramiko.SSHClient()
-            self.conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            if self.auth_type == "password":
-                self.conn.connect(
-                    self.host,
-                    port=self.port,
-                    username=self.user,
-                    password=self.password,
-                    timeout=30,
-                    banner_timeout=30
-                )
-            else:
-                self.conn.connect(
-                    self.host,
-                    port=self.port,
-                    username=self.user,
-                    key_filename=self.key_path,
-                    timeout=30,
-                    banner_timeout=30
-                )
+            # Create all three connections at the start
+            self.conn = self._create_ssh_connection()
+            self.upload_conn = self._create_ssh_connection()
+            self.download_conn = self._create_ssh_connection()
 
             self.sftp = self.conn.open_sftp()
             self.sftp_ready.emit()
@@ -136,7 +148,7 @@ class RemoteFileManager(QThread):
                         elif ttype == "download_files":
                             self._dispatch_transfer_task(
                                 'download',
-                                None,  # local_path is not used by download worker
+                                None,  # local_path is not used for download tasks
                                 task['path'],
                                 task["compression"],
                                 open_it=task["open_it"]
@@ -208,6 +220,10 @@ class RemoteFileManager(QThread):
         try:
             if self.conn:
                 self.conn.close()
+            if self.upload_conn:
+                self.upload_conn.close()
+            if self.download_conn:
+                self.download_conn.close()
         except Exception:
             pass
 
@@ -238,48 +254,134 @@ class RemoteFileManager(QThread):
             pass
 
     def _dispatch_transfer_task(self, action, local_path, remote_path, compression, open_it=False):
-        """Creates and starts a TransferWorker for uploads or downloads."""
+        """Creates and starts TransferWorker(s) for uploads or downloads."""
+        if action == 'upload':
+            self._dispatch_upload_task(
+                local_path, remote_path, compression, open_it)
+        elif action == 'download':
+            self._dispatch_download_task(
+                remote_path, compression, open_it)
+
+    def _dispatch_upload_task(self, local_path, remote_path, compression, open_it):
+        """Handles dispatching of upload tasks, expanding directories if necessary."""
+        paths_to_process = local_path if isinstance(
+            local_path, list) else [local_path]
+
+        for path_item in paths_to_process:
+            is_dir = os.path.isdir(path_item)
+
+            if is_dir and not compression:
+                # Expand directory into a list of files for individual upload
+                all_files = self._list_local_files_recursive(path_item)
+                for file_path in all_files:
+                    # For each file, we pass the original directory as 'context'
+                    self._create_and_start_worker(
+                        'upload', self.upload_conn, file_path, remote_path, compression, open_it, upload_context=path_item)
+            else:
+                # It's a single file, a list of files, or a compressed directory
+                self._create_and_start_worker(
+                    'upload', self.upload_conn, path_item, remote_path, compression, open_it)
+
+    def _dispatch_download_task(self, remote_path, compression, open_it):
+        """Handles dispatching of download tasks, expanding directories if necessary."""
+        paths_to_process = remote_path if isinstance(
+            remote_path, list) else [remote_path]
+        
+        for path_item in paths_to_process:
+            is_dir = self.check_path_type(path_item) == "directory"
+
+            if is_dir and not compression:
+                # Expand directory into a list of files for individual download
+                all_files, dirs_to_create = self._list_remote_files_recursive(
+                    path_item)
+                for file_path in all_files:
+                    # For each file, we pass the original directory as 'context'
+                    self._create_and_start_worker(
+                        'download', self.download_conn, None, file_path, compression, open_it, download_context=path_item)
+            else:
+                # It's a single file, a list of files, or a compressed directory
+                self._create_and_start_worker(
+                    'download', self.download_conn, None, path_item, compression, open_it)
+
+    def _list_remote_files_recursive(self, remote_path):
+        """Recursively lists all files in a remote directory. Returns a tuple of (file_paths, dir_paths)."""
+        file_paths = []
+        dir_paths = [remote_path]
+        
+        items_to_scan = [remote_path]
+        
+        while items_to_scan:
+            current_path = items_to_scan.pop(0)
+            try:
+                for attr in self.sftp.listdir_attr(current_path):
+                    full_path = f"{current_path.rstrip('/')}/{attr.filename}"
+                    if stat.S_ISDIR(attr.st_mode):
+                        dir_paths.append(full_path)
+                        items_to_scan.append(full_path)
+                    else:
+                        file_paths.append(full_path)
+            except Exception as e:
+                print(f"Error listing remote directory {current_path}: {e}")
+                
+        return file_paths, dir_paths
+
+    def _list_local_files_recursive(self, local_path):
+        """Recursively lists all files in a local directory."""
+        file_paths = []
+        for root, _, files in os.walk(local_path):
+            for file in files:
+                file_paths.append(os.path.join(root, file))
+        return file_paths
+
+    def _create_and_start_worker(self, action, connection, local_path, remote_path, compression, open_it=False, download_context=None, upload_context=None):
+        """Helper to create, connect signals, and start a single TransferWorker."""
         worker = TransferWorker(
-            self.session_info,
+            connection,
             action,
             local_path,
             remote_path,
-            compression
+            compression,
+            download_context,
+            upload_context
         )
 
+
         if action == 'upload':
-            # The worker's finished signal is (local_path, success, message)
-            # The filemanager's upload_finished signal is (local_path, success, error_msg)
-            # The signatures now match, we can connect them directly.
-            # We also need to trigger a refresh on success.
             worker.signals.finished.connect(self.upload_finished)
+            # Refresh the parent directory of the remote path upon successful upload.
             worker.signals.finished.connect(
                 lambda path, success, msg: self.refresh_paths(
-                    [remote_path]) if success else None
+                    [os.path.dirname(remote_path.rstrip('/'))]) if success and remote_path else None
             )
             worker.signals.progress.connect(self.upload_progress)
-            worker.signals.start_to_compression.connect(
-                self.start_to_compression)
-            worker.signals.start_to_uncompression.connect(
-                self.start_to_uncompression)
+            worker.signals.start_to_compression.connect(self.start_to_compression)
+            worker.signals.start_to_uncompression.connect(self.start_to_uncompression)
 
         elif action == 'download':
-            # The worker's finished signal is (identifier, success, message)
-            # On success, message is the local path. On failure, it's the error message.
-            # The filemanager's download_finished is (remote_path, local_path, status, error_msg, open_it)
             worker.signals.finished.connect(
                 lambda identifier, success, msg: self.download_finished.emit(
                     identifier, msg if success else "", success, "" if success else msg, open_it
                 )
             )
-            # Note: Progress for downloads is not forwarded as the signals don't match perfectly.
-            # This can be implemented if detailed download progress is needed.
+            worker.signals.progress.connect(self.download_progress)
 
         self.thread_pool.start(worker)
+
+        # Track the worker
+        identifier = str(
+            local_path if action == 'upload' else remote_path)
+        self.active_workers[identifier] = worker
+
 
     # ---------------------------
     # Public task API
     # ---------------------------
+    def cancel_transfer(self, identifier: str):
+        """Cancels an active transfer task."""
+        worker = self.active_workers.pop(identifier, None)
+        if worker:
+            worker.stop()
+
 
     def mkdir(self, path: str, callback=None):
         self.mutex.lock()

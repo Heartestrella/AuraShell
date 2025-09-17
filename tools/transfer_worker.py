@@ -6,6 +6,7 @@ import stat
 import tarfile
 import tempfile
 from PyQt5.QtCore import QObject, QRunnable, pyqtSignal
+import time
 
 
 class TransferSignals(QObject):
@@ -27,73 +28,90 @@ class TransferWorker(QRunnable):
     in a separate thread from the QThreadPool.
     """
 
-    def __init__(self, session_info, action, local_path, remote_path, compression):
+    def __init__(self, connection, action, local_path, remote_path, compression, download_context=None, upload_context=None):
         super().__init__()
-        self.session_info = session_info
-        self.action = action  # 'upload' or 'download'
+        self.conn = connection  # Now receives an active connection
+        self.action = action
         self.local_path = local_path
         self.remote_path = remote_path
         self.compression = compression
+        self.download_context = download_context
+        self.upload_context = upload_context
         self.signals = TransferSignals()
-
-        # SSH/SFTP clients will be created in the run() method to ensure they are thread-local
-        self.conn = None
         self.sftp = None
+        self.is_stopped = False
+
+    def stop(self):
+        self.is_stopped = True
+        if self.sftp:
+            try:
+                self.sftp.close()
+            except Exception as e:
+                print(f"Error closing SFTP in worker stop: {e}")
 
     def run(self):
-        """The main work of the thread. Establishes a new SSH connection and performs the transfer."""
-        try:
-            self.conn = paramiko.SSHClient()
-            self.conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            if self.session_info.auth_type == "password":
-                self.conn.connect(
-                    self.session_info.host,
-                    port=self.session_info.port,
-                    username=self.session_info.username,
-                    password=self.session_info.password,
-                    timeout=30,
-                    banner_timeout=30
-                )
-            else:
-                self.conn.connect(
-                    self.session_info.host,
-                    port=self.session_info.port,
-                    username=self.session_info.username,
-                    key_filename=self.session_info.key_path,
-                    timeout=30,
-                    banner_timeout=30
-                )
-            self.sftp = self.conn.open_sftp()
+        """The main work of the thread. Uses a pre-established SSH connection to perform the transfer."""
+        retry_delay = 1  # Delay in seconds between retries
+        attempts = 0
+        identifier = str(
+            self.local_path if self.action == 'upload' else self.remote_path)
+        self.signals.progress.emit(identifier, -1)  # Emit waiting signal
 
-            if self.action == 'upload':
-                # The identifier for signals will be the original local_path (str or list)
-                identifier = str(self.local_path)
-                self._handle_upload_task(
-                    identifier, self.local_path, self.remote_path, self.compression)
-            elif self.action == 'download':
-                # The identifier for signals will be the original remote_path (str or list)
-                identifier = str(self.remote_path)
-                self._download_files(
-                    identifier, self.remote_path, self.compression)
+        while not self.is_stopped:
+            try:
+                if self.is_stopped:
+                    break
+                if not self.conn or not self.conn.get_transport() or not self.conn.get_transport().is_active():
+                    raise Exception(
+                        "SSH connection is not active or provided.")
 
-        except Exception as e:
-            tb = traceback.format_exc()
-            error_msg = f"TransferWorker Error: {e}\n{tb}"
-            print(f"❌ {error_msg}")
-            identifier = str(self.local_path if self.action ==
-                             'upload' else self.remote_path)
+                self.sftp = self.conn.open_sftp()
+
+                if self.action == 'upload':
+                    self._handle_upload_task(
+                        identifier, self.local_path, self.remote_path, self.compression, self.upload_context)
+                elif self.action == 'download':
+                    self._download_files(
+                        identifier, self.remote_path, self.compression)
+
+                # If we reach here, the operation was successful
+                return
+
+            except paramiko.ssh_exception.ChannelException as e:
+                attempts += 1
+                tb = traceback.format_exc()
+                print(
+                    f"⚠️ ChannelException encountered (attempt {attempts}): {e}\n{tb}")
+                print(
+                    f"Retrying {identifier} in {retry_delay} second(s)...")
+                time.sleep(retry_delay)
+                # Loop will continue indefinitely
+            except Exception as e:
+                if self.is_stopped:
+                    break
+                tb = traceback.format_exc()
+                error_msg = f"TransferWorker Error: {e}\n{tb}"
+                print(f"❌ {error_msg}")
+                self.signals.finished.emit(identifier, False, error_msg)
+                # For non-recoverable errors, break the loop
+                return
+            finally:
+                if self.sftp:
+                    self.sftp.close()
+                    self.sftp = None  # Reset sftp for next retry
+
+        if self.is_stopped:
+            identifier = str(
+                self.local_path if self.action == 'upload' else self.remote_path)
+            error_msg = "Transfer was cancelled by user."
+            print(f"🛑 {error_msg} [{identifier}]")
             self.signals.finished.emit(identifier, False, error_msg)
-        finally:
-            if self.sftp:
-                self.sftp.close()
-            if self.conn:
-                self.conn.close()
 
     # ==================================================================================
     # == The following methods are adapted from RemoteFileManager for standalone execution ==
     # ==================================================================================
 
-    def _handle_upload_task(self, identifier, local_path, remote_path, compression):
+    def _handle_upload_task(self, identifier, local_path, remote_path, compression, upload_context=None):
         try:
             if isinstance(local_path, list):
                 if compression:
@@ -108,7 +126,7 @@ class TransferWorker(QRunnable):
                         # Each item will emit its own finished signal.
                         # We capture the result here to give a final status for the whole batch.
                         success, message = self._upload_item(
-                            path, path, remote_path, compression=False)
+                            path, path, remote_path, compression=False, upload_context=upload_context)
                         if not success:
                             all_successful = False
                             error_messages.append(message)
@@ -117,7 +135,7 @@ class TransferWorker(QRunnable):
 
             elif isinstance(local_path, str):
                 self._upload_item(identifier, local_path,
-                                  remote_path, compression)
+                                  remote_path, compression, upload_context)
 
         except Exception as e:
             tb = traceback.format_exc()
@@ -125,7 +143,7 @@ class TransferWorker(QRunnable):
             print(f"❌ {error_msg}")
             self.signals.finished.emit(identifier, False, error_msg)
 
-    def _upload_item(self, identifier, item_path, remote_path, compression):
+    def _upload_item(self, identifier, item_path, remote_path, compression, upload_context=None):
         """Returns (bool, str) for success status and message, and also emits signals."""
         if not os.path.exists(item_path):
             error_msg = f"Local path does not exist: {item_path}"
@@ -137,11 +155,13 @@ class TransferWorker(QRunnable):
                 self._upload_compressed(item_path, item_path, remote_path)
             else:
                 if os.path.isfile(item_path):
-                    self._upload_file(item_path, item_path, remote_path)
+                    self._upload_file(
+                        item_path, item_path, remote_path, upload_context)
                 elif os.path.isdir(item_path):
+                    # This should no longer be called for non-compressed directory uploads
+                    # as the dispatcher breaks them down into files.
                     self._upload_directory(item_path, item_path, remote_path)
-            # Assuming success if no exception is raised from the calls above.
-            # The actual success/failure is emitted within those methods.
+
             return True, ""
         except Exception as e:
             error_msg = f"Failed to upload {item_path}: {e}"
@@ -188,13 +208,23 @@ class TransferWorker(QRunnable):
             if os.path.exists(tmp_tar_path):
                 os.remove(tmp_tar_path)
 
-    def _upload_file(self, identifier, local_path, remote_path):
-        remote_filename = os.path.basename(local_path)
-        full_remote_path = os.path.join(
-            remote_path, remote_filename).replace('\\', '/')
-
+    def _upload_file(self, identifier, local_path, remote_path, upload_context=None):
         try:
-            self._ensure_remote_directory_exists(remote_path)
+            if upload_context:
+                # Reconstruct the target path to preserve directory structure
+                relative_path = os.path.relpath(local_path, upload_context)
+                # The root of the uploaded dir should also be created
+                upload_root_name = os.path.basename(upload_context)
+                full_remote_path = os.path.join(
+                    remote_path, upload_root_name, relative_path).replace('\\', '/')
+            else:
+                # Original behavior for single file uploads
+                remote_filename = os.path.basename(local_path)
+                full_remote_path = os.path.join(
+                    remote_path, remote_filename).replace('\\', '/')
+            
+            # Ensure the parent directory of the target file exists
+            self._ensure_remote_directory_exists(os.path.dirname(full_remote_path))
 
             def progress_callback(bytes_so_far, total_bytes):
                 if total_bytes > 0:
@@ -281,10 +311,11 @@ class TransferWorker(QRunnable):
                 self.signals.finished.emit(identifier, True, local_base)
 
             else:  # Non-compressed
+                # For non-compressed, _download_item will handle its own signals.
                 for p in paths:
-                    self._download_item(f"{identifier}::{p}", p, local_base)
-                self.signals.finished.emit(
-                    identifier, True, "All files processed.")
+                    # Each item is its own task, so the identifier is the path itself.
+                    self._download_item(p, p, local_base)
+                # A batch 'finished' signal is not sent here, to allow individual tracking.
 
         except Exception as e:
             tb = traceback.format_exc()
@@ -293,17 +324,44 @@ class TransferWorker(QRunnable):
             self.signals.finished.emit(identifier, False, error_msg)
 
     def _download_item(self, identifier, remote_item_path, local_base_path):
-        local_target = os.path.join(
-            local_base_path, os.path.basename(remote_item_path.rstrip("/")))
+        """Downloads a single item (file or directory) and emits a finished signal for it."""
         try:
+            # Determine local path, preserving directory structure if context is given
+            if self.download_context:
+                if remote_item_path.startswith(self.download_context):
+                    # The download root itself should be included in the local path
+                    download_root_name = os.path.basename(
+                        self.download_context.rstrip('/'))
+                    relative_path = os.path.relpath(
+                        remote_item_path, self.download_context)
+                    local_target = os.path.join(
+                        local_base_path, download_root_name, relative_path)
+                else:  # Fallback for safety
+                    local_target = os.path.join(
+                        local_base_path, os.path.basename(remote_item_path.rstrip("/")))
+            else:
+                local_target = os.path.join(
+                    local_base_path, os.path.basename(remote_item_path.rstrip("/")))
+
+            # Ensure local directory exists
+            os.makedirs(os.path.dirname(local_target), exist_ok=True)
+
+            # Since dispatcher now only sends files for non-compressed, we can simplify this.
+            # We still check to be robust.
             attr = self.sftp.stat(remote_item_path)
             if stat.S_ISDIR(attr.st_mode):
+                # This part should ideally not be hit in the new flow for non-compressed downloads
                 self._download_directory(
                     identifier, remote_item_path, local_target)
             else:
-                self._download_file(identifier, remote_item_path, local_target)
+                self._download_file(
+                    identifier, remote_item_path, local_target)
+
+            self.signals.finished.emit(identifier, True, local_target)
         except Exception as e:
-            raise e
+            tb = traceback.format_exc()
+            error_msg = f"Failed to download {remote_item_path}: {e}\n{tb}"
+            self.signals.finished.emit(identifier, False, error_msg)
 
     def _download_file(self, identifier, remote_file, local_file):
         def progress_callback(bytes_so_far, total_bytes):

@@ -2,6 +2,7 @@
 import ast
 import sys
 import ctypes
+import time
 from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget
@@ -23,7 +24,7 @@ from widgets.sync_widget import SycnWidget
 import os
 import subprocess
 from tools.atool import resource_path
-from widgets.file_load_window import FileWindow
+from widgets.transfer_progress_widget import TransferProgressWidget
 font_ = font_config()
 
 
@@ -31,7 +32,7 @@ class Window(FramelessWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.files_window = FileWindow()
+        self.active_transfers = {}
         self._resize_timer = QTimer(self)
         self._resize_timer.setSingleShot(True)
         self._resize_timer.timeout.connect(self.apply_locked_ratio)
@@ -39,7 +40,7 @@ class Window(FramelessWindow):
         self.setMinimumSize(800, 600)
         self.setTitleBar(StandardTitleBar(self))
         self._bg_ratio = None
-        self.setWindowTitle("RemmoteSSH Beta @su8aru")
+        self.setWindowTitle("AuraShell Beta")
         icon = QIcon(resource_path("resource/icons/icon.ico"))
         self.setWindowIcon(icon)
         QApplication.setWindowIcon(icon)
@@ -168,139 +169,165 @@ class Window(FramelessWindow):
             print(e)
 
     def _show_info(self, path: str = None, status: bool = None, msg: str = None, type_: str = None, child_key: str = None, local_path: str = None, open_it: bool = False):
-        # print(f"_show_info type : {type_}")
-        no_refresh_types = ["download",
-                            "start_upload", "start_download", "info"]
+        no_refresh_types = ["download", "start_upload", "start_download", "info"]
+
+        parent_key = child_key.split("-")[0].strip()
+        session_widget = self.session_widgets.get(parent_key, {}).get(child_key)
+        if not session_widget:
+            return
+
         if type_ == "upload":
-            duration = 10000
-            if status:
-                status_msg = self.tr("Upload Successful")
-            else:
-                status_msg = self.tr("Upload Failed")
-                duration = -1
-            title = self.tr(f'File: {path} Status: {status_msg}\n')
+            paths = path if isinstance(path, list) else [path]
+            for p in paths:
+                # The 'path' from the finished signal is the unique identifier
+                file_id = self.active_transfers.get(p, {}).get("id")
+                if not file_id:
+                    # Fallback for safety, though it should exist
+                    file_id = f"{child_key}_{p}_{time.time()}"
 
-        elif type_ in ("compression", "uncompression"):
-            duration = 2000
-            title = self.tr(f"Start to {type_} : {path}")
-            msg = ""
+                if status:
+                    if p not in self.active_transfers:
+                        # This can happen if the file is very small and finishes
+                        # before any progress signal is emitted.
+                        self._add_transfer_item_if_not_exists(
+                            child_key, p, "upload")
+                        file_id = self.active_transfers[p]["id"]
 
+                    if p in self.active_transfers:
+                        self.active_transfers[p]['type'] = 'completed'
+                        self.active_transfers[p]['progress'] = 100
+
+                    data = {"type": "completed", "progress": 100}
+                    session_widget.transfer_progress.update_transfer_item(
+                        file_id, data)
+                else:
+                    if p in self.active_transfers:
+                        session_widget.transfer_progress.remove_transfer_item(
+                            self.active_transfers[p]["id"])
+                        del self.active_transfers[p]
+            
         elif type_ == "start_upload":
-            duration = 2000
-            title = self.tr(f"Start uploading {local_path} to {path}")
-            msg = ""
-
-        elif type_ == "delete":
-            duration = 2000
-            if status:
-                title = self.tr(f"Deleted {path} successfully\n")
-            else:
-                title = self.tr(f"Failed to delete {path}\n{msg}")
-                duration = -1
+            # This is now handled by _add_transfer_item_if_not_exists
+            # It will be called from _handle_files for single files/compressed,
+            # or dynamically from progress/finished signals for expanded dirs.
+            pass
 
         elif type_ == "start_download":
-            duration = 2000
-            title = self.tr(f"Start downloading {path}")
-            msg = ""
+            paths = path if isinstance(path, list) else [path]
+            for p in paths:
+                file_id = f"{child_key}_{os.path.basename(p)}_{time.time()}"
+                data = {
+                    "type": "download",
+                    "filename": os.path.basename(p),
+                    "progress": 0
+                }
+                self.active_transfers[file_id] = data
+                session_widget.transfer_progress.add_transfer_item(file_id, data)
 
         elif type_ == "download":
-            duration = 2000
-            if status:
-                title = self.tr(f"Downloaded {path} successfully")
-                msg = self.tr(f"Successfully downloaded to {local_path}")
-                if open_it:
-                    if sys.platform.startswith('darwin'):   # macOS
-                        subprocess.call(('open', local_path),
-                                        start_new_session=True)
-                    elif os.name == 'nt':  # Windows
-                        subprocess.Popen(['rundll32', 'shell32.dll,OpenAs_RunDLL', local_path], creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
-                                         close_fds=True)
-                    elif os.name == 'posix':  # Linux
-                        subprocess.call(('xdg-open', local_path))
-            else:
-                title = self.tr(f"Failed to download {path}\n")
-                duration = -1
+            # 'path' is the unique remote path identifier
+            if path in self.active_transfers:
+                file_id = self.active_transfers[path]["id"]
+                if status:
+                    self.active_transfers[path]['type'] = 'completed'
+                    self.active_transfers[path]['progress'] = 100
+                    data = {"type": "completed", "progress": 100}
+                    session_widget.transfer_progress.update_transfer_item(
+                        file_id, data)
 
-        elif type_ == "paste":
-            duration = 2000
-            if status:
-                title = self.tr("Paste Successful")
-                msg = self.tr(f"Pasted {path} to {local_path}")
-            else:
-                title = self.tr("Paste Failed")
-                duration = -1
+                    if open_it and local_path:
+                        try:
+                            # Open the directory containing the downloaded file/folder
+                            open_path = local_path if os.path.isfile(
+                                local_path) else os.path.dirname(local_path)
+                            if sys.platform.startswith('darwin'):
+                                subprocess.call(('open', open_path))
+                            elif os.name == 'nt':
+                                os.startfile(open_path)
+                            elif os.name == 'posix':
+                                subprocess.call(('xdg-open', open_path))
+                        except Exception as e:
+                            print(f"Error opening file/folder: {e}")
+                else:
+                    session_widget.transfer_progress.remove_transfer_item(
+                        file_id)
+                    del self.active_transfers[path]
+            elif status:  # Finished signal for a small file that sent no progress
+                self._add_transfer_item_if_not_exists(
+                    child_key, path, "download")
+                if path in self.active_transfers:
+                    file_id = self.active_transfers[path]["id"]
+                    self.active_transfers[path]['type'] = 'completed'
+                    self.active_transfers[path]['progress'] = 100
+                    data = {"type": "completed", "progress": 100}
+                    session_widget.transfer_progress.update_transfer_item(
+                        file_id, data)
 
-        elif type_ == "rename":
-            duration = 2000
-            if status:
-                title = self.tr("Rename Successful")
-                msg = self.tr(f"Renamed {path} to {local_path}")
-            else:
-                title = self.tr("Rename Failed")
-                duration = -1
+        else:
+            duration = 5000
+            title = ""
+            if type_ in ("compression", "uncompression"):
+                title = self.tr(f"Start to {type_} : {path}")
+                msg = ""
+            elif type_ == "delete":
+                if status:
+                    title = self.tr(f"Deleted {path} successfully")
+                else:
+                    title = self.tr(f"Failed to delete {path}\n{msg}")
+                    duration = -1
+            elif type_ == "paste":
+                if status:
+                    title = self.tr("Paste Successful")
+                    msg = self.tr(f"Pasted {path} to {local_path}")
+                else:
+                    title = self.tr("Paste Failed")
+                    duration = -1
+            elif type_ == "rename":
+                if status:
+                    title = self.tr("Rename Successful")
+                    msg = self.tr(f"Renamed {path} to {local_path}")
+                else:
+                    title = self.tr("Rename Failed")
+                    duration = -1
+            elif type_ == "mkdir":
+                if status:
+                    title = self.tr(f"Created directory {path} successfully")
+                else:
+                    title = self.tr(f"Failed to create directory {path}\n{msg}")
+                    duration = -1
+            
+            if title:
+                InfoBar.info(
+                    title=title,
+                    content=msg,
+                    orient=Qt.Horizontal,
+                    isClosable=True,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=duration,
+                    parent=self.window()
+                )
 
-        elif type_ == "info":
-            duration = 20000
-            if status:
-                def format_file_info(info: dict) -> str:
-                    if not info:
-                        return self.tr("File info is empty")
-
-                    lines = [
-                        self.tr(f"Path: {info.get('path')}"),
-                        self.tr(f"Filename: {info.get('filename')}"),
-                        self.tr(f"Size: {info.get('size')}"),
-                        self.tr(f"Owner: {info.get('owner')}"),
-                        self.tr(f"Group: {info.get('group')}"),
-                        self.tr(f"Permissions: {info.get('permissions')}"),
-                        self.tr(
-                            f"Executable: {'Yes' if info.get('is_executable') else 'No'}"),
-                        self.tr(f"Last Modified: {info.get('last_modified')}"),
-                        self.tr(
-                            f"Is Directory: {'Yes' if info.get('is_directory') else 'No'}"),
-                        self.tr(
-                            f"Is Symlink: {'Yes' if info.get('is_symlink') else 'No'}")
-                    ]
-
-                    if info.get('is_symlink'):
-                        lines.append(
-                            self.tr(f"Symlink Target: {info.get('symlink_target')}"))
-
-                    return "\n".join(lines)
-
-                title = self.tr(f"File {path} info:")
-                msg = format_file_info(local_path)
-            else:
-                duration = -1
-                title = self.tr(f"Failed to get detailed info for {path}")
-
-        elif type_ == "mkdir":
-            duration = 2000
-            if status:
-                title = self.tr(f"Created directory {path} successfully")
-            else:
-                title = self.tr(f"Failed to create directory {path}\n{msg}")
-                duration = -1
-
-        InfoBar.info(
-            title=title,
-            content=msg,
-            orient=Qt.Horizontal,
-            isClosable=True,
-            position=InfoBarPosition.BOTTOM_RIGHT,
-            duration=duration,
-            parent=self.window()
-        )
         if type_ not in no_refresh_types and child_key:
             self._refresh_paths(child_key)
 
-    def _show_progresses(self, paths, percentage, child_key):
-        lst = ast.literal_eval(paths)
-        for path in lst:
-            file_name = os.path.basename(path)
-            file_id = f"{child_key}_{file_name}"
-            # print(file_id, percentage)
-            self.files_window.set_processes(percentage, file_id)
+    def _show_progresses(self, path, percentage, child_key, transfer_type):
+        """Handles progress updates for both uploads and downloads."""
+        parent_key = child_key.split("-")[0].strip()
+        session_widget = self.session_widgets.get(parent_key, {}).get(child_key)
+        if not session_widget:
+            return
+
+        # 'path' is the unique identifier (local for upload, remote for download)
+        if path not in self.active_transfers:
+            self._add_transfer_item_if_not_exists(child_key, path, transfer_type)
+
+        if path in self.active_transfers:
+            file_id = self.active_transfers[path]["id"]
+            data = self.active_transfers[path]
+            data["progress"] = percentage
+            if percentage >= 100:
+                data["type"] = "completed"
+            session_widget.transfer_progress.update_transfer_item(file_id, data)
 
     def _start_ssh_connect(self, session, child_key):
 
@@ -343,9 +370,13 @@ class Window(FramelessWindow):
         file_manager.start_to_compression.connect(
             lambda path: self._show_info(path=path, type_="uncompression"))
         file_manager.upload_progress.connect(
-            lambda path, percentage: self._show_progresses(path, percentage, child_key=child_key))
+            lambda path, percentage: self._show_progresses(path, percentage, child_key, 'upload'))
+        file_manager.download_progress.connect(
+            lambda path, percentage: self._show_progresses(path, percentage, child_key, 'download'))
         session_widget.file_explorer.upload_file.connect(
-            lambda path, target_path, compression: self._show_info(type_="start_upload", child_key=child_key, local_path=path, path=target_path))
+            lambda local_path, remote_path, compression: self._handle_upload_request(
+                child_key, local_path, remote_path, compression)
+        )
         session_widget.file_explorer.upload_file.connect(
             file_manager.upload_file)
 
@@ -430,18 +461,22 @@ class Window(FramelessWindow):
         elif action_type == "download":
             paths_to_download = full_path if isinstance(
                 full_path, list) else [full_path]
-            if not cut:
+            if not cut: # Non-compressed download
+                # We no longer call _show_info here for directories.
+                # The backend will expand the directory and we will create items
+                # dynamically when progress/finished signals arrive.
+                # We only pre-create items for single file downloads.
                 for path in paths_to_download:
-                    self._show_info(path=path, child_key=child_key,
-                                    type_="start_download")
-                    file_manager.download_path_async(path, compression=cut)
-                    print("执行非压缩下载")
-            else:
-                self._show_info(path=paths_to_download, child_key=child_key,
-                                type_="start_download")
+                    is_dir = file_manager.check_path_type(path) == "directory"
+                    if not is_dir:
+                         self._add_transfer_item_if_not_exists(child_key, path, "download")
+                
+                file_manager.download_path_async(paths_to_download, compression=cut)
+
+            else: # Compressed download
+                self._add_transfer_item_if_not_exists(child_key, paths_to_download, "download")
                 file_manager.download_path_async(
                     paths_to_download, compression=cut)
-                print("执行压缩下载")
         elif action_type == "paste":
             source_paths = full_path if isinstance(
                 full_path, list) else [full_path]
@@ -570,6 +605,9 @@ class Window(FramelessWindow):
             lambda action_type, full_path, copy_to, cut: self._handle_files(action_type, full_path, copy_to, cut, child_key))
         child_widget.disk_storage.directory_selected.connect(
             lambda path: self._update_file_tree_branch_when_cd(path, child_key))
+        child_widget.transfer_progress.cancelRequested.connect(
+            lambda file_id: self._handle_transfer_cancellation(file_id, child_key)
+        )
         self.addSubInterface(
             child_widget, FIF.ALBUM, child_key, parent=parent_widget,
         )
@@ -767,6 +805,81 @@ class Window(FramelessWindow):
     def onCurrentInterfaceChanged(self, index):
         widget = self.stackWidget.widget(index)
         self.navigationInterface.setCurrentItem(widget.objectName())
+
+    def _handle_upload_request(self, child_key, local_path, remote_path, compression):
+        """Pre-handles upload requests to determine if UI items should be pre-created."""
+        paths = local_path if isinstance(local_path, list) else [local_path]
+        for p in paths:
+            # For non-compressed dirs, we don't create items here.
+            # They will be created dynamically on first progress/finished signal.
+            if not (os.path.isdir(p) and not compression):
+                self._add_transfer_item_if_not_exists(
+                    child_key, p, 'upload')
+
+    def _add_transfer_item_if_not_exists(self, child_key, path, transfer_type):
+        """Helper to add a transfer item to the UI if it doesn't exist."""
+        parent_key = child_key.split("-")[0].strip()
+        session_widget = self.session_widgets.get(
+            parent_key, {}).get(child_key)
+        if not session_widget:
+            return
+        
+        # The unique identifier for a task is now the full path for single files,
+        # or the string representation of the list for compressed batches.
+        task_identifier = str(path) if isinstance(path, list) else path
+
+        if task_identifier in self.active_transfers:
+            return # Avoid creating duplicate entries
+
+        # Create a truly unique ID for the UI widget
+        file_id = f"{child_key}_{task_identifier}_{time.time()}"
+        
+        if isinstance(path, list):
+            count = len(path)
+            if count == 0: return
+            file_name = f"{os.path.basename(path[0])}"
+            if count > 1:
+                file_name += f" and {count - 1} others"
+        else:
+            file_name = os.path.basename(path)
+
+        data = {
+            "id": file_id, # The unique ID for the widget
+            "type": transfer_type,
+            "filename": file_name,
+            "progress": 0
+        }
+        
+        # Use the task_identifier as the key in our tracking dictionary
+        self.active_transfers[task_identifier] = data
+        session_widget.transfer_progress.add_transfer_item(file_id, data)
+
+
+    def _handle_transfer_cancellation(self, file_id, child_key):
+        """Handles the request to cancel a file transfer."""
+        file_manager = self.file_tree_object.get(child_key)
+        if not file_manager:
+            return
+
+        # Find the original identifier for the task
+        task_identifier = None
+        for identifier, data in self.active_transfers.items():
+            if data.get("id") == file_id:
+                task_identifier = identifier
+                break
+        
+        if task_identifier:
+            # Tell the file manager to cancel the backend worker
+            file_manager.cancel_transfer(task_identifier)
+
+            # Remove from UI and tracking dictionary
+            parent_key = child_key.split("-")[0].strip()
+            session_widget = self.session_widgets.get(
+                parent_key, {}).get(child_key)
+            if session_widget:
+                session_widget.transfer_progress.remove_transfer_item(file_id)
+            
+            self.active_transfers.pop(task_identifier, None)
 
     def remove_nav_edge(self):
         self.navigationInterface.setStyleSheet("""

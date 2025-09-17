@@ -634,6 +634,7 @@ class WebTerminal(QWidget):
           }}
 
           term.open(document.getElementById('terminal'));
+          window.term = term; // Expose term globally for Python calls
           
           // Expose a helper to update theme at runtime (called from Python via runJavaScript)
           window.setTerminalTheme = function(fg, bgFallback, shadow) {{
@@ -799,3 +800,20 @@ class WebTerminal(QWidget):
 
     def dropEvent(self, event):
         event.ignore()
+
+    def clear_screen(self):
+        """Clears the terminal screen."""
+        js = "if (window.term) window.term.clear();"
+        try:
+            self.view.page().runJavaScript(js)
+        except Exception as e:
+            print("clear_screen runJavaScript error:", e)
+
+    def send_command(self, command: str):
+        """Sends a string command to the terminal."""
+        try:
+            # The bridge's sendInput expects base64
+            b64 = base64.b64encode(command.encode('utf-8')).decode('ascii')
+            self.bridge.sendInput(b64)
+        except Exception as e:
+            print("send_command error:", e)

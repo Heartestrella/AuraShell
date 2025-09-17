@@ -1,11 +1,13 @@
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import QFrame,  QHBoxLayout, QLabel, QWidget, QVBoxLayout, QSizePolicy, QSplitter, QSpacerItem
-from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, ProgressRing
+from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, ProgressRing, TextEdit, PrimaryPushButton, ToolButton
+from widgets.command_input import CommandInput
 from widgets.system_resources_widget import ProcessTable
 from widgets.task_widget import Tasks
 from tools.ssh_webterm import WebTerminal
 from widgets.file_tree_widget import File_Navigation_Bar, FileTreeWidget
 from widgets.files_widgets import FileExplorer
+from widgets.transfer_progress_widget import TransferProgressWidget
 from tools.setting_config import SCM
 import os
 from functools import partial
@@ -36,7 +38,6 @@ class Widget(QWidget):
             label = QLabel(text, self)
             label.setAlignment(Qt.AlignCenter)
             self.mainLayout.addWidget(label)
-        # 假设在你的类 __init__ 内部
 
         else:
 
@@ -97,10 +98,25 @@ class Widget(QWidget):
                 }
             """)
 
+            # Transfer Progress Widget
+            self.transfer_progress = TransferProgressWidget(leftContainer)
+            self.transfer_progress.setObjectName("transfer_progress")
+            self.transfer_progress.setSizePolicy(
+                QSizePolicy.Expanding, QSizePolicy.Preferred)
+
             # 左侧竖排布局（比例 2:3:5）
             leftLayout.addWidget(self.sys_resources, 2)
             leftLayout.addWidget(self.task, 3)
             leftLayout.addWidget(self.disk_storage, 5)
+            leftLayout.addWidget(self.transfer_progress, 0) # Initially, no stretch
+
+            def toggle_transfer_stretch(is_expanded):
+                if is_expanded:
+                    leftLayout.setStretch(3, 10) # transfer_progress index is 3
+                else:
+                    leftLayout.setStretch(3, 0)
+
+            self.transfer_progress.expansionChanged.connect(toggle_transfer_stretch)
 
             # --------- 右侧容器 ---------
             rightContainer = QFrame(self)
@@ -115,21 +131,27 @@ class Widget(QWidget):
             # 上下 splitter（右边 ssh_widget / file_manage）
             splitter = QSplitter(Qt.Vertical, rightContainer)
             splitter.setChildrenCollapsible(False)
-            splitter.setHandleWidth(6)
+            splitter.setHandleWidth(2)
             splitter.setStyleSheet("""
                 QSplitter::handle:vertical {
                     background-color: #cccccc;
                     height: 1px;
-                    margin: 2px 0px;
+                    margin: 0px;
                 }
                 QSplitter::handle:vertical:hover {
                     background-color: #999999;
                 }
             """)
 
+            # Top container for ssh_widget and command_bar
+            top_container = QFrame(splitter)
+            top_container_layout = QVBoxLayout(top_container)
+            top_container_layout.setContentsMargins(0, 0, 0, 0)
+            top_container_layout.setSpacing(0)
+
             # ssh_widget
             self.ssh_widget = WebTerminal(
-                splitter,
+                top_container,
                 font_name=font_name,
                 user_name=user_name,
                 text_color=config["ssh_widget_text_color"]
@@ -145,6 +167,53 @@ class Widget(QWidget):
                     border-radius: 6px;
                 }
             """)
+
+            # command input bar
+            self.command_bar = QFrame(top_container)
+            self.command_bar.setObjectName("command_bar")
+            # self.command_bar.setFixedHeight(42) # Remove fixed height
+
+            self.command_bar.setStyleSheet("""
+                QFrame#command_bar {
+                    background-color: rgba(30, 30, 30, 0.5);
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    border-radius: 8px;
+                }
+                QFrame#command_bar:focus-within {
+                    border: 1px solid rgba(0, 122, 255, 0.7);
+                }
+            """)
+
+            command_bar_layout = QHBoxLayout(self.command_bar)
+            command_bar_layout.setContentsMargins(8, 5, 8, 5)
+            command_bar_layout.setSpacing(8)
+
+            self.command_icon = ToolButton(FIF.BROOM, self.command_bar)
+
+            self.command_input = CommandInput(self.command_bar)
+            self.command_input.setObjectName("command_input")
+            self.command_input.setPlaceholderText(self.tr("Enter command here,Shift+Enter for new line,Enter to sendExec"))
+            # self.command_input.setFixedHeight(32) # Remove fixed height
+            self.command_input.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self.command_input.textChanged.connect(self.adjust_input_height)
+            self.command_input.executeCommand.connect(self.send_command_to_ssh)
+
+            self.command_input.setStyleSheet("""
+                CommandInput#command_input {
+                    background-color: transparent;
+                    border: none;
+                    color: %s;
+                    font-size: 14px;
+                    padding-left: 5px;
+                }
+            """ % config["ssh_widget_text_color"])
+            self.command_icon.clicked.connect(self.ssh_widget.clear_screen)
+            command_bar_layout.addWidget(self.command_icon)
+            command_bar_layout.addWidget(self.command_input)
+
+            top_container_layout.addWidget(self.ssh_widget)
+            top_container_layout.addWidget(self.command_bar)
+            self.adjust_input_height()
 
             # file_manage
             self.file_manage = QWidget(splitter)
@@ -205,7 +274,7 @@ class Widget(QWidget):
             self.mainLayout.addWidget(splitter_lr)
 
             # ---- 上下 splitter 默认比例 ----
-            splitter.setStretchFactor(0, 3)   # ssh_widget
+            splitter.setStretchFactor(0, 3)   # top_container
             splitter.setStretchFactor(1, 2)   # file_manage
 
             # ---- 左右 splitter 默认比例 ----
@@ -222,9 +291,9 @@ class Widget(QWidget):
             def save_tb_ratio(pos, index):
                 sizes = splitter.sizes()
                 total = sum(sizes)
-                print(f"rb total : {total}")
-                configer.revise_config("splitter_tb_ratio", [
-                                       s / total for s in sizes])
+                if total > 0:
+                    configer.revise_config("splitter_tb_ratio", [
+                                        s / total for s in sizes])
                 # config["splitter_tb_ratio"] = [s / total for s in sizes]
                 # configer.save_config(config)
 
@@ -241,7 +310,43 @@ class Widget(QWidget):
             if "splitter_tb_ratio" in config:
                 total_h = max(200, self.height())
                 r = config["splitter_tb_ratio"]
-                splitter.setSizes([int(total_h * r[0]), int(total_h * r[1])])
+                if len(r) == 2:  # New format
+                    splitter.setSizes([int(total_h * r[0]), int(total_h * r[1])])
+                elif len(r) == 3:  # For compatibility with old config
+                    top_size_ratio = r[0] + r[1]
+                    bottom_size_ratio = r[2]
+                    splitter.setSizes([int(total_h * top_size_ratio),
+                                      int(total_h * bottom_size_ratio)])
+
+    def adjust_input_height(self):
+        doc = self.command_input.document()
+        # Get the required height from the document's layout
+        content_height = int(doc.size().height())
+
+        # The document margin is the internal padding of the TextEdit
+        margin = int(self.command_input.document().documentMargin()) * 2
+
+        # Calculate the total required height
+        required_height = content_height + margin
+
+        # Define min/max heights
+        font_metrics = self.command_input.fontMetrics()
+        line_height = font_metrics.lineSpacing()
+        # Min height for at least one line
+        min_height = line_height + margin
+        # Max height for 5 lines
+        max_height = (line_height * 5) + margin + 5  # A bit of extra padding for max
+
+        # Clamp the final height
+        final_height = min(max(required_height, min_height), max_height)
+
+        # Update the heights of the input and its container
+        self.command_input.setFixedHeight(final_height)
+        self.command_bar.setFixedHeight(final_height + 10)  # 10 for container's padding
+
+    def send_command_to_ssh(self, command):
+        if self.ssh_widget and command:
+            self.ssh_widget.send_command(command + '\n')
 
     def _get_icons(self):
         parent = self.parent()
@@ -411,17 +516,4 @@ class Widget(QWidget):
             child.deleteLater()
 
     def show_file_action(self, action_type, file_paths):
-        parent = self.parent()
-        for file_path in file_paths:
-            file_name = os.path.basename(file_path)
-            file_id = f"{self.child_key}_{file_name}"
-            print(file_id)
-            while parent:
-                if hasattr(parent, "files_window"):
-                    parent.files_window.add_card(
-                        title=file_name, content=file_id, file_id=file_id, action_type=action_type)
-                    parent.files_window.show()
-                    parent.files_window.raise_()
-                    parent.files_window.activateWindow()
-                    break
-                parent = parent.parent()
+        pass
