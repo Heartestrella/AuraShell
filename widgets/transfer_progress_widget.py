@@ -151,7 +151,7 @@ class TransferProgressWidget(QWidget):
         item_layout.addWidget(progress_label)
 
         # --- Waiting Icon ---
-        waiting_icon = IconWidget(FIF.SYNC, item_widget)
+        waiting_icon = IconWidget(FIF.HISTORY, item_widget)
         waiting_icon.setObjectName("waitingIcon")
         waiting_icon.setFixedSize(16, 16)
         waiting_icon.hide()
