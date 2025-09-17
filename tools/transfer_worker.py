@@ -169,8 +169,10 @@ class TransferWorker(QRunnable):
             return False, error_msg
 
     def _upload_list_compressed(self, identifier, path_list, remote_path):
-
-        tmp_fd, tmp_tar_path = tempfile.mkstemp(suffix=".tar.gz")
+        
+        tmp_dir = "tmp"
+        os.makedirs(tmp_dir, exist_ok=True)
+        tmp_fd, tmp_tar_path = tempfile.mkstemp(suffix=".tar.gz", dir=tmp_dir)
         os.close(tmp_fd)
         self.signals.start_to_compression.emit(tmp_tar_path)
         try:
@@ -191,7 +193,9 @@ class TransferWorker(QRunnable):
                 os.remove(tmp_tar_path)
 
     def _upload_compressed(self, identifier, local_path, remote_path):
-        tmp_fd, tmp_tar_path = tempfile.mkstemp(suffix=".tar.gz")
+        tmp_dir = "tmp"
+        os.makedirs(tmp_dir, exist_ok=True)
+        tmp_fd, tmp_tar_path = tempfile.mkstemp(suffix=".tar.gz", dir=tmp_dir)
         os.close(tmp_fd)
         self.signals.start_to_compression.emit(tmp_tar_path)
         try:
