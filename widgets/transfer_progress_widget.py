@@ -116,6 +116,7 @@ class TransferProgressWidget(QWidget):
             icon, color = FIF.DOWN, QColor("#D83B01")
 
         status_icon = IconWidget(icon, item_widget)
+        status_icon.setObjectName("statusIcon")
         status_icon.setFixedSize(16, 16)
 
         # --- Filename ---
@@ -131,8 +132,17 @@ class TransferProgressWidget(QWidget):
         progress_label = QLabel(f"{progress}%", item_widget)
         progress_label.setObjectName("progressLabel")
         item_layout.addWidget(progress_label)
+        
+        # --- Completed Icon ---
+        completed_icon = IconWidget(FIF.ACCEPT, item_widget)
+        completed_icon.setObjectName("completedIcon")
+        completed_icon.setFixedSize(16, 16)
+        completed_icon.setStyleSheet(f"color: {QColor('#107C10').name()}; background-color: transparent;")
+        completed_icon.hide()
+        item_layout.addWidget(completed_icon)
 
         # --- Store and add to layout ---
+        item_widget.setProperty("transfer_type", transfer_type)
         self.transfer_items[file_id] = item_widget
         self.content_layout.insertWidget(0, item_widget)
         
@@ -146,30 +156,40 @@ class TransferProgressWidget(QWidget):
 
         transfer_type = data.get("type", "upload")
         progress = data.get("progress", 0)
-        status_icon = item_widget.findChild(IconWidget)
+        status_icon = item_widget.findChild(IconWidget, "statusIcon")
         progress_label = item_widget.findChild(QLabel, "progressLabel")
-
-        # --- Update color and icon based on type ---
-        if transfer_type == "upload":
-            color = QColor("#0078D4")
-            if status_icon.icon != FIF.UP: status_icon.setIcon(FIF.UP)
-        elif transfer_type == "download":
-            color = QColor("#D83B01")
-            if status_icon.icon != FIF.DOWN: status_icon.setIcon(FIF.DOWN)
-        else: # completed
-            color = QColor("#107C10")
-            if status_icon.icon != FIF.ACCEPT: status_icon.setIcon(FIF.ACCEPT)
-
-        status_icon.setStyleSheet(f"color: {color.name()}; background-color: transparent;")
+        completed_icon = item_widget.findChild(IconWidget, "completedIcon")
         
-        # --- Update progress label ---
-        if progress_label:
-            if transfer_type == "completed":
-                progress_label.hide()
-            else:
-                progress_label.setText(f"{progress}%")
-                if not progress_label.isVisible():
-                    progress_label.show()
+        if not all([status_icon, progress_label, completed_icon]):
+            return
+
+        # --- Update widgets based on transfer type ---
+        if transfer_type == "completed":
+            color = QColor("#107C10")  # Green for completed
+            progress_label.hide()
+            completed_icon.show()
+
+            # Keep original icon but update color to green
+            original_type = item_widget.property("transfer_type")
+            if original_type == "upload":
+                status_icon.setIcon(FIF.UP)
+            elif original_type == "download":
+                status_icon.setIcon(FIF.DOWN)
+            status_icon.setStyleSheet(f"color: {color.name()}; background-color: transparent;")
+        
+        else:  # In-progress upload or download
+            progress_label.show()
+            completed_icon.hide()
+            progress_label.setText(f"{progress}%")
+
+            if transfer_type == "upload":
+                color = QColor("#0078D4")
+                if status_icon.icon != FIF.UP: status_icon.setIcon(FIF.UP)
+            elif transfer_type == "download":
+                color = QColor("#D83B01")
+                if status_icon.icon != FIF.DOWN: status_icon.setIcon(FIF.DOWN)
+            
+            status_icon.setStyleSheet(f"color: {color.name()}; background-color: transparent;")
 
         # --- Update background style ---
         stop_pos = progress / 100.0
