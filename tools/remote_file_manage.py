@@ -248,16 +248,24 @@ class RemoteFileManager(QThread):
                 remote_path, compression, open_it)
 
     def _dispatch_upload_task(self, local_path, remote_path, compression, open_it):
-        """Handles dispatching of upload tasks."""
+        """Handles dispatching of upload tasks, expanding directories if necessary."""
         paths_to_process = local_path if isinstance(
             local_path, list) else [local_path]
-        if compression and len(paths_to_process) > 1:
-            self._create_and_start_worker(
-                'upload', paths_to_process, remote_path, compression, open_it)
-        else:
-            for item in paths_to_process:
+
+        for path_item in paths_to_process:
+            is_dir = os.path.isdir(path_item)
+
+            if is_dir and not compression:
+                # Expand directory into a list of files for individual upload
+                all_files = self._list_local_files_recursive(path_item)
+                for file_path in all_files:
+                    # For each file, we pass the original directory as 'context'
+                    self._create_and_start_worker(
+                        'upload', file_path, remote_path, compression, open_it, upload_context=path_item)
+            else:
+                # It's a single file, a list of files, or a compressed directory
                 self._create_and_start_worker(
-                    'upload', item, remote_path, compression, open_it)
+                    'upload', path_item, remote_path, compression, open_it)
 
     def _dispatch_download_task(self, remote_path, compression, open_it):
         """Handles dispatching of download tasks, expanding directories if necessary."""
@@ -304,7 +312,15 @@ class RemoteFileManager(QThread):
                 
         return file_paths, dir_paths
 
-    def _create_and_start_worker(self, action, local_path, remote_path, compression, open_it=False, download_context=None):
+    def _list_local_files_recursive(self, local_path):
+        """Recursively lists all files in a local directory."""
+        file_paths = []
+        for root, _, files in os.walk(local_path):
+            for file in files:
+                file_paths.append(os.path.join(root, file))
+        return file_paths
+
+    def _create_and_start_worker(self, action, local_path, remote_path, compression, open_it=False, download_context=None, upload_context=None):
         """Helper to create, connect signals, and start a single TransferWorker."""
         worker = TransferWorker(
             self.session_info,
@@ -312,7 +328,8 @@ class RemoteFileManager(QThread):
             local_path,
             remote_path,
             compression,
-            download_context
+            download_context,
+            upload_context
         )
 
 

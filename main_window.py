@@ -180,6 +180,10 @@ class Window(FramelessWindow):
             for p in paths:
                 file_id = f"{child_key}_{os.path.basename(p)}"
                 if status:
+                    if file_id not in self.active_transfers:
+                        self._add_transfer_item_if_not_exists(
+                            child_key, p, "upload")
+
                     if file_id in self.active_transfers:
                         self.active_transfers[file_id]['type'] = 'completed'
                         self.active_transfers[file_id]['progress'] = 100
@@ -195,16 +199,10 @@ class Window(FramelessWindow):
                         del self.active_transfers[file_id]
             
         elif type_ == "start_upload":
-            paths = local_path if isinstance(local_path, list) else [local_path]
-            for p in paths:
-                file_id = f"{child_key}_{os.path.basename(p)}"
-                data = {
-                    "type": "upload",
-                    "filename": os.path.basename(p),
-                    "progress": 0
-                }
-                self.active_transfers[file_id] = data
-                session_widget.transfer_progress.add_transfer_item(file_id, data)
+            # This is now handled by _add_transfer_item_if_not_exists
+            # It will be called from _handle_files for single files/compressed,
+            # or dynamically from progress/finished signals for expanded dirs.
+            pass
 
         elif type_ == "start_download":
             paths = path if isinstance(path, list) else [path]
@@ -296,41 +294,28 @@ class Window(FramelessWindow):
         if type_ not in no_refresh_types and child_key:
             self._refresh_paths(child_key)
 
-    def _show_progresses(self, paths, percentage, child_key):
-        if isinstance(paths, str):
-            # Check if it's a string representation of a list
-            if paths.startswith('[') and paths.endswith(']'):
-                try:
-                    lst = ast.literal_eval(paths)
-                except (ValueError, SyntaxError):
-                    lst = [paths] # Fallback for malformed string
-            else:
-                # It's a plain path string
-                lst = [paths]
-        elif isinstance(paths, list):
-            lst = paths
-        else:
-            lst = [] # Unsupported type
-
+    def _show_progresses(self, path, percentage, child_key, transfer_type):
+        """Handles progress updates for both uploads and downloads."""
         parent_key = child_key.split("-")[0].strip()
         session_widget = self.session_widgets.get(parent_key, {}).get(child_key)
         if not session_widget:
             return
-        for path in lst:
-            file_name = os.path.basename(path)
-            file_id = f"{child_key}_{file_name}"
-            if file_id not in self.active_transfers:
-                # First progress update for a file from a directory download
-                self._add_transfer_item_if_not_exists(
-                    child_key, path, "download")
 
-            if file_id in self.active_transfers:
-                data = self.active_transfers[file_id]
-                data["progress"] = percentage
-                if percentage >= 100:
-                    data["type"] = "completed"
-                session_widget.transfer_progress.update_transfer_item(
-                    file_id, data)
+        file_name = os.path.basename(path)
+        file_id = f"{child_key}_{file_name}"
+
+        # If this is the first progress update for a file, its item might not exist yet.
+        if file_id not in self.active_transfers:
+            self._add_transfer_item_if_not_exists(
+                child_key, path, transfer_type)
+
+        # Now update the progress
+        if file_id in self.active_transfers:
+            data = self.active_transfers[file_id]
+            data["progress"] = percentage
+            if percentage >= 100:
+                data["type"] = "completed"
+            session_widget.transfer_progress.update_transfer_item(file_id, data)
 
     def _start_ssh_connect(self, session, child_key):
 
@@ -373,11 +358,12 @@ class Window(FramelessWindow):
         file_manager.start_to_compression.connect(
             lambda path: self._show_info(path=path, type_="uncompression"))
         file_manager.upload_progress.connect(
-            lambda path, percentage: self._show_progresses(path, percentage, child_key=child_key))
+            lambda path, percentage: self._show_progresses(path, percentage, child_key, 'upload'))
         file_manager.download_progress.connect(
-            lambda path, percentage: self._show_progresses(path, percentage, child_key=child_key))
+            lambda path, percentage: self._show_progresses(path, percentage, child_key, 'download'))
         session_widget.file_explorer.upload_file.connect(
-            lambda path, target_path, compression: self._show_info(type_="start_upload", child_key=child_key, local_path=path, path=target_path)
+            lambda local_path, remote_path, compression: self._handle_upload_request(
+                child_key, local_path, remote_path, compression)
         )
         session_widget.file_explorer.upload_file.connect(
             file_manager.upload_file)
@@ -805,6 +791,16 @@ class Window(FramelessWindow):
         widget = self.stackWidget.widget(index)
         self.navigationInterface.setCurrentItem(widget.objectName())
 
+    def _handle_upload_request(self, child_key, local_path, remote_path, compression):
+        """Pre-handles upload requests to determine if UI items should be pre-created."""
+        paths = local_path if isinstance(local_path, list) else [local_path]
+        for p in paths:
+            # For non-compressed dirs, we don't create items here.
+            # They will be created dynamically on first progress/finished signal.
+            if not (os.path.isdir(p) and not compression):
+                self._add_transfer_item_if_not_exists(
+                    child_key, p, 'upload')
+
     def _add_transfer_item_if_not_exists(self, child_key, path, transfer_type):
         """Helper to add a transfer item to the UI if it doesn't exist."""
         parent_key = child_key.split("-")[0].strip()
@@ -813,17 +809,20 @@ class Window(FramelessWindow):
         if not session_widget:
             return
 
-        # If path is a list (e.g., compressed download of multiple items),
+        # If path is a list (e.g., compressed transfer of multiple items),
         # we create a representative name.
         if isinstance(path, list):
-            file_name = f"{os.path.basename(path[0])} and {len(path) - 1} others"
-            identifier = str(path) # The worker uses the list string as ID
+            count = len(path)
+            if count == 0: return
+            file_name = f"{os.path.basename(path[0])}"
+            if count > 1:
+                file_name += f" and {count - 1} others"
+            identifier = str(path)  # The worker uses the list string as ID
         else:
             file_name = os.path.basename(path)
             identifier = path
-            
-        file_id = f"{child_key}_{os.path.basename(identifier)}"
 
+        file_id = f"{child_key}_{os.path.basename(identifier)}"
 
         if file_id not in self.active_transfers:
             data = {

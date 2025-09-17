@@ -27,7 +27,7 @@ class TransferWorker(QRunnable):
     in a separate thread from the QThreadPool.
     """
 
-    def __init__(self, session_info, action, local_path, remote_path, compression, download_context=None):
+    def __init__(self, session_info, action, local_path, remote_path, compression, download_context=None, upload_context=None):
         super().__init__()
         self.session_info = session_info
         self.action = action  # 'upload' or 'download'
@@ -35,6 +35,7 @@ class TransferWorker(QRunnable):
         self.remote_path = remote_path
         self.compression = compression
         self.download_context = download_context
+        self.upload_context = upload_context
         self.signals = TransferSignals()
 
         # SSH/SFTP clients will be created in the run() method to ensure they are thread-local
@@ -70,7 +71,7 @@ class TransferWorker(QRunnable):
                 # The identifier for signals will be the original local_path (str or list)
                 identifier = str(self.local_path)
                 self._handle_upload_task(
-                    identifier, self.local_path, self.remote_path, self.compression)
+                    identifier, self.local_path, self.remote_path, self.compression, self.upload_context)
             elif self.action == 'download':
                 # The identifier for signals will be the original remote_path (str or list)
                 identifier = str(self.remote_path)
@@ -94,7 +95,7 @@ class TransferWorker(QRunnable):
     # == The following methods are adapted from RemoteFileManager for standalone execution ==
     # ==================================================================================
 
-    def _handle_upload_task(self, identifier, local_path, remote_path, compression):
+    def _handle_upload_task(self, identifier, local_path, remote_path, compression, upload_context=None):
         try:
             if isinstance(local_path, list):
                 if compression:
@@ -109,7 +110,7 @@ class TransferWorker(QRunnable):
                         # Each item will emit its own finished signal.
                         # We capture the result here to give a final status for the whole batch.
                         success, message = self._upload_item(
-                            path, path, remote_path, compression=False)
+                            path, path, remote_path, compression=False, upload_context=upload_context)
                         if not success:
                             all_successful = False
                             error_messages.append(message)
@@ -118,7 +119,7 @@ class TransferWorker(QRunnable):
 
             elif isinstance(local_path, str):
                 self._upload_item(identifier, local_path,
-                                  remote_path, compression)
+                                  remote_path, compression, upload_context)
 
         except Exception as e:
             tb = traceback.format_exc()
@@ -126,7 +127,7 @@ class TransferWorker(QRunnable):
             print(f"❌ {error_msg}")
             self.signals.finished.emit(identifier, False, error_msg)
 
-    def _upload_item(self, identifier, item_path, remote_path, compression):
+    def _upload_item(self, identifier, item_path, remote_path, compression, upload_context=None):
         """Returns (bool, str) for success status and message, and also emits signals."""
         if not os.path.exists(item_path):
             error_msg = f"Local path does not exist: {item_path}"
@@ -138,11 +139,13 @@ class TransferWorker(QRunnable):
                 self._upload_compressed(item_path, item_path, remote_path)
             else:
                 if os.path.isfile(item_path):
-                    self._upload_file(item_path, item_path, remote_path)
+                    self._upload_file(
+                        item_path, item_path, remote_path, upload_context)
                 elif os.path.isdir(item_path):
+                    # This should no longer be called for non-compressed directory uploads
+                    # as the dispatcher breaks them down into files.
                     self._upload_directory(item_path, item_path, remote_path)
-            # Assuming success if no exception is raised from the calls above.
-            # The actual success/failure is emitted within those methods.
+
             return True, ""
         except Exception as e:
             error_msg = f"Failed to upload {item_path}: {e}"
@@ -189,13 +192,23 @@ class TransferWorker(QRunnable):
             if os.path.exists(tmp_tar_path):
                 os.remove(tmp_tar_path)
 
-    def _upload_file(self, identifier, local_path, remote_path):
-        remote_filename = os.path.basename(local_path)
-        full_remote_path = os.path.join(
-            remote_path, remote_filename).replace('\\', '/')
-
+    def _upload_file(self, identifier, local_path, remote_path, upload_context=None):
         try:
-            self._ensure_remote_directory_exists(remote_path)
+            if upload_context:
+                # Reconstruct the target path to preserve directory structure
+                relative_path = os.path.relpath(local_path, upload_context)
+                # The root of the uploaded dir should also be created
+                upload_root_name = os.path.basename(upload_context)
+                full_remote_path = os.path.join(
+                    remote_path, upload_root_name, relative_path).replace('\\', '/')
+            else:
+                # Original behavior for single file uploads
+                remote_filename = os.path.basename(local_path)
+                full_remote_path = os.path.join(
+                    remote_path, remote_filename).replace('\\', '/')
+            
+            # Ensure the parent directory of the target file exists
+            self._ensure_remote_directory_exists(os.path.dirname(full_remote_path))
 
             def progress_callback(bytes_so_far, total_bytes):
                 if total_bytes > 0:
