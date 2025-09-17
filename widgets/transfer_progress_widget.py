@@ -307,8 +307,9 @@ class TransferProgressWidget(QWidget):
             self._update_title()
             item_widget.deleteLater()
 
-        if not self.transfer_items:
-            self.setVisible(False)
+        # Keep the widget visible even when the list is empty
+        # if not self.transfer_items:
+        #     self.setVisible(False)
 
     def toggle_view(self):
         self.is_expanded = not self.is_expanded
