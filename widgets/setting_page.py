@@ -512,13 +512,16 @@ class SettingPage(ScrollArea):
         self.transfer_card = SettingCard(
             FluentIcon.SPEED_HIGH,
             self.tr("Max Concurrent Transfers"),
-            self.tr("Set the maximum number of concurrent uploads/downloads (must be > 0 and ≤ 50000)"),
+            self.tr(
+                "Set the maximum number of concurrent uploads/downloads (must be > 0 and ≤ 10)"),
         )
         self.transfer_edit = LineEdit(self.transfer_card)
-        self.transfer_edit.setValidator(QIntValidator(1, 50000))
+        self.transfer_edit.setValidator(QIntValidator(1, 10))
         self.transfer_edit.setFixedWidth(150)
-        self.transfer_edit.editingFinished.connect(self._save_transfer_value_from_edit)
-        self.transfer_card.hBoxLayout.addWidget(self.transfer_edit, 0, Qt.AlignRight)
+        self.transfer_edit.editingFinished.connect(
+            self._save_transfer_value_from_edit)
+        self.transfer_card.hBoxLayout.addWidget(
+            self.transfer_edit, 0, Qt.AlignRight)
         layout.addWidget(self.transfer_card)
 
         self._restore_saved_settings()
@@ -605,7 +608,8 @@ class SettingPage(ScrollArea):
         self.opacityEdit.setValue(self.config["background_opacity"])
         self.cfg.default_view.value = "Icon" if self.config.get(
             "default_view", "icon") == "icon" else "Info"
-        self.transfer_edit.setText(str(self.config.get("max_concurrent_transfers", 4)))
+        self.transfer_edit.setText(
+            str(self.config.get("max_concurrent_transfers", 4)))
         # Achieve results
         self._lock_ratio = self.config["locked_ratio"]
         self._restore_background_opacity(self.config["background_opacity"])
@@ -692,4 +696,3 @@ class SettingPage(ScrollArea):
 
     def _restart(self):
         pass
-

@@ -1,9 +1,8 @@
 # coding:utf-8
-import ast
 import sys
 import ctypes
 import time
-from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl
+from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget
 
@@ -24,8 +23,9 @@ from widgets.sync_widget import SycnWidget
 import os
 import subprocess
 from tools.atool import resource_path
-from widgets.transfer_progress_widget import TransferProgressWidget
+from tools.setting_config import SCM
 font_ = font_config()
+setting_ = SCM()
 
 
 class Window(FramelessWindow):
@@ -105,6 +105,9 @@ class Window(FramelessWindow):
         self.initNavigation()
 
         self.initWindow()
+
+        if setting_.read_config()["maximized"]:
+            self.showMaximized()
 
     def set_background_opacity(self, opacity: float):
         if not self._bg_pixmap:
@@ -631,22 +634,23 @@ class Window(FramelessWindow):
 
     def apply_locked_ratio(self, event=None):
         new_width, new_height = 0, 0
-        """Apply background image proportionally to window size"""
-        if self.settingInterface._lock_ratio and self._bg_pixmap and self._bg_ratio:
-            if event is not None and not isinstance(event, bool):
-                new_width = event.size().width()
-                new_height = event.size().height()
-            else:
-                new_width = self.width()
-                new_height = self.height()
+        if not self.isMaximized():
+            """Apply background image proportionally to window size"""
+            if self.settingInterface._lock_ratio and self._bg_pixmap and self._bg_ratio:
+                if event is not None and not isinstance(event, bool):
+                    new_width = event.size().width()
+                    new_height = event.size().height()
+                else:
+                    new_width = self.width()
+                    new_height = self.height()
 
-            target_ratio = self._bg_ratio
+                target_ratio = self._bg_ratio
 
-            if abs(new_width / new_height - target_ratio) > 0.01:
-                new_height = int(new_width / target_ratio)
-                self.resize(new_width, new_height)
-        if self.settingInterface.init_window_size and new_width and new_height:
-            self.settingInterface.save_window_size((new_width, new_height))
+                if abs(new_width / new_height - target_ratio) > 0.01:
+                    new_height = int(new_width / target_ratio)
+                    self.resize(new_width, new_height)
+            if self.settingInterface.init_window_size and new_width and new_height:
+                self.settingInterface.save_window_size((new_width, new_height))
 
     def resizeEvent(self, event):
         self._resize_timer.start(50)
@@ -976,6 +980,15 @@ class Window(FramelessWindow):
             for key, value_1 in value_.items():
                 if key != "widget":
                     value_1.retranslateUi()
+
+    def changeEvent(self, event):
+        # Get the maximized and minimized state
+        if event.type() == QEvent.WindowStateChange:
+            if self.isMaximized():
+                setting_.revise_config("maximized", True)
+            else:
+                setting_.revise_config("maximized", False)
+        super().changeEvent(event)
 
 
 def language_code_to_locale(code: str) -> str:

@@ -1,6 +1,6 @@
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QFrame,  QHBoxLayout, QLabel, QWidget, QVBoxLayout, QSizePolicy, QSplitter, QSpacerItem
-from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, ProgressRing, TextEdit, PrimaryPushButton, ToolButton
+from PyQt5.QtWidgets import QFrame,  QHBoxLayout, QLabel, QWidget, QVBoxLayout, QSizePolicy, QSplitter
+from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF,  ToolButton
 from widgets.command_input import CommandInput
 from widgets.system_resources_widget import ProcessTable
 from widgets.task_widget import Tasks
@@ -9,8 +9,6 @@ from widgets.file_tree_widget import File_Navigation_Bar, FileTreeWidget
 from widgets.files_widgets import FileExplorer
 from widgets.transfer_progress_widget import TransferProgressWidget
 from tools.setting_config import SCM
-import os
-from functools import partial
 configer = SCM()
 
 
@@ -108,15 +106,18 @@ class Widget(QWidget):
             leftLayout.addWidget(self.sys_resources, 2)
             leftLayout.addWidget(self.task, 3)
             leftLayout.addWidget(self.disk_storage, 5)
-            leftLayout.addWidget(self.transfer_progress, 0) # Initially, no stretch
+            # Initially, no stretch
+            leftLayout.addWidget(self.transfer_progress, 0)
 
             def toggle_transfer_stretch(is_expanded):
                 if is_expanded:
-                    leftLayout.setStretch(3, 10) # transfer_progress index is 3
+                    # transfer_progress index is 3
+                    leftLayout.setStretch(3, 10)
                 else:
                     leftLayout.setStretch(3, 0)
 
-            self.transfer_progress.expansionChanged.connect(toggle_transfer_stretch)
+            self.transfer_progress.expansionChanged.connect(
+                toggle_transfer_stretch)
 
             # --------- 右侧容器 ---------
             rightContainer = QFrame(self)
@@ -192,9 +193,11 @@ class Widget(QWidget):
 
             self.command_input = CommandInput(self.command_bar)
             self.command_input.setObjectName("command_input")
-            self.command_input.setPlaceholderText(self.tr("Enter command here,Shift+Enter for new line,Enter to sendExec"))
+            self.command_input.setPlaceholderText(
+                self.tr("Enter command here,Shift+Enter for new line,Enter to sendExec"))
             # self.command_input.setFixedHeight(32) # Remove fixed height
-            self.command_input.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self.command_input.setVerticalScrollBarPolicy(
+                Qt.ScrollBarAlwaysOff)
             self.command_input.textChanged.connect(self.adjust_input_height)
             self.command_input.executeCommand.connect(self.send_command_to_ssh)
 
@@ -227,6 +230,7 @@ class Widget(QWidget):
 
             # file_bar
             self.file_bar = File_Navigation_Bar(self.file_manage)
+            self.file_bar.bar_path_changed.connect(self._set_file_bar)
             self.file_bar.bar_path_changed.connect(self._update_file_explorer)
             self.file_bar.setObjectName("file_bar")
             self.file_bar.setFixedHeight(45)
@@ -293,7 +297,7 @@ class Widget(QWidget):
                 total = sum(sizes)
                 if total > 0:
                     configer.revise_config("splitter_tb_ratio", [
-                                        s / total for s in sizes])
+                        s / total for s in sizes])
                 # config["splitter_tb_ratio"] = [s / total for s in sizes]
                 # configer.save_config(config)
 
@@ -311,7 +315,8 @@ class Widget(QWidget):
                 total_h = max(200, self.height())
                 r = config["splitter_tb_ratio"]
                 if len(r) == 2:  # New format
-                    splitter.setSizes([int(total_h * r[0]), int(total_h * r[1])])
+                    splitter.setSizes(
+                        [int(total_h * r[0]), int(total_h * r[1])])
                 elif len(r) == 3:  # For compatibility with old config
                     top_size_ratio = r[0] + r[1]
                     bottom_size_ratio = r[2]
@@ -335,14 +340,16 @@ class Widget(QWidget):
         # Min height for at least one line
         min_height = line_height + margin
         # Max height for 5 lines
-        max_height = (line_height * 5) + margin + 5  # A bit of extra padding for max
+        max_height = (line_height * 5) + margin + \
+            5  # A bit of extra padding for max
 
         # Clamp the final height
         final_height = min(max(required_height, min_height), max_height)
 
         # Update the heights of the input and its container
         self.command_input.setFixedHeight(final_height)
-        self.command_bar.setFixedHeight(final_height + 10)  # 10 for container's padding
+        self.command_bar.setFixedHeight(
+            final_height + 10)  # 10 for container's padding
 
     def send_command_to_ssh(self, command):
         if self.ssh_widget and command:
