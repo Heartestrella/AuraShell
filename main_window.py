@@ -169,10 +169,12 @@ class Window(FramelessWindow):
             print(e)
 
     def _show_info(self, path: str = None, status: bool = None, msg: str = None, type_: str = None, child_key: str = None, local_path: str = None, open_it: bool = False):
-        no_refresh_types = ["download", "start_upload", "start_download", "info"]
+        no_refresh_types = ["download",
+                            "start_upload", "start_download", "info"]
 
         parent_key = child_key.split("-")[0].strip()
-        session_widget = self.session_widgets.get(parent_key, {}).get(child_key)
+        session_widget = self.session_widgets.get(
+            parent_key, {}).get(child_key)
         if not session_widget:
             return
 
@@ -205,7 +207,7 @@ class Window(FramelessWindow):
                         session_widget.transfer_progress.remove_transfer_item(
                             self.active_transfers[p]["id"])
                         del self.active_transfers[p]
-            
+
         elif type_ == "start_upload":
             # This is now handled by _add_transfer_item_if_not_exists
             # It will be called from _handle_files for single files/compressed,
@@ -222,7 +224,8 @@ class Window(FramelessWindow):
                     "progress": 0
                 }
                 self.active_transfers[file_id] = data
-                session_widget.transfer_progress.add_transfer_item(file_id, data)
+                session_widget.transfer_progress.add_transfer_item(
+                    file_id, data)
 
         elif type_ == "download":
             # 'path' is the unique remote path identifier
@@ -293,9 +296,10 @@ class Window(FramelessWindow):
                 if status:
                     title = self.tr(f"Created directory {path} successfully")
                 else:
-                    title = self.tr(f"Failed to create directory {path}\n{msg}")
+                    title = self.tr(
+                        f"Failed to create directory {path}\n{msg}")
                     duration = -1
-            
+
             if title:
                 InfoBar.info(
                     title=title,
@@ -313,13 +317,15 @@ class Window(FramelessWindow):
     def _show_progresses(self, path, percentage, child_key, transfer_type):
         """Handles progress updates for both uploads and downloads."""
         parent_key = child_key.split("-")[0].strip()
-        session_widget = self.session_widgets.get(parent_key, {}).get(child_key)
+        session_widget = self.session_widgets.get(
+            parent_key, {}).get(child_key)
         if not session_widget:
             return
 
         # 'path' is the unique identifier (local for upload, remote for download)
         if path not in self.active_transfers:
-            self._add_transfer_item_if_not_exists(child_key, path, transfer_type)
+            self._add_transfer_item_if_not_exists(
+                child_key, path, transfer_type)
 
         if path in self.active_transfers:
             file_id = self.active_transfers[path]["id"]
@@ -327,7 +333,8 @@ class Window(FramelessWindow):
             data["progress"] = percentage
             if percentage >= 100:
                 data["type"] = "completed"
-            session_widget.transfer_progress.update_transfer_item(file_id, data)
+            session_widget.transfer_progress.update_transfer_item(
+                file_id, data)
 
     def _start_ssh_connect(self, session, child_key):
 
@@ -366,9 +373,9 @@ class Window(FramelessWindow):
             path=path, status=status, msg=msg, type_="mkdir", child_key=child_key
         ))
         file_manager.start_to_compression.connect(
-            lambda path: self._show_info(path=path, type_="compression"))
+            lambda path: self._show_info(path=path, type_="compression", child_key=child_key))
         file_manager.start_to_compression.connect(
-            lambda path: self._show_info(path=path, type_="uncompression"))
+            lambda path: self._show_info(path=path, type_="uncompression", child_key=child_key))
         file_manager.upload_progress.connect(
             lambda path, percentage: self._show_progresses(path, percentage, child_key, 'upload'))
         file_manager.download_progress.connect(
@@ -461,7 +468,7 @@ class Window(FramelessWindow):
         elif action_type == "download":
             paths_to_download = full_path if isinstance(
                 full_path, list) else [full_path]
-            if not cut: # Non-compressed download
+            if not cut:  # Non-compressed download
                 # We no longer call _show_info here for directories.
                 # The backend will expand the directory and we will create items
                 # dynamically when progress/finished signals arrive.
@@ -469,12 +476,15 @@ class Window(FramelessWindow):
                 for path in paths_to_download:
                     is_dir = file_manager.check_path_type(path) == "directory"
                     if not is_dir:
-                         self._add_transfer_item_if_not_exists(child_key, path, "download")
-                
-                file_manager.download_path_async(paths_to_download, compression=cut)
+                        self._add_transfer_item_if_not_exists(
+                            child_key, path, "download")
 
-            else: # Compressed download
-                self._add_transfer_item_if_not_exists(child_key, paths_to_download, "download")
+                file_manager.download_path_async(
+                    paths_to_download, compression=cut)
+
+            else:  # Compressed download
+                self._add_transfer_item_if_not_exists(
+                    child_key, paths_to_download, "download")
                 file_manager.download_path_async(
                     paths_to_download, compression=cut)
         elif action_type == "paste":
@@ -606,7 +616,8 @@ class Window(FramelessWindow):
         child_widget.disk_storage.directory_selected.connect(
             lambda path: self._update_file_tree_branch_when_cd(path, child_key))
         child_widget.transfer_progress.cancelRequested.connect(
-            lambda file_id: self._handle_transfer_cancellation(file_id, child_key)
+            lambda file_id: self._handle_transfer_cancellation(
+                file_id, child_key)
         )
         self.addSubInterface(
             child_widget, FIF.ALBUM, child_key, parent=parent_widget,
@@ -666,7 +677,7 @@ class Window(FramelessWindow):
         self.navigationInterface.addWidget(
             routeKey='about',
             widget=NavigationAvatarWidget(
-                'su8aru', resource_path('resource/icons/avatar.jpg')),
+                'Github', resource_path('resource/icons/github.svg')),
             onClick=self._open_github,
             position=NavigationItemPosition.BOTTOM,
         )
@@ -823,20 +834,21 @@ class Window(FramelessWindow):
             parent_key, {}).get(child_key)
         if not session_widget:
             return
-        
+
         # The unique identifier for a task is now the full path for single files,
         # or the string representation of the list for compressed batches.
         task_identifier = str(path) if isinstance(path, list) else path
 
         if task_identifier in self.active_transfers:
-            return # Avoid creating duplicate entries
+            return  # Avoid creating duplicate entries
 
         # Create a truly unique ID for the UI widget
         file_id = f"{child_key}_{task_identifier}_{time.time()}"
-        
+
         if isinstance(path, list):
             count = len(path)
-            if count == 0: return
+            if count == 0:
+                return
             file_name = f"{os.path.basename(path[0])}"
             if count > 1:
                 file_name += f" and {count - 1} others"
@@ -844,16 +856,15 @@ class Window(FramelessWindow):
             file_name = os.path.basename(path)
 
         data = {
-            "id": file_id, # The unique ID for the widget
+            "id": file_id,  # The unique ID for the widget
             "type": transfer_type,
             "filename": file_name,
             "progress": 0
         }
-        
+
         # Use the task_identifier as the key in our tracking dictionary
         self.active_transfers[task_identifier] = data
         session_widget.transfer_progress.add_transfer_item(file_id, data)
-
 
     def _handle_transfer_cancellation(self, file_id, child_key):
         """Handles the request to cancel a file transfer."""
@@ -867,7 +878,7 @@ class Window(FramelessWindow):
             if data.get("id") == file_id:
                 task_identifier = identifier
                 break
-        
+
         if task_identifier:
             # Tell the file manager to cancel the backend worker
             file_manager.cancel_transfer(task_identifier)
@@ -878,7 +889,7 @@ class Window(FramelessWindow):
                 parent_key, {}).get(child_key)
             if session_widget:
                 session_widget.transfer_progress.remove_transfer_item(file_id)
-            
+
             self.active_transfers.pop(task_identifier, None)
 
     def remove_nav_edge(self):

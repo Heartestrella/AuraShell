@@ -286,7 +286,7 @@ class RemoteFileManager(QThread):
         """Handles dispatching of download tasks, expanding directories if necessary."""
         paths_to_process = remote_path if isinstance(
             remote_path, list) else [remote_path]
-        
+
         for path_item in paths_to_process:
             is_dir = self.check_path_type(path_item) == "directory"
 
@@ -307,9 +307,9 @@ class RemoteFileManager(QThread):
         """Recursively lists all files in a remote directory. Returns a tuple of (file_paths, dir_paths)."""
         file_paths = []
         dir_paths = [remote_path]
-        
+
         items_to_scan = [remote_path]
-        
+
         while items_to_scan:
             current_path = items_to_scan.pop(0)
             try:
@@ -322,7 +322,7 @@ class RemoteFileManager(QThread):
                         file_paths.append(full_path)
             except Exception as e:
                 print(f"Error listing remote directory {current_path}: {e}")
-                
+
         return file_paths, dir_paths
 
     def _list_local_files_recursive(self, local_path):
@@ -345,7 +345,6 @@ class RemoteFileManager(QThread):
             upload_context
         )
 
-
         if action == 'upload':
             worker.signals.finished.connect(self.upload_finished)
             # Refresh the parent directory of the remote path upon successful upload.
@@ -354,8 +353,10 @@ class RemoteFileManager(QThread):
                     [os.path.dirname(remote_path.rstrip('/'))]) if success and remote_path else None
             )
             worker.signals.progress.connect(self.upload_progress)
-            worker.signals.start_to_compression.connect(self.start_to_compression)
-            worker.signals.start_to_uncompression.connect(self.start_to_uncompression)
+            worker.signals.start_to_compression.connect(
+                self.start_to_compression)
+            worker.signals.start_to_uncompression.connect(
+                self.start_to_uncompression)
 
         elif action == 'download':
             worker.signals.finished.connect(
@@ -372,16 +373,17 @@ class RemoteFileManager(QThread):
             local_path if action == 'upload' else remote_path)
         self.active_workers[identifier] = worker
 
-
     # ---------------------------
     # Public task API
     # ---------------------------
+
     def cancel_transfer(self, identifier: str):
         """Cancels an active transfer task."""
         worker = self.active_workers.pop(identifier, None)
+        print(worker)
         if worker:
+            print('stop loading')
             worker.stop()
-
 
     def mkdir(self, path: str, callback=None):
         self.mutex.lock()
@@ -621,11 +623,11 @@ class RemoteFileManager(QThread):
 
                 # common executable-related MIME strings
                 if ("executable" in mime_out
-                            or "x-executable" in mime_out
-                            or mime_out.startswith("application/x-sharedlib")
-                            or "x-mach-binary" in mime_out
-                            or "pe" in mime_out  # covers various PE-like mimes
-                        ):
+                    or "x-executable" in mime_out
+                    or mime_out.startswith("application/x-sharedlib")
+                    or "x-mach-binary" in mime_out
+                    or "pe" in mime_out  # covers various PE-like mimes
+                    ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
 
