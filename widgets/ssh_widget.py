@@ -1,4 +1,4 @@
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtWidgets import QFrame,  QHBoxLayout, QLabel, QWidget, QVBoxLayout, QSizePolicy, QSplitter
 from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF,  ToolButton
 from widgets.command_input import CommandInput
@@ -302,7 +302,14 @@ class Widget(QWidget):
                 # configer.save_config(config)
 
             splitter_lr.splitterMoved.connect(save_lr_ratio)
+            # ---- Debounce terminal resize on splitter move ----
+            resize_timer = QTimer(self)
+            resize_timer.setSingleShot(True)
+            resize_timer.setInterval(150)  # 150ms delay
+            resize_timer.timeout.connect(self.ssh_widget.fit_terminal)
+
             splitter.splitterMoved.connect(save_tb_ratio)
+            splitter.splitterMoved.connect(resize_timer.start)
 
             # ---- 恢复上次保存的比例 ----
             if "splitter_lr_ratio" in config:

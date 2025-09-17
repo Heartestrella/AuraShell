@@ -702,7 +702,8 @@ class WebTerminal(QWidget):
           }});
 
           // sizing: fit + notify backend of cols/rows
-          function notifySize() {{
+          window.notifySize = function() {{
+           console.log('notifySize triggered from Python.');
             try {{
               if (fitAddon && typeof fitAddon.fit === 'function') {{
                 try {{ fitAddon.fit(); }} catch(e) {{ /* ignore */ }}
@@ -721,7 +722,7 @@ class WebTerminal(QWidget):
           // initial sizing & apply initial fallback bg & shadow
           setTimeout(function() {{
             // apply initial bg fallback variable and shadow: Python provided values used below by calling setTerminalTheme
-            notifySize();
+            window.notifySize();
             try {{
               // call setTerminalTheme with initial values
               window.setTerminalTheme({fg}, {bg}, {shadow});
@@ -817,3 +818,11 @@ class WebTerminal(QWidget):
             self.bridge.sendInput(b64)
         except Exception as e:
             print("send_command error:", e)
+
+    def fit_terminal(self):
+        """Triggers the fit addon in the browser to resize the terminal."""
+        js = "if (typeof notifySize === 'function') notifySize();"
+        try:
+            self.view.page().runJavaScript(js)
+        except Exception as e:
+            print("fit_terminal runJavaScript error:", e)
