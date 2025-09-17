@@ -37,7 +37,6 @@ class Widget(QWidget):
             label = QLabel(text, self)
             label.setAlignment(Qt.AlignCenter)
             self.mainLayout.addWidget(label)
-        # 假设在你的类 __init__ 内部
 
         else:
 
@@ -177,19 +176,16 @@ class Widget(QWidget):
             command_bar_layout.setContentsMargins(8, 5, 8, 5)
             command_bar_layout.setSpacing(8)
 
-            self.command_icon = ToolButton(FIF.COMMAND_PROMPT, self.command_bar)
+            self.command_icon = ToolButton(FIF.BROOM, self.command_bar)
 
             self.command_input = TextEdit(self.command_bar)
             self.command_input.setObjectName("command_input")
-            self.command_input.setPlaceholderText(self.tr("Enter command here, Shift+Enter for new line"))
+            self.command_input.setPlaceholderText(self.tr("Enter command here,Shift+Enter for new line,Enter to sendExec"))
             self.command_input.setFixedHeight(32)
-
-            self.execute_button = PrimaryPushButton(self.tr("Execute"), self.command_bar)
-            self.execute_button.setFixedWidth(100)
+            self.command_input.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
             command_bar_layout.addWidget(self.command_icon)
             command_bar_layout.addWidget(self.command_input)
-            command_bar_layout.addWidget(self.execute_button)
 
             top_container_layout.addWidget(self.ssh_widget)
             top_container_layout.addWidget(self.command_bar)
