@@ -27,53 +27,31 @@ class TransferWorker(QRunnable):
     in a separate thread from the QThreadPool.
     """
 
-    def __init__(self, session_info, action, local_path, remote_path, compression, download_context=None, upload_context=None):
+    def __init__(self, connection, action, local_path, remote_path, compression, download_context=None, upload_context=None):
         super().__init__()
-        self.session_info = session_info
-        self.action = action  # 'upload' or 'download'
+        self.conn = connection  # Now receives an active connection
+        self.action = action
         self.local_path = local_path
         self.remote_path = remote_path
         self.compression = compression
         self.download_context = download_context
         self.upload_context = upload_context
         self.signals = TransferSignals()
-
-        # SSH/SFTP clients will be created in the run() method to ensure they are thread-local
-        self.conn = None
         self.sftp = None
 
     def run(self):
-        """The main work of the thread. Establishes a new SSH connection and performs the transfer."""
+        """The main work of the thread. Uses a pre-established SSH connection to perform the transfer."""
         try:
-            self.conn = paramiko.SSHClient()
-            self.conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            if self.session_info.auth_type == "password":
-                self.conn.connect(
-                    self.session_info.host,
-                    port=self.session_info.port,
-                    username=self.session_info.username,
-                    password=self.session_info.password,
-                    timeout=30,
-                    banner_timeout=30
-                )
-            else:
-                self.conn.connect(
-                    self.session_info.host,
-                    port=self.session_info.port,
-                    username=self.session_info.username,
-                    key_filename=self.session_info.key_path,
-                    timeout=30,
-                    banner_timeout=30
-                )
+            if not self.conn or not self.conn.get_transport() or not self.conn.get_transport().is_active():
+                raise Exception("SSH connection is not active or provided.")
+
             self.sftp = self.conn.open_sftp()
 
             if self.action == 'upload':
-                # The identifier for signals will be the original local_path (str or list)
                 identifier = str(self.local_path)
                 self._handle_upload_task(
                     identifier, self.local_path, self.remote_path, self.compression, self.upload_context)
             elif self.action == 'download':
-                # The identifier for signals will be the original remote_path (str or list)
                 identifier = str(self.remote_path)
                 self._download_files(
                     identifier, self.remote_path, self.compression)
@@ -86,10 +64,9 @@ class TransferWorker(QRunnable):
                              'upload' else self.remote_path)
             self.signals.finished.emit(identifier, False, error_msg)
         finally:
+            # We no longer close the connection here as it's managed by RemoteFileManager
             if self.sftp:
                 self.sftp.close()
-            if self.conn:
-                self.conn.close()
 
     # ==================================================================================
     # == The following methods are adapted from RemoteFileManager for standalone execution ==

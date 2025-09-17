@@ -57,6 +57,8 @@ class RemoteFileManager(QThread):
 
         self.conn = None
         self.sftp = None
+        self.upload_conn = None
+        self.download_conn = None
 
         # File_tree
         self.file_tree: Dict = {}
@@ -80,28 +82,36 @@ class RemoteFileManager(QThread):
     # ---------------------------
     # Main thread loop
     # ---------------------------
+    def _create_ssh_connection(self):
+        """Helper function to create and configure an SSH connection."""
+        conn = paramiko.SSHClient()
+        conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        if self.auth_type == "password":
+            conn.connect(
+                self.host,
+                port=self.port,
+                username=self.user,
+                password=self.password,
+                timeout=30,
+                banner_timeout=30
+            )
+        else:
+            conn.connect(
+                self.host,
+                port=self.port,
+                username=self.user,
+                key_filename=self.key_path,
+                timeout=30,
+                banner_timeout=30
+            )
+        return conn
+
     def run(self):
         try:
-            self.conn = paramiko.SSHClient()
-            self.conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            if self.auth_type == "password":
-                self.conn.connect(
-                    self.host,
-                    port=self.port,
-                    username=self.user,
-                    password=self.password,
-                    timeout=30,
-                    banner_timeout=30
-                )
-            else:
-                self.conn.connect(
-                    self.host,
-                    port=self.port,
-                    username=self.user,
-                    key_filename=self.key_path,
-                    timeout=30,
-                    banner_timeout=30
-                )
+            # Create all three connections at the start
+            self.conn = self._create_ssh_connection()
+            self.upload_conn = self._create_ssh_connection()
+            self.download_conn = self._create_ssh_connection()
 
             self.sftp = self.conn.open_sftp()
             self.sftp_ready.emit()
@@ -209,6 +219,10 @@ class RemoteFileManager(QThread):
         try:
             if self.conn:
                 self.conn.close()
+            if self.upload_conn:
+                self.upload_conn.close()
+            if self.download_conn:
+                self.download_conn.close()
         except Exception:
             pass
 
@@ -261,17 +275,16 @@ class RemoteFileManager(QThread):
                 for file_path in all_files:
                     # For each file, we pass the original directory as 'context'
                     self._create_and_start_worker(
-                        'upload', file_path, remote_path, compression, open_it, upload_context=path_item)
+                        'upload', self.upload_conn, file_path, remote_path, compression, open_it, upload_context=path_item)
             else:
                 # It's a single file, a list of files, or a compressed directory
                 self._create_and_start_worker(
-                    'upload', path_item, remote_path, compression, open_it)
+                    'upload', self.upload_conn, path_item, remote_path, compression, open_it)
 
     def _dispatch_download_task(self, remote_path, compression, open_it):
         """Handles dispatching of download tasks, expanding directories if necessary."""
         paths_to_process = remote_path if isinstance(
             remote_path, list) else [remote_path]
-        files_to_download = []
         
         for path_item in paths_to_process:
             is_dir = self.check_path_type(path_item) == "directory"
@@ -283,12 +296,11 @@ class RemoteFileManager(QThread):
                 for file_path in all_files:
                     # For each file, we pass the original directory as 'context'
                     self._create_and_start_worker(
-                        'download', None, file_path, compression, open_it, download_context=path_item)
+                        'download', self.download_conn, None, file_path, compression, open_it, download_context=path_item)
             else:
                 # It's a single file, a list of files, or a compressed directory
-                # Let the worker handle it as a single task.
                 self._create_and_start_worker(
-                    'download', None, path_item, compression, open_it)
+                    'download', self.download_conn, None, path_item, compression, open_it)
 
     def _list_remote_files_recursive(self, remote_path):
         """Recursively lists all files in a remote directory. Returns a tuple of (file_paths, dir_paths)."""
@@ -320,10 +332,10 @@ class RemoteFileManager(QThread):
                 file_paths.append(os.path.join(root, file))
         return file_paths
 
-    def _create_and_start_worker(self, action, local_path, remote_path, compression, open_it=False, download_context=None, upload_context=None):
+    def _create_and_start_worker(self, action, connection, local_path, remote_path, compression, open_it=False, download_context=None, upload_context=None):
         """Helper to create, connect signals, and start a single TransferWorker."""
         worker = TransferWorker(
-            self.session_info,
+            connection,
             action,
             local_path,
             remote_path,
