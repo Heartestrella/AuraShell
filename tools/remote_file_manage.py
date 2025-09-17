@@ -264,6 +264,13 @@ class RemoteFileManager(QThread):
 
     def _dispatch_upload_task(self, local_path, remote_path, compression, open_it):
         """Handles dispatching of upload tasks, expanding directories if necessary."""
+        # If compression is on and we have a list of paths, treat it as a single batch job.
+        if compression and isinstance(local_path, list):
+            self._create_and_start_worker(
+                'upload', self.upload_conn, local_path, remote_path, compression, open_it)
+            return
+
+        # Fallback to original logic for single items or non-compressed lists.
         paths_to_process = local_path if isinstance(
             local_path, list) else [local_path]
 

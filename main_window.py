@@ -823,6 +823,13 @@ class Window(FramelessWindow):
 
     def _handle_upload_request(self, child_key, local_path, remote_path, compression):
         """Pre-handles upload requests to determine if UI items should be pre-created."""
+        # If compression is on and we have a list, create a single UI item for the batch.
+        if compression and isinstance(local_path, list):
+            self._add_transfer_item_if_not_exists(
+                child_key, local_path, 'upload')
+            return
+
+        # Original logic for other cases (single files, non-compressed lists/dirs)
         paths = local_path if isinstance(local_path, list) else [local_path]
         for p in paths:
             # For non-compressed dirs, we don't create items here.
@@ -849,7 +856,10 @@ class Window(FramelessWindow):
         # Create a truly unique ID for the UI widget
         file_id = f"{child_key}_{task_identifier}_{time.time()}"
 
-        if isinstance(path, list):
+        if isinstance(path, list) and transfer_type == 'upload':
+            # Special handling for compressed list uploads
+            file_name = "Compressing..."
+        elif isinstance(path, list):
             count = len(path)
             if count == 0:
                 return
