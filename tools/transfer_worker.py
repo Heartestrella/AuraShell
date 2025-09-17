@@ -174,7 +174,6 @@ class TransferWorker(QRunnable):
             return False, error_msg
 
     def _upload_list_compressed(self, identifier, path_list, remote_path):
-        
         tmp_dir = "tmp"
         os.makedirs(tmp_dir, exist_ok=True)
         tmp_fd, tmp_tar_path = tempfile.mkstemp(suffix=".tar.gz", dir=tmp_dir)
@@ -189,11 +188,15 @@ class TransferWorker(QRunnable):
                     tf.add(path, arcname=arcname)
             self.signals.compression_finished.emit(
                 identifier, os.path.basename(tmp_tar_path))
-            self._upload_file(identifier, tmp_tar_path, remote_path)
+            self._upload_file(
+                identifier, tmp_tar_path, remote_path, emit_finish_signal=False)
             remote_zip_path = f"{remote_path.rstrip('/')}/{os.path.basename(tmp_tar_path)}"
             self._remote_untar(remote_zip_path, remote_path)
-
+            self.signals.finished.emit(identifier, True, "")
         except Exception as e:
+            tb = traceback.format_exc()
+            error_msg = f"Compressed list upload error: {e}\n{tb}"
+            self.signals.finished.emit(identifier, False, error_msg)
             raise e
         finally:
             if os.path.exists(tmp_tar_path):
@@ -212,16 +215,21 @@ class TransferWorker(QRunnable):
 
             self.signals.compression_finished.emit(
                 identifier, os.path.basename(tmp_tar_path))
-            self._upload_file(identifier, tmp_tar_path, remote_path)
+            self._upload_file(
+                identifier, tmp_tar_path, remote_path, emit_finish_signal=False)
             remote_zip_path = f"{remote_path.rstrip('/')}/{os.path.basename(tmp_tar_path)}"
             self._remote_untar(remote_zip_path, remote_path)
+            self.signals.finished.emit(identifier, True, "")
         except Exception as e:
+            tb = traceback.format_exc()
+            error_msg = f"Compressed upload error: {e}\n{tb}"
+            self.signals.finished.emit(identifier, False, error_msg)
             raise e
         finally:
             if os.path.exists(tmp_tar_path):
                 os.remove(tmp_tar_path)
 
-    def _upload_file(self, identifier, local_path, remote_path, upload_context=None):
+    def _upload_file(self, identifier, local_path, remote_path, upload_context=None, emit_finish_signal=True):
         try:
             if upload_context:
                 # Reconstruct the target path to preserve directory structure
@@ -235,9 +243,10 @@ class TransferWorker(QRunnable):
                 remote_filename = os.path.basename(local_path)
                 full_remote_path = os.path.join(
                     remote_path, remote_filename).replace('\\', '/')
-            
+
             # Ensure the parent directory of the target file exists
-            self._ensure_remote_directory_exists(os.path.dirname(full_remote_path))
+            self._ensure_remote_directory_exists(
+                os.path.dirname(full_remote_path))
 
             def progress_callback(bytes_so_far, total_bytes):
                 if total_bytes > 0:
@@ -246,12 +255,18 @@ class TransferWorker(QRunnable):
 
             self.sftp.put(local_path, full_remote_path,
                           callback=progress_callback)
-            self.signals.finished.emit(identifier, True, "")
+            if emit_finish_signal:
+                self.signals.finished.emit(identifier, True, "")
 
         except Exception as e:
             tb = traceback.format_exc()
             error_msg = f"File upload error: {e}\n{tb}"
-            self.signals.finished.emit(identifier, False, error_msg)
+            if emit_finish_signal:
+                self.signals.finished.emit(identifier, False, error_msg)
+            else:
+                # If we don't emit finished, we should at least raise the exception
+                # so the calling function knows something went wrong.
+                raise e
 
     def _upload_directory(self, identifier, local_dir, remote_dir):
         try:

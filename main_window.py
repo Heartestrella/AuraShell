@@ -377,7 +377,7 @@ class Window(FramelessWindow):
         ))
         file_manager.start_to_compression.connect(
             lambda path: self._show_info(path=path, type_="compression", child_key=child_key))
-        file_manager.start_to_compression.connect(
+        file_manager.start_to_uncompression.connect(
             lambda path: self._show_info(path=path, type_="uncompression", child_key=child_key))
         file_manager.compression_finished.connect(
             lambda identifier, new_name: self._update_transfer_item_name(identifier, new_name, child_key))
