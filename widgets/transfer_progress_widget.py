@@ -80,6 +80,7 @@ class TransferProgressWidget(QWidget):
         self.content_layout = QVBoxLayout(self.scroll_content)
         self.content_layout.setContentsMargins(10, 5, 10, 10)
         self.content_layout.setSpacing(5)
+        self.content_layout.addStretch(1)
 
         self.scroll_area.setWidget(self.scroll_content)
         self.content_area_layout.addWidget(self.scroll_area)
