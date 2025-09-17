@@ -180,48 +180,50 @@ class Window(FramelessWindow):
             for p in paths:
                 file_id = f"{child_key}_{os.path.basename(p)}"
                 if status:
-                    self.active_transfers[file_id] = {
+                    data = {
                         "type": "completed",
-                        "filename": os.path.basename(p),
                         "progress": 100
                     }
+                    session_widget.transfer_progress.update_transfer_item(file_id, data)
                 else:
+                    session_widget.transfer_progress.remove_transfer_item(file_id)
                     if file_id in self.active_transfers:
                         del self.active_transfers[file_id]
-            session_widget.transfer_progress.update_transfers(self.active_transfers)
-
+            
         elif type_ == "start_upload":
             paths = local_path if isinstance(local_path, list) else [local_path]
             for p in paths:
                 file_id = f"{child_key}_{os.path.basename(p)}"
-                self.active_transfers[file_id] = {
+                data = {
                     "type": "upload",
                     "filename": os.path.basename(p),
                     "progress": 0
                 }
-            session_widget.transfer_progress.update_transfers(self.active_transfers)
+                self.active_transfers[file_id] = data
+                session_widget.transfer_progress.add_transfer_item(file_id, data)
 
         elif type_ == "start_download":
             paths = path if isinstance(path, list) else [path]
             for p in paths:
                 file_id = f"{child_key}_{os.path.basename(p)}"
-                self.active_transfers[file_id] = {
+                data = {
                     "type": "download",
                     "filename": os.path.basename(p),
                     "progress": 0
                 }
-            session_widget.transfer_progress.update_transfers(self.active_transfers)
+                self.active_transfers[file_id] = data
+                session_widget.transfer_progress.add_transfer_item(file_id, data)
 
         elif type_ == "download":
             paths = path if isinstance(path, list) else [path]
             for p in paths:
                 file_id = f"{child_key}_{os.path.basename(p)}"
                 if status:
-                    self.active_transfers[file_id] = {
+                    data = {
                         "type": "completed",
-                        "filename": os.path.basename(p),
                         "progress": 100
                     }
+                    session_widget.transfer_progress.update_transfer_item(file_id, data)
                     if open_it:
                         if sys.platform.startswith('darwin'):
                             subprocess.call(('open', local_path), start_new_session=True)
@@ -230,9 +232,9 @@ class Window(FramelessWindow):
                         elif os.name == 'posix':
                             subprocess.call(('xdg-open', local_path))
                 else:
+                    session_widget.transfer_progress.remove_transfer_item(file_id)
                     if file_id in self.active_transfers:
                         del self.active_transfers[file_id]
-            session_widget.transfer_progress.update_transfers(self.active_transfers)
 
         else:
             duration = 5000
@@ -298,9 +300,9 @@ class Window(FramelessWindow):
             file_name = os.path.basename(path)
             file_id = f"{child_key}_{file_name}"
             if file_id in self.active_transfers:
-                self.active_transfers[file_id]["progress"] = percentage
-        
-        session_widget.transfer_progress.update_transfers(self.active_transfers)
+                data = self.active_transfers[file_id]
+                data["progress"] = percentage
+                session_widget.transfer_progress.update_transfer_item(file_id, data)
 
     def _start_ssh_connect(self, session, child_key):
 
