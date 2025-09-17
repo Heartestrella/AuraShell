@@ -44,6 +44,9 @@ class TransferWorker(QRunnable):
         """The main work of the thread. Uses a pre-established SSH connection to perform the transfer."""
         retry_delay = 1  # Delay in seconds between retries
         attempts = 0
+        identifier = str(
+            self.local_path if self.action == 'upload' else self.remote_path)
+        self.signals.progress.emit(identifier, -1)  # Emit waiting signal
 
         while True:
             try:
@@ -54,11 +57,9 @@ class TransferWorker(QRunnable):
                 self.sftp = self.conn.open_sftp()
 
                 if self.action == 'upload':
-                    identifier = str(self.local_path)
                     self._handle_upload_task(
                         identifier, self.local_path, self.remote_path, self.compression, self.upload_context)
                 elif self.action == 'download':
-                    identifier = str(self.remote_path)
                     self._download_files(
                         identifier, self.remote_path, self.compression)
 
@@ -70,15 +71,14 @@ class TransferWorker(QRunnable):
                 tb = traceback.format_exc()
                 print(
                     f"⚠️ ChannelException encountered (attempt {attempts}): {e}\n{tb}")
-                print(f"Retrying in {retry_delay} second(s)...")
+                print(
+                    f"Retrying {identifier} in {retry_delay} second(s)...")
                 time.sleep(retry_delay)
                 # Loop will continue indefinitely
             except Exception as e:
                 tb = traceback.format_exc()
                 error_msg = f"TransferWorker Error: {e}\n{tb}"
                 print(f"❌ {error_msg}")
-                identifier = str(
-                    self.local_path if self.action == 'upload' else self.remote_path)
                 self.signals.finished.emit(identifier, False, error_msg)
                 # For non-recoverable errors, break the loop
                 return

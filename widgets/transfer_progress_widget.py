@@ -146,6 +146,13 @@ class TransferProgressWidget(QWidget):
         progress_label = QLabel(f"{progress}%", item_widget)
         progress_label.setObjectName("progressLabel")
         item_layout.addWidget(progress_label)
+
+        # --- Waiting Icon ---
+        waiting_icon = IconWidget(FIF.SYNC, item_widget)
+        waiting_icon.setObjectName("waitingIcon")
+        waiting_icon.setFixedSize(16, 16)
+        waiting_icon.hide()
+        item_layout.addWidget(waiting_icon)
         
         # --- Completed Icon ---
         completed_icon = IconWidget(FIF.ACCEPT, item_widget)
@@ -176,8 +183,9 @@ class TransferProgressWidget(QWidget):
         status_icon = item_widget.findChild(IconWidget, "statusIcon")
         progress_label = item_widget.findChild(QLabel, "progressLabel")
         completed_icon = item_widget.findChild(IconWidget, "completedIcon")
+        waiting_icon = item_widget.findChild(IconWidget, "waitingIcon")
         
-        if not all([status_icon, progress_label, completed_icon]):
+        if not all([status_icon, progress_label, completed_icon, waiting_icon]):
             return
 
         # --- Update widgets based on transfer type ---
@@ -189,6 +197,7 @@ class TransferProgressWidget(QWidget):
 
             color = QColor("#107C10")  # Green for completed
             progress_label.hide()
+            waiting_icon.hide()
             completed_icon.show()
 
             # Keep original icon but update color to green
@@ -200,9 +209,23 @@ class TransferProgressWidget(QWidget):
             status_icon.setStyleSheet(
                 f"color: {color.name()}; background-color: transparent;")
         
+        elif progress == -1:  # Waiting state
+            progress_label.hide()
+            completed_icon.hide()
+            waiting_icon.show()
+
+            if transfer_type == "upload":
+                color = QColor("#0078D4")
+            else: # download
+                color = QColor("#D83B01")
+            
+            status_icon.setStyleSheet(f"color: {color.name()}; background-color: transparent;")
+            waiting_icon.setStyleSheet(f"color: {color.name()}; background-color: transparent;")
+
         else:  # In-progress upload or download
             progress_label.show()
             completed_icon.hide()
+            waiting_icon.hide()
             progress_label.setText(f"{progress}%")
 
             if transfer_type == "upload":
