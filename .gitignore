@@ -3,3 +3,4 @@ __pycache__/
 _ssh_download/
 /*.bat
 /*.zip
+/tmp
