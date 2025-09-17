@@ -6,6 +6,7 @@ import stat
 import tarfile
 import tempfile
 from PyQt5.QtCore import QObject, QRunnable, pyqtSignal
+import time
 
 
 class TransferSignals(QObject):
@@ -41,32 +42,50 @@ class TransferWorker(QRunnable):
 
     def run(self):
         """The main work of the thread. Uses a pre-established SSH connection to perform the transfer."""
-        try:
-            if not self.conn or not self.conn.get_transport() or not self.conn.get_transport().is_active():
-                raise Exception("SSH connection is not active or provided.")
+        retry_delay = 1  # Delay in seconds between retries
+        attempts = 0
 
-            self.sftp = self.conn.open_sftp()
+        while True:
+            try:
+                if not self.conn or not self.conn.get_transport() or not self.conn.get_transport().is_active():
+                    raise Exception(
+                        "SSH connection is not active or provided.")
 
-            if self.action == 'upload':
-                identifier = str(self.local_path)
-                self._handle_upload_task(
-                    identifier, self.local_path, self.remote_path, self.compression, self.upload_context)
-            elif self.action == 'download':
-                identifier = str(self.remote_path)
-                self._download_files(
-                    identifier, self.remote_path, self.compression)
+                self.sftp = self.conn.open_sftp()
 
-        except Exception as e:
-            tb = traceback.format_exc()
-            error_msg = f"TransferWorker Error: {e}\n{tb}"
-            print(f"❌ {error_msg}")
-            identifier = str(self.local_path if self.action ==
-                             'upload' else self.remote_path)
-            self.signals.finished.emit(identifier, False, error_msg)
-        finally:
-            # We no longer close the connection here as it's managed by RemoteFileManager
-            if self.sftp:
-                self.sftp.close()
+                if self.action == 'upload':
+                    identifier = str(self.local_path)
+                    self._handle_upload_task(
+                        identifier, self.local_path, self.remote_path, self.compression, self.upload_context)
+                elif self.action == 'download':
+                    identifier = str(self.remote_path)
+                    self._download_files(
+                        identifier, self.remote_path, self.compression)
+
+                # If we reach here, the operation was successful
+                return
+
+            except paramiko.ssh_exception.ChannelException as e:
+                attempts += 1
+                tb = traceback.format_exc()
+                print(
+                    f"⚠️ ChannelException encountered (attempt {attempts}): {e}\n{tb}")
+                print(f"Retrying in {retry_delay} second(s)...")
+                time.sleep(retry_delay)
+                # Loop will continue indefinitely
+            except Exception as e:
+                tb = traceback.format_exc()
+                error_msg = f"TransferWorker Error: {e}\n{tb}"
+                print(f"❌ {error_msg}")
+                identifier = str(
+                    self.local_path if self.action == 'upload' else self.remote_path)
+                self.signals.finished.emit(identifier, False, error_msg)
+                # For non-recoverable errors, break the loop
+                return
+            finally:
+                if self.sftp:
+                    self.sftp.close()
+                    self.sftp = None  # Reset sftp for next retry
 
     # ==================================================================================
     # == The following methods are adapted from RemoteFileManager for standalone execution ==

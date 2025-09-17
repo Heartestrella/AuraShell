@@ -178,25 +178,32 @@ class Window(FramelessWindow):
         if type_ == "upload":
             paths = path if isinstance(path, list) else [path]
             for p in paths:
-                file_id = f"{child_key}_{os.path.basename(p)}"
+                # The 'path' from the finished signal is the unique identifier
+                file_id = self.active_transfers.get(p, {}).get("id")
+                if not file_id:
+                    # Fallback for safety, though it should exist
+                    file_id = f"{child_key}_{p}"
+
                 if status:
-                    if file_id not in self.active_transfers:
+                    if p not in self.active_transfers:
+                        # This can happen if the file is very small and finishes
+                        # before any progress signal is emitted.
                         self._add_transfer_item_if_not_exists(
                             child_key, p, "upload")
+                        file_id = self.active_transfers[p]["id"]
 
-                    if file_id in self.active_transfers:
-                        self.active_transfers[file_id]['type'] = 'completed'
-                        self.active_transfers[file_id]['progress'] = 100
-                    
-                    data = {
-                        "type": "completed",
-                        "progress": 100
-                    }
-                    session_widget.transfer_progress.update_transfer_item(file_id, data)
+                    if p in self.active_transfers:
+                        self.active_transfers[p]['type'] = 'completed'
+                        self.active_transfers[p]['progress'] = 100
+
+                    data = {"type": "completed", "progress": 100}
+                    session_widget.transfer_progress.update_transfer_item(
+                        file_id, data)
                 else:
-                    session_widget.transfer_progress.remove_transfer_item(file_id)
-                    if file_id in self.active_transfers:
-                        del self.active_transfers[file_id]
+                    if p in self.active_transfers:
+                        session_widget.transfer_progress.remove_transfer_item(
+                            self.active_transfers[p]["id"])
+                        del self.active_transfers[p]
             
         elif type_ == "start_upload":
             # This is now handled by _add_transfer_item_if_not_exists
@@ -217,35 +224,43 @@ class Window(FramelessWindow):
                 session_widget.transfer_progress.add_transfer_item(file_id, data)
 
         elif type_ == "download":
-            # For "download", 'path' is the remote path identifier.
-            file_id = f"{child_key}_{os.path.basename(path)}"
-            if status:
-                if file_id in self.active_transfers:
-                    self.active_transfers[file_id]['type'] = 'completed'
-                    self.active_transfers[file_id]['progress'] = 100
+            # 'path' is the unique remote path identifier
+            if path in self.active_transfers:
+                file_id = self.active_transfers[path]["id"]
+                if status:
+                    self.active_transfers[path]['type'] = 'completed'
+                    self.active_transfers[path]['progress'] = 100
+                    data = {"type": "completed", "progress": 100}
+                    session_widget.transfer_progress.update_transfer_item(
+                        file_id, data)
+
+                    if open_it and local_path:
+                        try:
+                            # Open the directory containing the downloaded file/folder
+                            open_path = local_path if os.path.isfile(
+                                local_path) else os.path.dirname(local_path)
+                            if sys.platform.startswith('darwin'):
+                                subprocess.call(('open', open_path))
+                            elif os.name == 'nt':
+                                os.startfile(open_path)
+                            elif os.name == 'posix':
+                                subprocess.call(('xdg-open', open_path))
+                        except Exception as e:
+                            print(f"Error opening file/folder: {e}")
                 else:
-                    # If it's not in active transfers, it's a new file from a dir download. Add it.
-                    self._add_transfer_item_if_not_exists(
-                        child_key, path, "download")
-
-                data = {"type": "completed", "progress": 100}
-                session_widget.transfer_progress.update_transfer_item(
-                    file_id, data)
-
-                if open_it and local_path:
-                    try:
-                        if sys.platform.startswith('darwin'):
-                            subprocess.call(('open', local_path))
-                        elif os.name == 'nt':
-                            os.startfile(os.path.dirname(local_path))
-                        elif os.name == 'posix':
-                            subprocess.call(('xdg-open', local_path))
-                    except Exception as e:
-                        print(f"Error opening file/folder: {e}")
-            else:
-                session_widget.transfer_progress.remove_transfer_item(file_id)
-                if file_id in self.active_transfers:
-                    del self.active_transfers[file_id]
+                    session_widget.transfer_progress.remove_transfer_item(
+                        file_id)
+                    del self.active_transfers[path]
+            elif status:  # Finished signal for a small file that sent no progress
+                self._add_transfer_item_if_not_exists(
+                    child_key, path, "download")
+                if path in self.active_transfers:
+                    file_id = self.active_transfers[path]["id"]
+                    self.active_transfers[path]['type'] = 'completed'
+                    self.active_transfers[path]['progress'] = 100
+                    data = {"type": "completed", "progress": 100}
+                    session_widget.transfer_progress.update_transfer_item(
+                        file_id, data)
 
         else:
             duration = 5000
@@ -301,17 +316,13 @@ class Window(FramelessWindow):
         if not session_widget:
             return
 
-        file_name = os.path.basename(path)
-        file_id = f"{child_key}_{file_name}"
+        # 'path' is the unique identifier (local for upload, remote for download)
+        if path not in self.active_transfers:
+            self._add_transfer_item_if_not_exists(child_key, path, transfer_type)
 
-        # If this is the first progress update for a file, its item might not exist yet.
-        if file_id not in self.active_transfers:
-            self._add_transfer_item_if_not_exists(
-                child_key, path, transfer_type)
-
-        # Now update the progress
-        if file_id in self.active_transfers:
-            data = self.active_transfers[file_id]
+        if path in self.active_transfers:
+            file_id = self.active_transfers[path]["id"]
+            data = self.active_transfers[path]
             data["progress"] = percentage
             if percentage >= 100:
                 data["type"] = "completed"
@@ -808,30 +819,37 @@ class Window(FramelessWindow):
             parent_key, {}).get(child_key)
         if not session_widget:
             return
+        
+        # The unique identifier for a task is now the full path for single files,
+        # or the string representation of the list for compressed batches.
+        task_identifier = str(path) if isinstance(path, list) else path
 
-        # If path is a list (e.g., compressed transfer of multiple items),
-        # we create a representative name.
+        if task_identifier in self.active_transfers:
+            return # Avoid creating duplicate entries
+
+        # Create a truly unique ID for the UI widget
+        import time
+        file_id = f"{child_key}_{task_identifier}_{time.time()}"
+        
         if isinstance(path, list):
             count = len(path)
             if count == 0: return
             file_name = f"{os.path.basename(path[0])}"
             if count > 1:
                 file_name += f" and {count - 1} others"
-            identifier = str(path)  # The worker uses the list string as ID
         else:
             file_name = os.path.basename(path)
-            identifier = path
 
-        file_id = f"{child_key}_{os.path.basename(identifier)}"
-
-        if file_id not in self.active_transfers:
-            data = {
-                "type": transfer_type,
-                "filename": file_name,
-                "progress": 0
-            }
-            self.active_transfers[file_id] = data
-            session_widget.transfer_progress.add_transfer_item(file_id, data)
+        data = {
+            "id": file_id, # The unique ID for the widget
+            "type": transfer_type,
+            "filename": file_name,
+            "progress": 0
+        }
+        
+        # Use the task_identifier as the key in our tracking dictionary
+        self.active_transfers[task_identifier] = data
+        session_widget.transfer_progress.add_transfer_item(file_id, data)
 
     def remove_nav_edge(self):
         self.navigationInterface.setStyleSheet("""

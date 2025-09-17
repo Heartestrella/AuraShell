@@ -14,6 +14,8 @@ class TransferProgressWidget(QWidget):
         self.is_expanded = False
         self._animations = []
         self.transfer_items = {}
+        self.completed_count = 0
+        self.total_count = 0
 
         # Main layout
         self.main_layout = QVBoxLayout(self)
@@ -31,9 +33,12 @@ class TransferProgressWidget(QWidget):
         self.title_label.setObjectName("titleLabel")
         self.title_label.setWordWrap(True)
 
+        self.count_label = QLabel("", self.header)
+        self.count_label.setObjectName("countLabel")
+
+        self.header_layout.addWidget(self.title_label, 0, Qt.AlignLeft)
         self.header_layout.addStretch(1)
-        self.header_layout.addWidget(self.title_label)
-        self.header_layout.addStretch(1)
+        self.header_layout.addWidget(self.count_label, 0, Qt.AlignRight)
 
         self.header.installEventFilter(self)
 
@@ -94,10 +99,19 @@ class TransferProgressWidget(QWidget):
         self.main_layout.addWidget(self.content_area)
         
         self._apply_stylesheet()
+        self._update_title()
 
     def add_transfer_item(self, file_id: str, data: dict):
         if not self.isVisible():
             self.setVisible(True)
+
+        if file_id in self.transfer_items:
+            # If item already exists, just update it
+            self.update_transfer_item(file_id, data)
+            return
+
+        self.total_count += 1
+        self._update_title()
 
         transfer_type = data.get("type", "upload")
         filename = data.get("filename", "Unknown File")
@@ -137,12 +151,15 @@ class TransferProgressWidget(QWidget):
         completed_icon = IconWidget(FIF.ACCEPT, item_widget)
         completed_icon.setObjectName("completedIcon")
         completed_icon.setFixedSize(16, 16)
-        completed_icon.setStyleSheet(f"color: {QColor('#107C10').name()}; background-color: transparent;")
+        completed_icon.setStyleSheet(
+            f"color: {QColor('#107C10').name()}; background-color: transparent;")
         completed_icon.hide()
         item_layout.addWidget(completed_icon)
 
         # --- Store and add to layout ---
         item_widget.setProperty("transfer_type", transfer_type)
+        # Add a property to track completion status to avoid double counting
+        item_widget.setProperty("is_completed", False)
         self.transfer_items[file_id] = item_widget
         self.content_layout.insertWidget(0, item_widget)
         
@@ -165,6 +182,11 @@ class TransferProgressWidget(QWidget):
 
         # --- Update widgets based on transfer type ---
         if transfer_type == "completed":
+            if not item_widget.property("is_completed"):
+                item_widget.setProperty("is_completed", True)
+                self.completed_count += 1
+                self._update_title()
+
             color = QColor("#107C10")  # Green for completed
             progress_label.hide()
             completed_icon.show()
@@ -175,7 +197,8 @@ class TransferProgressWidget(QWidget):
                 status_icon.setIcon(FIF.UP)
             elif original_type == "download":
                 status_icon.setIcon(FIF.DOWN)
-            status_icon.setStyleSheet(f"color: {color.name()}; background-color: transparent;")
+            status_icon.setStyleSheet(
+                f"color: {color.name()}; background-color: transparent;")
         
         else:  # In-progress upload or download
             progress_label.show()
@@ -220,6 +243,10 @@ class TransferProgressWidget(QWidget):
     def remove_transfer_item(self, file_id: str):
         item_widget = self.transfer_items.pop(file_id, None)
         if item_widget:
+            if item_widget.property("is_completed"):
+                self.completed_count -= 1
+            self.total_count -= 1
+            self._update_title()
             item_widget.deleteLater()
 
         if not self.transfer_items:
@@ -242,6 +269,10 @@ class TransferProgressWidget(QWidget):
             return True
         return super().eventFilter(obj, event)
 
+    def _update_title(self):
+        """Updates the title label with the current transfer counts."""
+        self.count_label.setText(f"({self.completed_count}/{self.total_count})")
+
     def _apply_stylesheet(self):
         self.setStyleSheet("""
             #transferProgressWidget {
@@ -251,10 +282,11 @@ class TransferProgressWidget(QWidget):
             #header {
                 background-color: transparent;
             }
-            #titleLabel {
+            #titleLabel, #countLabel {
                 font-size: 14px;
                 font-weight: bold;
                 color: #FFFFFF;
+                background-color: transparent;
             }
             #contentArea {
                 background-color: transparent;
