@@ -78,6 +78,7 @@ class RemoteFileManager(QThread):
         config = SCM().read_config()
         max_threads = config.get("max_concurrent_transfers", 4)
         self.thread_pool.setMaxThreadCount(max_threads)
+        self.active_workers = {}  # To track active TransferWorker instances
 
     # ---------------------------
     # Main thread loop
@@ -366,9 +367,21 @@ class RemoteFileManager(QThread):
 
         self.thread_pool.start(worker)
 
+        # Track the worker
+        identifier = str(
+            local_path if action == 'upload' else remote_path)
+        self.active_workers[identifier] = worker
+
+
     # ---------------------------
     # Public task API
     # ---------------------------
+    def cancel_transfer(self, identifier: str):
+        """Cancels an active transfer task."""
+        worker = self.active_workers.pop(identifier, None)
+        if worker:
+            worker.stop()
+
 
     def mkdir(self, path: str, callback=None):
         self.mutex.lock()

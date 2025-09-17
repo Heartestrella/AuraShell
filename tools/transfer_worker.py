@@ -39,6 +39,15 @@ class TransferWorker(QRunnable):
         self.upload_context = upload_context
         self.signals = TransferSignals()
         self.sftp = None
+        self.is_stopped = False
+
+    def stop(self):
+        self.is_stopped = True
+        if self.sftp:
+            try:
+                self.sftp.close()
+            except Exception as e:
+                print(f"Error closing SFTP in worker stop: {e}")
 
     def run(self):
         """The main work of the thread. Uses a pre-established SSH connection to perform the transfer."""
@@ -48,8 +57,10 @@ class TransferWorker(QRunnable):
             self.local_path if self.action == 'upload' else self.remote_path)
         self.signals.progress.emit(identifier, -1)  # Emit waiting signal
 
-        while True:
+        while not self.is_stopped:
             try:
+                if self.is_stopped:
+                    break
                 if not self.conn or not self.conn.get_transport() or not self.conn.get_transport().is_active():
                     raise Exception(
                         "SSH connection is not active or provided.")
@@ -76,6 +87,8 @@ class TransferWorker(QRunnable):
                 time.sleep(retry_delay)
                 # Loop will continue indefinitely
             except Exception as e:
+                if self.is_stopped:
+                    break
                 tb = traceback.format_exc()
                 error_msg = f"TransferWorker Error: {e}\n{tb}"
                 print(f"❌ {error_msg}")
@@ -86,6 +99,13 @@ class TransferWorker(QRunnable):
                 if self.sftp:
                     self.sftp.close()
                     self.sftp = None  # Reset sftp for next retry
+
+        if self.is_stopped:
+            identifier = str(
+                self.local_path if self.action == 'upload' else self.remote_path)
+            error_msg = "Transfer was cancelled by user."
+            print(f"🛑 {error_msg} [{identifier}]")
+            self.signals.finished.emit(identifier, False, error_msg)
 
     # ==================================================================================
     # == The following methods are adapted from RemoteFileManager for standalone execution ==

@@ -605,6 +605,9 @@ class Window(FramelessWindow):
             lambda action_type, full_path, copy_to, cut: self._handle_files(action_type, full_path, copy_to, cut, child_key))
         child_widget.disk_storage.directory_selected.connect(
             lambda path: self._update_file_tree_branch_when_cd(path, child_key))
+        child_widget.transfer_progress.cancelRequested.connect(
+            lambda file_id: self._handle_transfer_cancellation(file_id, child_key)
+        )
         self.addSubInterface(
             child_widget, FIF.ALBUM, child_key, parent=parent_widget,
         )
@@ -850,6 +853,33 @@ class Window(FramelessWindow):
         # Use the task_identifier as the key in our tracking dictionary
         self.active_transfers[task_identifier] = data
         session_widget.transfer_progress.add_transfer_item(file_id, data)
+
+
+    def _handle_transfer_cancellation(self, file_id, child_key):
+        """Handles the request to cancel a file transfer."""
+        file_manager = self.file_tree_object.get(child_key)
+        if not file_manager:
+            return
+
+        # Find the original identifier for the task
+        task_identifier = None
+        for identifier, data in self.active_transfers.items():
+            if data.get("id") == file_id:
+                task_identifier = identifier
+                break
+        
+        if task_identifier:
+            # Tell the file manager to cancel the backend worker
+            file_manager.cancel_transfer(task_identifier)
+
+            # Remove from UI and tracking dictionary
+            parent_key = child_key.split("-")[0].strip()
+            session_widget = self.session_widgets.get(
+                parent_key, {}).get(child_key)
+            if session_widget:
+                session_widget.transfer_progress.remove_transfer_item(file_id)
+            
+            self.active_transfers.pop(task_identifier, None)
 
     def remove_nav_edge(self):
         self.navigationInterface.setStyleSheet("""

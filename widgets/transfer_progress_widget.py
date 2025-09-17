@@ -6,6 +6,7 @@ from qfluentwidgets import FluentIcon as FIF, IconWidget
 class TransferProgressWidget(QWidget):
     """ File Transfer Progress Widget """
     expansionChanged = pyqtSignal(bool)
+    cancelRequested = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -120,6 +121,8 @@ class TransferProgressWidget(QWidget):
         item_widget = QFrame()
         item_widget.setObjectName("itemWidget")
         item_widget.setFixedHeight(40)
+        item_widget.setCursor(Qt.PointingHandCursor)
+        item_widget.installEventFilter(self)
         item_layout = QHBoxLayout(item_widget)
         item_layout.setContentsMargins(8, 5, 8, 5)
 
@@ -290,6 +293,13 @@ class TransferProgressWidget(QWidget):
         if obj is self.header and event.type() == QEvent.MouseButtonPress:
             self.toggle_view()
             return True
+        
+        if "itemWidget" in str(obj.objectName()) and event.type() == QEvent.MouseButtonPress:
+            file_id = next((fid for fid, widget in self.transfer_items.items() if widget == obj), None)
+            if file_id:
+                self.cancelRequested.emit(file_id)
+            return True
+        
         return super().eventFilter(obj, event)
 
     def _update_title(self):
