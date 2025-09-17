@@ -172,6 +172,17 @@ class Widget(QWidget):
             self.command_bar.setObjectName("command_bar")
             self.command_bar.setFixedHeight(42)
 
+            self.command_bar.setStyleSheet("""
+                QFrame#command_bar {
+                    background-color: rgba(30, 30, 30, 0.5);
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    border-radius: 8px;
+                }
+                QFrame#command_bar:focus-within {
+                    border: 1px solid rgba(0, 122, 255, 0.7);
+                }
+            """)
+
             command_bar_layout = QHBoxLayout(self.command_bar)
             command_bar_layout.setContentsMargins(8, 5, 8, 5)
             command_bar_layout.setSpacing(8)
@@ -184,6 +195,15 @@ class Widget(QWidget):
             self.command_input.setFixedHeight(32)
             self.command_input.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
+            self.command_input.setStyleSheet("""
+                TextEdit#command_input {
+                    background-color: transparent;
+                    border: none;
+                    color: %s;
+                    font-size: 14px;
+                    padding-left: 5px;
+                }
+            """ % config["ssh_widget_text_color"])
             command_bar_layout.addWidget(self.command_icon)
             command_bar_layout.addWidget(self.command_input)
 
