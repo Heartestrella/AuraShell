@@ -2,6 +2,7 @@
 import ast
 import sys
 import ctypes
+import time
 from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget
@@ -182,7 +183,7 @@ class Window(FramelessWindow):
                 file_id = self.active_transfers.get(p, {}).get("id")
                 if not file_id:
                     # Fallback for safety, though it should exist
-                    file_id = f"{child_key}_{p}"
+                    file_id = f"{child_key}_{p}_{time.time()}"
 
                 if status:
                     if p not in self.active_transfers:
@@ -214,7 +215,7 @@ class Window(FramelessWindow):
         elif type_ == "start_download":
             paths = path if isinstance(path, list) else [path]
             for p in paths:
-                file_id = f"{child_key}_{os.path.basename(p)}"
+                file_id = f"{child_key}_{os.path.basename(p)}_{time.time()}"
                 data = {
                     "type": "download",
                     "filename": os.path.basename(p),
@@ -828,7 +829,6 @@ class Window(FramelessWindow):
             return # Avoid creating duplicate entries
 
         # Create a truly unique ID for the UI widget
-        import time
         file_id = f"{child_key}_{task_identifier}_{time.time()}"
         
         if isinstance(path, list):
