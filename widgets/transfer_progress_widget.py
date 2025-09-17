@@ -166,6 +166,14 @@ class TransferProgressWidget(QWidget):
         completed_icon.hide()
         item_layout.addWidget(completed_icon)
 
+        # --- Cancel Icon (for hover) ---
+        cancel_icon = IconWidget(FIF.DELETE, item_widget)
+        cancel_icon.setObjectName("cancelIcon")
+        cancel_icon.setFixedSize(16, 16)
+        cancel_icon.setStyleSheet("color: #E81123;")
+        cancel_icon.hide()
+        item_layout.addWidget(cancel_icon)
+
         # --- Store and add to layout ---
         item_widget.setProperty("transfer_type", transfer_type)
         # Add a property to track completion status to avoid double counting
@@ -181,15 +189,21 @@ class TransferProgressWidget(QWidget):
         if not item_widget:
             return
 
+        item_widget.setProperty("last_data", data) # Store data for hover state restoration
         transfer_type = data.get("type", "upload")
         progress = data.get("progress", 0)
         status_icon = item_widget.findChild(IconWidget, "statusIcon")
         progress_label = item_widget.findChild(QLabel, "progressLabel")
         completed_icon = item_widget.findChild(IconWidget, "completedIcon")
         waiting_icon = item_widget.findChild(IconWidget, "waitingIcon")
+        cancel_icon = item_widget.findChild(IconWidget, "cancelIcon")
         
-        if not all([status_icon, progress_label, completed_icon, waiting_icon]):
+        if not all([status_icon, progress_label, completed_icon, waiting_icon, cancel_icon]):
             return
+
+        # Hide cancel icon unless it's being hovered
+        if not item_widget.underMouse():
+            cancel_icon.hide()
 
         # --- Update widgets based on transfer type ---
         if transfer_type == "completed":
@@ -243,15 +257,30 @@ class TransferProgressWidget(QWidget):
         # --- Update background style ---
         stop_pos = progress / 100.0
         base_bg = "#3C3C3C"
-        if stop_pos <= 0:
+        hover_bg = "#5A5A5A"  # A brighter background for hover
+
+        # Define styles for normal and hover states
+        bg_style = ""
+        hover_style = ""
+
+        if progress < 0:  # Waiting state
             bg_style = f"background-color: {base_bg};"
-        elif stop_pos >= 1:
+            hover_style = f"background-color: {hover_bg};"
+        elif stop_pos >= 1:  # Completed or 100%
+            hover_color = QColor(color).lighter(120).name()
             bg_style = f"background-color: {color.name()};"
-        else:
+            hover_style = f"background-color: {hover_color};"
+        else:  # In-progress
             bg_style = f"""
                 background-color: qlineargradient(
                     x1:0, y1:0, x2:1, y2:0,
                     stop:{stop_pos} {color.name()}, stop:{stop_pos + 0.001} {base_bg}
+                );
+            """
+            hover_style = f"""
+                background-color: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:{stop_pos} {color.name()}, stop:{stop_pos + 0.001} {hover_bg}
                 );
             """
         
@@ -259,6 +288,9 @@ class TransferProgressWidget(QWidget):
             #itemWidget {{
                 {bg_style}
                 border-radius: 6px;
+            }}
+            #itemWidget:hover {{
+                {hover_style}
             }}
             #itemWidget > QLabel, #itemWidget > IconWidget {{
                 background-color: transparent;
@@ -294,12 +326,35 @@ class TransferProgressWidget(QWidget):
             self.toggle_view()
             return True
         
-        if "itemWidget" in str(obj.objectName()) and event.type() == QEvent.MouseButtonPress:
-            file_id = next((fid for fid, widget in self.transfer_items.items() if widget == obj), None)
-            if file_id:
-                self.cancelRequested.emit(file_id)
-            return True
-        
+        if "itemWidget" in str(obj.objectName()):
+            # Find all relevant child widgets
+            progress_label = obj.findChild(QLabel, "progressLabel")
+            completed_icon = obj.findChild(IconWidget, "completedIcon")
+            waiting_icon = obj.findChild(IconWidget, "waitingIcon")
+            cancel_icon = obj.findChild(IconWidget, "cancelIcon")
+
+            if event.type() == QEvent.Enter:
+                if progress_label: progress_label.hide()
+                if completed_icon: completed_icon.hide()
+                if waiting_icon: waiting_icon.hide()
+                if cancel_icon: cancel_icon.show()
+                return True
+            
+            elif event.type() == QEvent.Leave:
+                if cancel_icon: cancel_icon.hide()
+                # Restore the original state by re-calling update
+                file_id = next((fid for fid, widget in self.transfer_items.items() if widget == obj), None)
+                last_data = obj.property("last_data")
+                if file_id and last_data:
+                    self.update_transfer_item(file_id, last_data)
+                return True
+
+            elif event.type() == QEvent.MouseButtonPress:
+                file_id = next((fid for fid, widget in self.transfer_items.items() if widget == obj), None)
+                if file_id:
+                    self.cancelRequested.emit(file_id)
+                return True
+
         return super().eventFilter(obj, event)
 
     def _update_title(self):
