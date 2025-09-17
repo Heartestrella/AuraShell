@@ -281,10 +281,11 @@ class TransferWorker(QRunnable):
                 self.signals.finished.emit(identifier, True, local_base)
 
             else:  # Non-compressed
+                # For non-compressed, _download_item will handle its own signals.
                 for p in paths:
-                    self._download_item(f"{identifier}::{p}", p, local_base)
-                self.signals.finished.emit(
-                    identifier, True, "All files processed.")
+                    # Each item is its own task, so the identifier is the path itself.
+                    self._download_item(p, p, local_base)
+                # A batch 'finished' signal is not sent here, to allow individual tracking.
 
         except Exception as e:
             tb = traceback.format_exc()
@@ -293,6 +294,7 @@ class TransferWorker(QRunnable):
             self.signals.finished.emit(identifier, False, error_msg)
 
     def _download_item(self, identifier, remote_item_path, local_base_path):
+        """Downloads a single item (file or directory) and emits a finished signal for it."""
         local_target = os.path.join(
             local_base_path, os.path.basename(remote_item_path.rstrip("/")))
         try:
@@ -302,8 +304,12 @@ class TransferWorker(QRunnable):
                     identifier, remote_item_path, local_target)
             else:
                 self._download_file(identifier, remote_item_path, local_target)
+            # Emit success signal for this individual item
+            self.signals.finished.emit(identifier, True, local_target)
         except Exception as e:
-            raise e
+            error_msg = f"Failed to download {remote_item_path}: {e}"
+            # Emit failure signal for this individual item
+            self.signals.finished.emit(identifier, False, error_msg)
 
     def _download_file(self, identifier, remote_file, local_file):
         def progress_callback(bytes_so_far, total_bytes):

@@ -20,6 +20,7 @@ class RemoteFileManager(QThread):
     error_occurred = pyqtSignal(str)
     sftp_ready = pyqtSignal()
     upload_progress = pyqtSignal(str, int)  # File path, progress percentage
+    download_progress = pyqtSignal(str, int)  # File path, progress percentage
     # File path, success, error message
     upload_finished = pyqtSignal(str, bool, str)
     # Path, success, error message
@@ -283,7 +284,7 @@ class RemoteFileManager(QThread):
                     identifier, msg if success else "", success, "" if success else msg, open_it
                 )
             )
-            # ToDo: Connect progress signal for downloads if needed.
+            worker.signals.progress.connect(self.download_progress)
 
         self.thread_pool.start(worker)
 

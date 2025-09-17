@@ -180,6 +180,10 @@ class Window(FramelessWindow):
             for p in paths:
                 file_id = f"{child_key}_{os.path.basename(p)}"
                 if status:
+                    if file_id in self.active_transfers:
+                        self.active_transfers[file_id]['type'] = 'completed'
+                        self.active_transfers[file_id]['progress'] = 100
+                    
                     data = {
                         "type": "completed",
                         "progress": 100
@@ -219,6 +223,10 @@ class Window(FramelessWindow):
             for p in paths:
                 file_id = f"{child_key}_{os.path.basename(p)}"
                 if status:
+                    if file_id in self.active_transfers:
+                        self.active_transfers[file_id]['type'] = 'completed'
+                        self.active_transfers[file_id]['progress'] = 100
+
                     data = {
                         "type": "completed",
                         "progress": 100
@@ -284,24 +292,33 @@ class Window(FramelessWindow):
             self._refresh_paths(child_key)
 
     def _show_progresses(self, paths, percentage, child_key):
-        try:
-            lst = ast.literal_eval(paths)
-            if not isinstance(lst, list):
-                lst = [lst]
-        except (ValueError, SyntaxError):
-            lst = [paths]
+        if isinstance(paths, str):
+            # Check if it's a string representation of a list
+            if paths.startswith('[') and paths.endswith(']'):
+                try:
+                    lst = ast.literal_eval(paths)
+                except (ValueError, SyntaxError):
+                    lst = [paths] # Fallback for malformed string
+            else:
+                # It's a plain path string
+                lst = [paths]
+        elif isinstance(paths, list):
+            lst = paths
+        else:
+            lst = [] # Unsupported type
 
         parent_key = child_key.split("-")[0].strip()
         session_widget = self.session_widgets.get(parent_key, {}).get(child_key)
         if not session_widget:
             return
-
         for path in lst:
             file_name = os.path.basename(path)
             file_id = f"{child_key}_{file_name}"
             if file_id in self.active_transfers:
                 data = self.active_transfers[file_id]
                 data["progress"] = percentage
+                if percentage >= 100:
+                    data["type"] = "completed"
                 session_widget.transfer_progress.update_transfer_item(file_id, data)
 
     def _start_ssh_connect(self, session, child_key):
@@ -345,6 +362,8 @@ class Window(FramelessWindow):
         file_manager.start_to_compression.connect(
             lambda path: self._show_info(path=path, type_="uncompression"))
         file_manager.upload_progress.connect(
+            lambda path, percentage: self._show_progresses(path, percentage, child_key=child_key))
+        file_manager.download_progress.connect(
             lambda path, percentage: self._show_progresses(path, percentage, child_key=child_key))
         session_widget.file_explorer.upload_file.connect(
             lambda path, target_path, compression: self._show_info(type_="start_upload", child_key=child_key, local_path=path, path=target_path)
