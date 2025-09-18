@@ -1,7 +1,8 @@
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor, QStandardItemModel, QStandardItem
-from PyQt5.QtWidgets import QFrame, QVBoxLayout
+from PyQt5.QtWidgets import QFrame, QVBoxLayout, QSizePolicy
 from qfluentwidgets import TableView, isDarkTheme
+from widgets.network_widget import NetMonitor
 
 
 class Tasks(QFrame):
@@ -10,6 +11,18 @@ class Tasks(QFrame):
         self.setFrameShape(QFrame.NoFrame)
         self.setStyleSheet("background: transparent;")
         self.setMinimumHeight(100)
+        self.netmonitor = NetMonitor()
+        self.netmonitor.setMinimumHeight(80)
+        self.netmonitor.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.netmonitor.setStyleSheet("""
+                QFrame#netmonitor
+                {
+                    background-color: rgba(220, 220, 220, 0.06);
+                    border: 1px solid rgba(0,0,0,0.06);
+                    border-radius: 6px;
+                }
+            """)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -50,7 +63,7 @@ class Tasks(QFrame):
             }
         """)
         layout.addWidget(self.table)
-
+        layout.addWidget(self.netmonitor)
         self.text_color = "#ffffff" if isDarkTheme() else "#000000"
 
     def set_text_color(self, color_hex: str):
@@ -58,7 +71,7 @@ class Tasks(QFrame):
 
     def add_row(self, mem, cpu, cmd):
         # 如果行数超过5，清空
-        if self.model.rowCount() >= 5:
+        if self.model.rowCount() >= 4:
             self.model.removeRows(0, self.model.rowCount())
 
         items = []
@@ -93,3 +106,7 @@ class Tasks(QFrame):
         font = QFont()
         font.setBold(True)
         return font
+
+    # def set_netmonitor(self, upload, download):
+    #     self.netmonitor.update_speed(
+    #         upload_kbps=upload, download_kbps=download)

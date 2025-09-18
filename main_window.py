@@ -160,9 +160,16 @@ class Window(FramelessWindow):
             if widget:
                 cpu_percent = result["cpu_percent"]
                 mem_percent = result["mem_percent"]
+                net_usage = result["net_usage"]
+                top_processes = result["top_processes"]
+                # 先用第一个切出来的网卡测试 后面加切换网卡
+                if net_usage:
+                    upload, download = net_usage[1]["tx_kbps"], net_usage[1]["rx_kbps"]
+                    widget.task.netmonitor.update_speed(
+                        upload, download)
                 widget.sys_resources.set_progress("cpu", cpu_percent)
                 widget.sys_resources.set_progress("ram", mem_percent)
-                for processes in result["top_processes"]:
+                for processes in top_processes:
                     processes_cpu_percent = processes["cpu"]
                     processes_name = processes["name"]
                     processes_mem = processes["mem"]
@@ -171,7 +178,6 @@ class Window(FramelessWindow):
                         f"{processes_cpu_percent:.1f}",
                         processes_name
                     )
-
                     # print(processes_cpu_percent, processes_name, processes_mem)
             else:
                 print("Failed to obtain the SSH Widget")
@@ -868,7 +874,8 @@ class Window(FramelessWindow):
             task_id = f"compress_upload_{time.time()}"
             self._add_transfer_item_if_not_exists(
                 child_key, local_path, 'upload', task_id=task_id)
-            file_manager.upload_file(local_path, remote_path, compression, task_id=task_id)
+            file_manager.upload_file(
+                local_path, remote_path, compression, task_id=task_id)
             return
 
         # Original logic for other cases (single files, non-compressed lists/dirs)

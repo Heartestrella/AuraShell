@@ -60,7 +60,7 @@ class SSHWorker(QThread):
                 try:
                     sftp = self.conn.open_sftp()
                     remote_dir = "./.ssh"
-                    remote_proc = "./.ssh/processes"
+                    remote_proc = "./.ssh/processes.sh"
 
                     # ensure remote .ssh dir exists
                     try:
@@ -93,7 +93,7 @@ class SSHWorker(QThread):
                             print(f"设为可执行失败: {e}")
                     else:
                         local_proc = resource_path(os.path.join(
-                            "resource", "resources_software", "linux64", "processes"))
+                            "resource", "processes.sh"))
                         if not os.path.exists(local_proc):
                             err = f"本地 processes 文件不存在: {local_proc}"
                             print(err)
@@ -129,7 +129,7 @@ class SSHWorker(QThread):
             self.timer.start(100)
             if self.for_resources:
                 try:
-                    self.run_command("./.ssh/processes")
+                    self.run_command("./.ssh/processes.sh")
                     print("已启动远端 processes 可执行文件（./.ssh/processes）")
                 except Exception as e:
                     print(f"启动 processes 失败，尝试回退：{e}")

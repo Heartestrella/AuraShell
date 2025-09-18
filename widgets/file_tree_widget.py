@@ -36,7 +36,7 @@ class File_Navigation_Bar(QWidget):
 
         # Create a container for the border
         self.breadcrumb_container = QFrame(self)
-        
+
         # Beautify the container with QSS
         if isDarkTheme():
             self.breadcrumb_container.setStyleSheet("""
@@ -60,16 +60,17 @@ class File_Navigation_Bar(QWidget):
                     background-color: rgba(0, 0, 0, 0.05);
                 }
             """)
-        
+
         # Place the BreadcrumbBar inside the container
         container_layout = QHBoxLayout(self.breadcrumb_container)
         container_layout.setContentsMargins(2, 2, 2, 2)
         self.breadcrumbBar = BreadcrumbBar(self.breadcrumb_container)
-        self.breadcrumbBar.setStyleSheet("background-color: transparent; border: none;")
+        self.breadcrumbBar.setStyleSheet(
+            "background-color: transparent; border: none;")
         container_layout.addWidget(self.breadcrumbBar)
         self.path_edit = LineEdit(self)
         self.path_edit.hide()
-        
+
         self.hBoxLayout = QHBoxLayout(self)
         self.hBoxLayout.setContentsMargins(10, 5, 10, 5)
         self.hBoxLayout.addWidget(self.breadcrumb_container, 1)

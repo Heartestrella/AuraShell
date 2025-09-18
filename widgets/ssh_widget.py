@@ -10,6 +10,7 @@ from widgets.file_tree_widget import File_Navigation_Bar, FileTreeWidget
 from widgets.files_widgets import FileExplorer
 from widgets.transfer_progress_widget import TransferProgressWidget
 from tools.setting_config import SCM
+
 configer = SCM()
 
 
@@ -203,18 +204,20 @@ class Widget(QWidget):
 
             # Add bash wrap toggle button
             # Add bash wrap toggle button
-            self.bash_wrap_button = ToolButton(self.command_bar) # Icon will be set manually
+            self.bash_wrap_button = ToolButton(
+                self.command_bar)  # Icon will be set manually
             self.bash_wrap_button.setCheckable(True)
-            self.bash_wrap_button.setToolTip(self.tr("Toggle `bash -c` wrapper for commands"))
+            self.bash_wrap_button.setToolTip(
+                self.tr("Toggle `bash -c` wrapper for commands"))
             self.bash_wrap_enabled = False
 
             # Create and cache icons
-            self.icon_bash_disabled = self._create_bash_wrap_icon(enabled=False)
+            self.icon_bash_disabled = self._create_bash_wrap_icon(
+                enabled=False)
             self.icon_bash_enabled = self._create_bash_wrap_icon(enabled=True)
             self.bash_wrap_button.setIcon(self.icon_bash_disabled)
 
             self.bash_wrap_button.toggled.connect(self._on_bash_wrap_toggled)
-
 
             self.command_input = CommandInput(self.command_bar)
             self.command_input.setObjectName("command_input")
