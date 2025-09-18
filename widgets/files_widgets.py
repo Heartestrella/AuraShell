@@ -360,6 +360,7 @@ class DetailItem(QWidget):
         self.details_model = QStandardItemModel(self)
         self.details_view = TableView(self)
         self.details_view.setAlternatingRowColors(False)
+        self.details_view.verticalHeader().setDefaultSectionSize(22)
         self.details_view.setModel(self.details_model)
         self.details_view.setVisible(False)  # Default hidden
         self.details_view.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
