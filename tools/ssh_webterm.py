@@ -545,18 +545,11 @@ class WebTerminal(QWidget):
             display: none !important;
         }}
 
-        /* selection highlight */
-        .xterm .xterm-selection {{
-    background: rgba(100, 150, 250, 0.3) !important;
-}}
-
-.xterm .xterm-text-layer::selection {{
-    background: rgba(100, 150, 250, 0.3) !important;
-}}
-
-.xterm .xterm-text-layer::-moz-selection {{
-    background: rgba(100, 150, 250, 0.3) !important;
-}}
+        .xterm .xterm-decoration-top {{
+            background: rgba(100, 150, 250, 0.5) !important;
+            box-shadow: 0 0 5px rgba(100, 150, 250, 0.7);
+            border-radius: 3px;
+        }}
 
         /* optional text shadow applied conditionally via JS */
         .xterm .xterm-text-layer {{
