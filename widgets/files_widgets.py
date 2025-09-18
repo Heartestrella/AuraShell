@@ -1,6 +1,6 @@
 
 from PyQt5.QtWidgets import (QApplication, QWidget, QLayout, QSizePolicy,
-                             QRubberBand,  QVBoxLayout, QTableView, QHeaderView, QAbstractItemDelegate)
+                             QRubberBand,  QVBoxLayout, QTableView, QHeaderView, QAbstractItemDelegate, QStyledItemDelegate, QStyle)
 from PyQt5.QtGui import QFont, QPainter, QColor, QStandardItemModel, QStandardItem
 from PyQt5.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
 from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit, ScrollArea, TableView, CheckableMenu
@@ -347,6 +347,23 @@ class FileItem(QWidget):
             self.rename_edit.hide()
             self.update()
 
+class NameDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        if option.state & QStyle.State_HasFocus:
+            option.state = option.state ^ QStyle.State_HasFocus
+        # Add 5px left padding
+        option.rect.adjust(5, 0, 0, 0)
+        super().paint(painter, option, index)
+
+
+class CenteredDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        if option.state & QStyle.State_HasFocus:
+            option.state = option.state ^ QStyle.State_HasFocus
+        option.displayAlignment = Qt.AlignCenter | Qt.AlignVCenter
+        super().paint(painter, option, index)
+
+
 # Detail Mode
 
 
@@ -360,6 +377,7 @@ class DetailItem(QWidget):
         self.details_model = QStandardItemModel(self)
         self.details_view = TableView(self)
         self.details_view.setAlternatingRowColors(False)
+        self.details_view.verticalHeader().setDefaultSectionSize(24)
         self.details_view.setModel(self.details_model)
         self.details_view.setVisible(False)  # Default hidden
         self.details_view.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -367,6 +385,12 @@ class DetailItem(QWidget):
         self.details_view.setSelectionBehavior(QTableView.SelectRows)
         self.details_view.setSelectionMode(QTableView.ExtendedSelection)
         self.details_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.details_view.setItemDelegateForColumn(0, NameDelegate(self))
+        centered_delegate = CenteredDelegate(self)
+        self.details_view.setItemDelegateForColumn(1, centered_delegate)
+        self.details_view.setItemDelegateForColumn(2, centered_delegate)
+        self.details_view.setItemDelegateForColumn(3, centered_delegate)
+        self.details_view.setItemDelegateForColumn(4, centered_delegate)
 
         self.details_view.customContextMenuRequested.connect(
             self._show_context_menu)
@@ -390,11 +414,10 @@ class DetailItem(QWidget):
                     gridline-color: #454545;
                 }
                 QTableView::item {
-                    border-bottom: 1px solid transparent;
-                    padding: 5px;
+                    border-bottom: 1px solid #454545;
                 }
                 QTableView::item:selected {
-                    background-color: #555;
+                    background-color: #6A5ACD;
                     color: white;
                 }
                 QHeaderView::section {
@@ -402,7 +425,6 @@ class DetailItem(QWidget):
                     color: white;
                     border: none;
                     border-bottom: 1px solid #555;
-                    padding: 5px;
                 }
             """)
         else:
@@ -414,8 +436,7 @@ class DetailItem(QWidget):
                     gridline-color: #DCDCDC;
                 }
                 QTableView::item {
-                     border-bottom: 1px solid transparent;
-                     padding: 5px;
+                     border-bottom: 1px solid #DCDCDC;
                 }
                 QTableView::item:selected {
                     background-color: #cce8ff;
@@ -426,7 +447,6 @@ class DetailItem(QWidget):
                     color: black;
                     border: none;
                     border-bottom: 1px solid #ccc;
-                    padding: 5px;
                 }
             """)
 
@@ -639,6 +659,7 @@ class FileExplorer(QWidget):
         self.cut_ = False
         self.icons = icons
         self.path = path
+        self._is_loading = False
 
         # Icon view
         self.scroll_area = ScrollArea(self)
@@ -668,6 +689,17 @@ class FileExplorer(QWidget):
         # self.make_dir.triggered.connect(
         #     lambda: self._handle_file_action("mkdir", "", ""))
         self._init_actions()
+
+    def _request_directory_change(self, item_info):
+        is_dir = list(item_info.values())[0]
+        if not is_dir:
+            self.selected.emit(item_info)
+            return
+
+        if self._is_loading:
+            return
+        self._is_loading = True
+        self.selected.emit(item_info)
 
     def _handle_mkdir(self):
         """Create a new folder placeholder and enter rename mode."""
@@ -773,6 +805,7 @@ class FileExplorer(QWidget):
             self._add_files_to_icon_view(files, clear_old)
         else:
             self.details._add_files_to_details_view(files, clear_old)
+        self._is_loading = False
 
     def _add_files_to_icon_view(self, files, clear_old=True):
         self.container.setUpdatesEnabled(False)
@@ -789,8 +822,7 @@ class FileExplorer(QWidget):
         for name, is_dir, *_ in entries:
             item_widget = FileItem(
                 name, is_dir, parent=self.container, explorer=self, icons=self.icons)
-            item_widget.selected_sign.connect(
-                partial(lambda s, d: self.selected.emit(d), None))
+            item_widget.selected_sign.connect(self._request_directory_change)
             item_widget.action_triggered.connect(self._handle_file_action)
             item_widget.rename_action.connect(
                 lambda type_, name, new_name, is_dir: self._handle_file_action(
@@ -843,7 +875,8 @@ class FileExplorer(QWidget):
             return
         # Only for detail mode
         if action_type == "open":
-            self.selected.emit({file_name: is_dir})
+            self._request_directory_change({file_name: is_dir})
+            return
 
         if action_type == "paste":
             if self.copy_file_path:  # A list of paths copied/cut earlier
@@ -1041,5 +1074,9 @@ class FileExplorer(QWidget):
                 item._start_rename()
             elif self.view_mode == 'details' and len(self.details.details_view.selectionModel().selectedRows()) == 1:
                 self.details.rename_selected_item()
+        elif event.key() == Qt.Key_F5:
+            self.refresh_action.emit()
+        elif event.key() == Qt.Key_Backspace:
+            self.selected.emit({'..': True})
         else:
             super().keyPressEvent(event)

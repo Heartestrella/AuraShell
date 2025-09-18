@@ -442,315 +442,33 @@ class WebTerminal(QWidget):
         """
         Return the HTML string used as the web page for the terminal.
         """
+        try:
+            # 获取当前脚本所在的目录
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            # 拼接正确的模板文件路径
+            tpl_path = os.path.join(
+                current_dir, '..', 'resource', 'tpl', 'terminal.tpl')
+
+            with open(tpl_path, 'r', encoding='utf-8') as f:
+                tpl = f.read()
+        except Exception as e:
+            print(f"Error loading terminal.html: {e}")
+            return f"<html><body><h1>Error loading template</h1><p>{e}</p></body></html>"
+
         # JSON-encoded strings for safe embedding in JS
         fg_js = self._html_escape(self._text_color)
         bg_js = self._html_escape(self._bg_color)
         shadow_bool = "true" if self._text_shadow else "false"
 
-        # Template with doubled braces for literal '{' '}' inside .format
-        tpl = r"""
-    <!doctype html>
-    <html>
-    <head>
-      <meta charset="utf-8"/>
-      <title>xterm.js via QWebChannel</title>
+        # Replace placeholders in the template
+        final = tpl.replace("{{rows}}", str(self._rows))
+        final = final.replace("{{cols}}", str(self._cols))
+        final = final.replace("{{fg}}", fg_js)
+        final = final.replace("{{bg}}", bg_js)
+        final = final.replace("{{shadow}}", shadow_bool)
+        final = final.replace("{{bg_css}}", self._bg_color)
+        final = final.replace("{{font_family}}", self._font_family)
 
-      <!-- Polyfill: replaceChildren for older embedded Chromium -->
-      <script>
-      (function () {{
-        function makeReplaceChildrenFor(proto) {{
-          if (proto && typeof proto.replaceChildren !== 'function') {{
-            Object.defineProperty(proto, 'replaceChildren', {{
-              configurable: true,
-              writable: true,
-              value: function() {{
-                while (this.firstChild) {{
-                  this.removeChild(this.firstChild);
-                }}
-                for (var i = 0; i < arguments.length; i++) {{
-                  var arg = arguments[i];
-                  if (typeof arg === 'string') {{
-                    this.appendChild(document.createTextNode(arg));
-                  }} else if (arg instanceof Node) {{
-                    this.appendChild(arg);
-                  }}
-                }}
-              }}
-            }});
-          }}
-        }}
-        try {{
-          makeReplaceChildrenFor(Element && Element.prototype);
-          makeReplaceChildrenFor(Document && Document.prototype);
-          makeReplaceChildrenFor(DocumentFragment && DocumentFragment.prototype);
-          if (typeof ShadowRoot !== 'undefined') {{
-            makeReplaceChildrenFor(ShadowRoot.prototype);
-          }}
-          console.debug('replaceChildren polyfill installed (if needed)');
-        }} catch (e) {{
-          console.warn('replaceChildren polyfill error', e);
-        }}
-      }})();
-      </script>
-
-      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.2.0/css/xterm.css" />
-      <style>
-        html, body {{
-            height:100%;
-            margin:0;
-            background: transparent !important;
-            background-color: transparent !important;
-            /* 允许文本选择 */
-            user-select: text !important;
-            -webkit-user-select: text !important;
-        }}
-        #terminal {{
-            height:100%;
-            width:100%;
-            background: transparent !important;
-            background-color: transparent !important;
-            /* fallback background color variable; used when transparency is not desired */
-            --bg-fallback: {bg_css};
-            /* 允许文本选择 */
-            user-select: text !important;
-            -webkit-user-select: text !important;
-            font-family: {font_family}, monospace !important;
-        }}
-
-        /* Force xterm rendering layers to be transparent so the page/window background shows */
-        .xterm,
-        .xterm * {{
-            background: transparent !important;
-            background-color: transparent !important;
-            font-family: {font_family}, monospace !important;
-            /* 允许文本选择 */
-            user-select: text !important;
-            -webkit-user-select: text !important;
-        }}
-
-
-        .xterm .xterm-screen,
-        .xterm .xterm-text-layer,
-        .xterm .xterm-rows,
-        .xterm .xterm-cursor-layer {{
-            background: transparent !important;
-            background-color: transparent !important;
-            font-family: {font_family}, monospace !important;
-            /* 允许文本选择 */
-            user-select: text !important;
-            -webkit-user-select: text !important;
-        }}
-        
-        .xterm-scrollbar {{
-            display: none !important;
-        }}
-
-        /* selection highlight */
-        .xterm .xterm-selection {{
-    background: rgba(100, 150, 250, 0.3) !important;
-}}
-
-.xterm .xterm-text-layer::selection {{
-    background: rgba(100, 150, 250, 0.3) !important;
-}}
-
-.xterm .xterm-text-layer::-moz-selection {{
-    background: rgba(100, 150, 250, 0.3) !important;
-}}
-
-        /* optional text shadow applied conditionally via JS */
-        .xterm .xterm-text-layer {{
-            /* default no shadow; JS may set style on .xterm-text-layer to add shadow */
-        }}
-      </style>
-    </head>
-    <body>
-      <div id="terminal"></div>
-
-      <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/xterm@5.2.0/lib/xterm.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.js"></script>
-
-      <script>
-      document.addEventListener('contextmenu', function(e) {{
-    e.preventDefault();
-}});
-    // Prevent all drag operations
-    document.addEventListener('dragenter', e => e.preventDefault());
-    document.addEventListener('dragover', e => e.preventDefault());
-    document.addEventListener('drop', e => e.preventDefault());
-
-      (function() {{
-        function safeDecodeB64ToBinary(b64) {{ return atob(b64); }}
-        function safeEncodeBinaryToB64(bin) {{ return btoa(bin); }}
-
-        new QWebChannel(qt.webChannelTransport, function(channel) {{
-          var bridge = channel.objects.bridge;
-
-          // create terminal with initial theme (transparent background; fg from Python)
-          var term = new window.Terminal({{
-            convertEol: true,
-            cursorBlink: true,
-            rows: {rows},
-            cols: {cols},
-            theme: {{
-              background: "transparent",
-              foreground: {fg}
-            }},
-            scrollback: 1000,  // 增加滚动缓冲区
-            fontFamily: '{font_family}, monospace'  // 设置终端字体
-          }});
-          term.attachCustomKeyEventHandler(function(e) {{
-    if (e.ctrlKey && e.shiftKey && e.code === 'KeyC') {{
-        const selection = term.getSelection();
-        if (selection && bridge && bridge.copyToClipboard) {{
-            bridge.copyToClipboard(selection); // 调用 Python
-        }}
-        return false; // 阻止默认行为
-    }}
-    return true;
-}});
-
-
-          // fit addon creation (robust to various UMD exports)
-          var fitAddon = null;
-          try {{
-            if (typeof window.FitAddon === 'function') {{
-              fitAddon = new window.FitAddon();
-            }} else if (window.FitAddon && typeof window.FitAddon.FitAddon === 'function') {{
-              fitAddon = new window.FitAddon.FitAddon();
-            }} else if (window.FitAddon && typeof window.FitAddon.default === 'function') {{
-              fitAddon = new window.FitAddon.default();
-            }} else if (typeof FitAddon === 'function') {{
-              fitAddon = new FitAddon();
-            }}
-          }} catch(e) {{
-            console.warn('FitAddon init failed', e);
-            fitAddon = null;
-          }}
-
-          if (fitAddon && typeof term.loadAddon === 'function') {{
-            try {{ term.loadAddon(fitAddon); }} catch(e) {{ console.warn('loadAddon failed', e); }}
-          }}
-
-          term.open(document.getElementById('terminal'));
-          window.term = term; // Expose term globally for Python calls
-          
-          // Expose a helper to update theme at runtime (called from Python via runJavaScript)
-          window.setTerminalTheme = function(fg, bgFallback, shadow) {{
-            try {{
-              // update CSS variable for fallback background
-              document.getElementById('terminal').style.setProperty('--bg-fallback', bgFallback || 'transparent');
-              // set xterm theme (background remains transparent; we rely on fallback if necessary)
-              term.options.theme = {{
-                foreground: fg || {fg},
-                background: "transparent"
-              }};
-
-              var textLayer = document.querySelector('.xterm .xterm-text-layer');
-              if (textLayer) {{
-                if (shadow) {{
-                  textLayer.style.textShadow = '0 0 4px rgba(0,0,0,0.9)';
-                }} else {{
-                  textLayer.style.textShadow = '';
-                }}
-              }}
-            }} catch (e) {{
-              console.error('setTerminalTheme error', e);
-            }}
-          }};
-
-          // Bridge -> JS: receive base64 data and write into terminal
-          if (bridge && bridge.output) {{
-            bridge.output.connect(function(b64) {{
-              try {{
-                var text = base64ToUtf8(b64);
-                term.write(text);
-              }} catch (e) {{
-                console.error('bridge.output write error', e);
-              }}
-            }});
-          }}
-            function base64ToUtf8(b64) {{
-    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-    return new TextDecoder("utf-8").decode(bytes);
-}}
-            function utf8ToBase64(str) {{
-    const bytes = new TextEncoder().encode(str);
-    let binary = '';
-    bytes.forEach(b => binary += String.fromCharCode(b));
-    return btoa(binary);
-}}
-
-          // JS -> Bridge: user typed data
-          term.onData(function(data) {{
-            try {{
-              var b64 = utf8ToBase64(data);
-              bridge.sendInput(b64);
-            }} catch (e) {{
-              console.error('term.onData sendInput error', e);
-            }}
-          }});
-
-          // 添加选择监听
-          term.onSelectionChange(function() {{
-            const selection = term.getSelection();
-            if (selection) {{
-                console.log('Selected text:', selection);
-                // 可以在这里处理选中的文本
-            }}
-          }});
-
-          // sizing: fit + notify backend of cols/rows
-          window.notifySize = function() {{
-           console.log('notifySize triggered from Python.');
-            try {{
-              if (fitAddon && typeof fitAddon.fit === 'function') {{
-                try {{ fitAddon.fit(); }} catch(e) {{ /* ignore */ }}
-              }}
-              var cols = term.cols || 80;
-              var rows = term.rows || 24;
-              if (bridge && bridge.resize) {{
-                bridge.resize(cols, rows);
-              }}
-            }} catch (e) {{
-              console.error('notifySize error', e);
-            }}
-          }}
-
-
-          // initial sizing & apply initial fallback bg & shadow
-          setTimeout(function() {{
-            // apply initial bg fallback variable and shadow: Python provided values used below by calling setTerminalTheme
-            window.notifySize();
-            try {{
-              // call setTerminalTheme with initial values
-              window.setTerminalTheme({fg}, {bg}, {shadow});
-            }} catch(e) {{
-              console.warn('initial setTerminalTheme failed', e);
-            }}
-          }}, 200);
-
-          if (bridge && bridge.notifyReady) {{
-            bridge.notifyReady();
-          }}
-
-        }});
-      }})();
-      </script>
-    </body>
-    </html>
-    """
-        # Format with safe JSON-encoded values inserted into the template.
-        final = tpl.format(
-            rows=self._rows,
-            cols=self._cols,
-            fg=fg_js,
-            bg=bg_js,
-            shadow=shadow_bool,
-            bg_css=self._bg_color,  # 直接插入 CSS 值
-            font_family=self._font_family  # 插入字体名称
-        )
         return final
 
     def set_worker(self, worker):

@@ -343,13 +343,13 @@ class Widget(QWidget):
 
             splitter_lr.splitterMoved.connect(save_lr_ratio)
             # ---- Debounce terminal resize on splitter move ----
-            resize_timer = QTimer(self)
-            resize_timer.setSingleShot(True)
-            resize_timer.setInterval(150)  # 150ms delay
-            resize_timer.timeout.connect(self.ssh_widget.fit_terminal)
+            self.resize_timer = QTimer(self)
+            self.resize_timer.setSingleShot(True)
+            self.resize_timer.setInterval(150)  # 150ms delay
+            self.resize_timer.timeout.connect(self.ssh_widget.fit_terminal)
 
             splitter.splitterMoved.connect(save_tb_ratio)
-            splitter.splitterMoved.connect(resize_timer.start)
+            splitter.splitterMoved.connect(self.resize_timer.start)
 
             # ---- 恢复上次保存的比例 ----
             if "splitter_lr_ratio" in config:
@@ -369,6 +369,10 @@ class Widget(QWidget):
                     bottom_size_ratio = r[2]
                     splitter.setSizes([int(total_h * top_size_ratio),
                                       int(total_h * bottom_size_ratio)])
+
+    def on_main_window_resized(self):
+        # A simple way to trigger the debounced resize
+        self.resize_timer.start()
 
     def _on_upload_mode_toggled(self, checked):
         configer.revise_config("compress_upload", checked)
@@ -472,6 +476,16 @@ class Widget(QWidget):
         # print(f"选中了: {path_dict}")
         name = next(iter(path_dict.keys()))
         is_dir = next(iter(path_dict.values()))
+        if name == '..':
+            #
+            current_path = self.file_explorer.path
+            if current_path and current_path != '/':
+                new_path = '/'.join(current_path.split('/')[:-1])
+                if not new_path:
+                    new_path = '/'
+                self._set_file_bar(new_path)
+            return
+
         new_path = self.file_explorer.path + "/" + name
         if is_dir:
             self._set_file_bar(new_path)

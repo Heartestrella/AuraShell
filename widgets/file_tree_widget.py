@@ -100,7 +100,7 @@ class File_Navigation_Bar(QWidget):
         self.new_folder_button = TransparentToolButton(FIF.FOLDER_ADD, self)
         self.new_folder_button.setToolTip(self.tr('New folder'))
         self.refresh_button = TransparentToolButton(FIF.UPDATE, self)
-        self.refresh_button.setToolTip(self.tr('Refresh'))
+        self.refresh_button.setToolTip(self.tr('Refresh') + '(F5)')
 
         self.hBoxLayout.addWidget(self.new_folder_button)
         self.hBoxLayout.addWidget(self.refresh_button)
