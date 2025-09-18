@@ -1,6 +1,6 @@
 
 from PyQt5.QtWidgets import (QApplication, QWidget, QLayout, QSizePolicy,
-                             QRubberBand,  QVBoxLayout, QTableView, QHeaderView, QAbstractItemDelegate, QStyledItemDelegate)
+                             QRubberBand,  QVBoxLayout, QTableView, QHeaderView, QAbstractItemDelegate, QStyledItemDelegate, QStyle)
 from PyQt5.QtGui import QFont, QPainter, QColor, QStandardItemModel, QStandardItem
 from PyQt5.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
 from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit, ScrollArea, TableView, CheckableMenu
@@ -349,6 +349,8 @@ class FileItem(QWidget):
 
 class NameDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index):
+        if option.state & QStyle.State_HasFocus:
+            option.state = option.state ^ QStyle.State_HasFocus
         # Add 5px left padding
         option.rect.adjust(5, 0, 0, 0)
         super().paint(painter, option, index)
@@ -356,6 +358,8 @@ class NameDelegate(QStyledItemDelegate):
 
 class CenteredDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index):
+        if option.state & QStyle.State_HasFocus:
+            option.state = option.state ^ QStyle.State_HasFocus
         option.displayAlignment = Qt.AlignCenter | Qt.AlignVCenter
         super().paint(painter, option, index)
 
