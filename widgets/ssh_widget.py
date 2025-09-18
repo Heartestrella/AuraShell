@@ -1,4 +1,5 @@
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSize
+from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPainterPath
 from PyQt5.QtWidgets import QFrame,  QHBoxLayout, QLabel, QWidget, QVBoxLayout, QSizePolicy, QSplitter
 from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF,  ToolButton
 from widgets.command_input import CommandInput
@@ -183,13 +184,37 @@ class Widget(QWidget):
                 QFrame#command_bar:focus-within {
                     border: 1px solid rgba(0, 122, 255, 0.7);
                 }
+                ToolButton {
+                    background-color: transparent;
+                    border-radius: 4px;
+                }
+                ToolButton:hover {
+                    background-color: rgba(255, 255, 255, 0.1);
+                }
+                ToolButton:pressed {
+                    background-color: rgba(255, 255, 255, 0.05);
+                }
             """)
-
             command_bar_layout = QHBoxLayout(self.command_bar)
             command_bar_layout.setContentsMargins(8, 5, 8, 5)
             command_bar_layout.setSpacing(8)
 
             self.command_icon = ToolButton(FIF.BROOM, self.command_bar)
+
+            # Add bash wrap toggle button
+            # Add bash wrap toggle button
+            self.bash_wrap_button = ToolButton(self.command_bar) # Icon will be set manually
+            self.bash_wrap_button.setCheckable(True)
+            self.bash_wrap_button.setToolTip(self.tr("Toggle `bash -c` wrapper for commands"))
+            self.bash_wrap_enabled = False
+
+            # Create and cache icons
+            self.icon_bash_disabled = self._create_bash_wrap_icon(enabled=False)
+            self.icon_bash_enabled = self._create_bash_wrap_icon(enabled=True)
+            self.bash_wrap_button.setIcon(self.icon_bash_disabled)
+
+            self.bash_wrap_button.toggled.connect(self._on_bash_wrap_toggled)
+
 
             self.command_input = CommandInput(self.command_bar)
             self.command_input.setObjectName("command_input")
@@ -212,6 +237,7 @@ class Widget(QWidget):
             """ % config["ssh_widget_text_color"])
             self.command_icon.clicked.connect(self.ssh_widget.clear_screen)
             command_bar_layout.addWidget(self.command_icon)
+            command_bar_layout.addWidget(self.bash_wrap_button)
             command_bar_layout.addWidget(self.command_input)
 
             top_container_layout.addWidget(self.ssh_widget)
@@ -375,7 +401,54 @@ class Widget(QWidget):
 
     def send_command_to_ssh(self, command):
         if self.ssh_widget and command:
-            self.ssh_widget.send_command(command + '\n')
+            if self.bash_wrap_enabled:
+                # Escape double quotes in the command
+                escaped_command = command.replace('"', '\\"')
+                final_command = f'bash -c "{escaped_command}"\n'
+            else:
+                final_command = command + '\n'
+            self.ssh_widget.send_command(final_command)
+
+    def _on_bash_wrap_toggled(self, checked):
+        self.bash_wrap_enabled = checked
+        if checked:
+            self.bash_wrap_button.setIcon(self.icon_bash_enabled)
+        else:
+            self.bash_wrap_button.setIcon(self.icon_bash_disabled)
+
+    def _create_bash_wrap_icon(self, enabled: bool) -> QIcon:
+        """Draws a custom icon with a checkmark overlay if enabled."""
+        # Use a fixed size for consistency
+        size = QSize(20, 20)
+
+        # Create base icon from FluentIcon
+        base_icon = Action(FIF.COMMAND_PROMPT, '', self.command_bar).icon()
+        pixmap = QPixmap(size)
+        pixmap.fill(Qt.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Draw base icon centered
+        base_pixmap = base_icon.pixmap(size)
+        painter.drawPixmap(0, 0, base_pixmap)
+
+        if enabled:
+            # Draw checkmark in the bottom-right corner
+            pen = QPen(QColor("#00E676"), 2.5)  # A vibrant green, thicker
+            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.RoundJoin)
+            painter.setPen(pen)
+
+            w, h = size.width(), size.height()
+            path = QPainterPath()
+            path.moveTo(w * 0.50, h * 0.65)
+            path.lineTo(w * 0.70, h * 0.85)
+            path.lineTo(w * 1.0, h * 0.55)
+            painter.drawPath(path)
+
+        painter.end()
+        return QIcon(pixmap)
 
     def _get_icons(self):
         parent = self.parent()
