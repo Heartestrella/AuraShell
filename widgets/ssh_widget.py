@@ -469,6 +469,16 @@ class Widget(QWidget):
         # print(f"选中了: {path_dict}")
         name = next(iter(path_dict.keys()))
         is_dir = next(iter(path_dict.values()))
+        if name == '..':
+            #
+            current_path = self.file_explorer.path
+            if current_path and current_path != '/':
+                new_path = '/'.join(current_path.split('/')[:-1])
+                if not new_path:
+                    new_path = '/'
+                self._set_file_bar(new_path)
+            return
+
         new_path = self.file_explorer.path + "/" + name
         if is_dir:
             self._set_file_bar(new_path)

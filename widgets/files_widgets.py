@@ -1041,5 +1041,9 @@ class FileExplorer(QWidget):
                 item._start_rename()
             elif self.view_mode == 'details' and len(self.details.details_view.selectionModel().selectedRows()) == 1:
                 self.details.rename_selected_item()
+        elif event.key() == Qt.Key_F5:
+            self.refresh_action.emit()
+        elif event.key() == Qt.Key_Backspace:
+            self.selected.emit({'..': True})
         else:
             super().keyPressEvent(event)
