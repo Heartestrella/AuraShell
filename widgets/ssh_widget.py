@@ -255,6 +255,17 @@ class Widget(QWidget):
             self.file_bar.new_folder_clicked.connect(
                 self.file_explorer._handle_mkdir)
             self.file_bar.view_switch_clicked.connect(self._switch_view_mode)
+
+            self.file_bar.upload_mode_toggled.connect(
+                self._on_upload_mode_toggled)
+            self.file_explorer.upload_mode_switch.toggled.connect(
+                self.file_bar.update_upload_mode_button)
+            # init button state
+            is_compress_upload = configer.read_config()["compress_upload"]
+            self.file_bar.update_upload_mode_button(is_compress_upload)
+            self.file_explorer.upload_mode_switch.setChecked(
+                is_compress_upload)
+
             self.file_bar.update_view_switch_button(
                 self.file_explorer.view_mode)
             self.file_explorer.setObjectName("file_tree")
@@ -329,6 +340,10 @@ class Widget(QWidget):
                     bottom_size_ratio = r[2]
                     splitter.setSizes([int(total_h * top_size_ratio),
                                       int(total_h * bottom_size_ratio)])
+
+    def _on_upload_mode_toggled(self, checked):
+        configer.revise_config("compress_upload", checked)
+        self.file_explorer.upload_mode_switch.setChecked(checked)
 
     def adjust_input_height(self):
         doc = self.command_input.document()
