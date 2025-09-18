@@ -19,8 +19,8 @@ class RemoteFileManager(QThread):
     file_tree_updated = pyqtSignal(dict, str)  # file tree , path
     error_occurred = pyqtSignal(str)
     sftp_ready = pyqtSignal()
-    upload_progress = pyqtSignal(str, int)  # File path, progress percentage
-    download_progress = pyqtSignal(str, int)  # File path, progress percentage
+    upload_progress = pyqtSignal(str, int, int, int)
+    download_progress = pyqtSignal(str, int, int, int)
     # File path, success, error message
     upload_finished = pyqtSignal(str, bool, str)
     # Path, success, error message

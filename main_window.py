@@ -324,7 +324,7 @@ class Window(FramelessWindow):
         if type_ not in no_refresh_types and child_key:
             self._refresh_paths(child_key)
 
-    def _show_progresses(self, path, percentage, child_key, transfer_type):
+    def _show_progresses(self, path, percentage, bytes_so_far, total_bytes, child_key, transfer_type):
         """Handles progress updates for both uploads and downloads."""
         parent_key = child_key.split("-")[0].strip()
         session_widget = self.session_widgets.get(
@@ -341,6 +341,8 @@ class Window(FramelessWindow):
             file_id = self.active_transfers[path]["id"]
             data = self.active_transfers[path]
             data["progress"] = percentage
+            data["bytes_so_far"] = bytes_so_far
+            data["total_bytes"] = total_bytes
             if percentage >= 100:
                 data["type"] = "completed"
             session_widget.transfer_progress.update_transfer_item(
@@ -389,9 +391,13 @@ class Window(FramelessWindow):
         file_manager.compression_finished.connect(
             lambda identifier, new_name: self._update_transfer_item_name(identifier, new_name, child_key))
         file_manager.upload_progress.connect(
-            lambda path, percentage: self._show_progresses(path, percentage, child_key, 'upload'))
+            lambda path, percentage, bytes_so_far, total_bytes: self._show_progresses(
+                path, percentage, bytes_so_far, total_bytes, child_key, 'upload')
+        )
         file_manager.download_progress.connect(
-            lambda path, percentage: self._show_progresses(path, percentage, child_key, 'download'))
+            lambda path, percentage, bytes_so_far, total_bytes: self._show_progresses(
+                path, percentage, bytes_so_far, total_bytes, child_key, 'download')
+        )
         session_widget.file_explorer.upload_file.connect(
             lambda local_path, remote_path, compression: self._handle_upload_request(
                 child_key, local_path, remote_path, compression, file_manager)

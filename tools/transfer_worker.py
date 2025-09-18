@@ -13,7 +13,7 @@ class TransferSignals(QObject):
     """
     Defines signals available for a transfer worker.
     """
-    progress = pyqtSignal(str, int)  # local_path_or_identifier, percentage
+    progress = pyqtSignal(str, int, int, int)
     # local_path_or_identifier, success, message
     finished = pyqtSignal(str, bool, str)
     # target_zip_path (for compression)
@@ -60,7 +60,7 @@ class TransferWorker(QRunnable):
         else:
             identifier = str(
                 self.local_path if self.action == 'upload' else self.remote_path)
-        self.signals.progress.emit(identifier, -1)  # Emit waiting signal
+        self.signals.progress.emit(identifier, -1, 0, 0)
 
         while not self.is_stopped:
             try:
@@ -251,7 +251,8 @@ class TransferWorker(QRunnable):
             def progress_callback(bytes_so_far, total_bytes):
                 if total_bytes > 0:
                     progress = int((bytes_so_far / total_bytes) * 100)
-                    self.signals.progress.emit(identifier, progress)
+                    self.signals.progress.emit(
+                        identifier, progress, bytes_so_far, total_bytes)
 
             self.sftp.put(local_path, full_remote_path,
                           callback=progress_callback)
@@ -395,7 +396,8 @@ class TransferWorker(QRunnable):
         def progress_callback(bytes_so_far, total_bytes):
             if total_bytes > 0:
                 progress = int((bytes_so_far / total_bytes) * 100)
-                self.signals.progress.emit(identifier, progress)
+                self.signals.progress.emit(
+                    identifier, progress, bytes_so_far, total_bytes)
 
         self.sftp.get(remote_file, local_file, callback=progress_callback)
 
