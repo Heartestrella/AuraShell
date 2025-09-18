@@ -4,3 +4,4 @@ _ssh_download/
 /*.bat
 /*.zip
 /tmp
+/debug
