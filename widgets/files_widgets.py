@@ -659,6 +659,7 @@ class FileExplorer(QWidget):
         self.cut_ = False
         self.icons = icons
         self.path = path
+        self._is_loading = False
 
         # Icon view
         self.scroll_area = ScrollArea(self)
@@ -688,6 +689,17 @@ class FileExplorer(QWidget):
         # self.make_dir.triggered.connect(
         #     lambda: self._handle_file_action("mkdir", "", ""))
         self._init_actions()
+
+    def _request_directory_change(self, item_info):
+        is_dir = list(item_info.values())[0]
+        if not is_dir:
+            self.selected.emit(item_info)
+            return
+
+        if self._is_loading:
+            return
+        self._is_loading = True
+        self.selected.emit(item_info)
 
     def _handle_mkdir(self):
         """Create a new folder placeholder and enter rename mode."""
@@ -793,6 +805,7 @@ class FileExplorer(QWidget):
             self._add_files_to_icon_view(files, clear_old)
         else:
             self.details._add_files_to_details_view(files, clear_old)
+        self._is_loading = False
 
     def _add_files_to_icon_view(self, files, clear_old=True):
         self.container.setUpdatesEnabled(False)
@@ -809,8 +822,7 @@ class FileExplorer(QWidget):
         for name, is_dir, *_ in entries:
             item_widget = FileItem(
                 name, is_dir, parent=self.container, explorer=self, icons=self.icons)
-            item_widget.selected_sign.connect(
-                partial(lambda s, d: self.selected.emit(d), None))
+            item_widget.selected_sign.connect(self._request_directory_change)
             item_widget.action_triggered.connect(self._handle_file_action)
             item_widget.rename_action.connect(
                 lambda type_, name, new_name, is_dir: self._handle_file_action(
@@ -863,7 +875,8 @@ class FileExplorer(QWidget):
             return
         # Only for detail mode
         if action_type == "open":
-            self.selected.emit({file_name: is_dir})
+            self._request_directory_change({file_name: is_dir})
+            return
 
         if action_type == "paste":
             if self.copy_file_path:  # A list of paths copied/cut earlier
