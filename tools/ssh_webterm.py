@@ -523,7 +523,6 @@ class WebTerminal(QWidget):
             background: transparent !important;
             background-color: transparent !important;
             font-family: {font_family}, monospace !important;
-            /* 允许文本选择 */
             user-select: text !important;
             -webkit-user-select: text !important;
         }}
@@ -536,7 +535,6 @@ class WebTerminal(QWidget):
             background: transparent !important;
             background-color: transparent !important;
             font-family: {font_family}, monospace !important;
-            /* 允许文本选择 */
             user-select: text !important;
             -webkit-user-select: text !important;
         }}

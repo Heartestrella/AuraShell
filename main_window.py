@@ -2,7 +2,7 @@
 import sys
 import ctypes
 import time
-from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent
+from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget
 
@@ -29,6 +29,7 @@ setting_ = SCM()
 
 
 class Window(FramelessWindow):
+    windowResized = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -667,6 +668,7 @@ class Window(FramelessWindow):
         )
 
         self.session_widgets[parent_key][child_key] = child_widget
+        self.windowResized.connect(child_widget.on_main_window_resized)
         self.switchTo(widget=child_widget, window_tittle=child_key)
         print(f"Creating a Child Session: {child_key} (Parent: {parent_key})")
         print(session, child_key)
@@ -693,6 +695,7 @@ class Window(FramelessWindow):
                 self.settingInterface.save_window_size((new_width, new_height))
 
     def resizeEvent(self, event):
+        self.windowResized.emit()
         self._resize_timer.start(50)
         if not self.isActiveWindow() or not self.underMouse():
             self.apply_locked_ratio(event)
