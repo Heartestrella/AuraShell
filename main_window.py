@@ -33,6 +33,13 @@ class Window(FramelessWindow):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.active_transfers = {}
+        self._download_debounce_timer = QTimer(self)
+        self._download_debounce_timer.setSingleShot(True)
+        self._download_debounce_timer.setInterval(500)
+        self._download_debounce_timer.timeout.connect(
+            self._process_pending_downloads)
+        self._pending_download_paths = {}
+
         self._resize_timer = QTimer(self)
         self._resize_timer.setSingleShot(True)
         self._resize_timer.timeout.connect(self.apply_locked_ratio)
@@ -469,27 +476,16 @@ class Window(FramelessWindow):
                 full_path, list) else [full_path]
             clipboard.setText('\n'.join(paths_to_copy))
         elif action_type == "download":
-            paths_to_download = full_path if isinstance(
-                full_path, list) else [full_path]
-            if not cut:  # Non-compressed download
-                # We no longer call _show_info here for directories.
-                # The backend will expand the directory and we will create items
-                # dynamically when progress/finished signals arrive.
-                # We only pre-create items for single file downloads.
-                for path in paths_to_download:
-                    is_dir = file_manager.check_path_type(path) == "directory"
-                    if not is_dir:
-                        self._add_transfer_item_if_not_exists(
-                            child_key, path, "download")
+            # Debounce download requests
+            if child_key not in self._pending_download_paths:
+                self._pending_download_paths[child_key] = {
+                    "paths": [], "compression": cut}
 
-                file_manager.download_path_async(
-                    paths_to_download, compression=cut)
+            # Since _handle_files is called for each item, full_path is a single path string
+            self._pending_download_paths[child_key]["paths"].append(full_path)
+            self._pending_download_paths[child_key]["compression"] = cut
+            self._download_debounce_timer.start()
 
-            else:  # Compressed download
-                self._add_transfer_item_if_not_exists(
-                    child_key, paths_to_download, "download")
-                file_manager.download_path_async(
-                    paths_to_download, compression=cut)
         elif action_type == "paste":
             source_paths = full_path if isinstance(
                 full_path, list) else [full_path]
@@ -510,6 +506,44 @@ class Window(FramelessWindow):
         elif action_type == "mkdir":
             if full_path:
                 file_manager.mkdir(full_path)
+
+    def _process_pending_downloads(self):
+        """Process the accumulated download paths after the debounce delay."""
+        if not self._pending_download_paths:
+            return
+
+        # Atomically take ownership of the pending paths and reset the shared collection
+        paths_to_process_now = self._pending_download_paths
+        self._pending_download_paths = {}
+
+        for child_key, download_info in paths_to_process_now.items():
+            paths_to_download = download_info["paths"]
+            compression = download_info["compression"]
+
+            if not paths_to_download:
+                continue
+
+            file_manager: RemoteFileManager = self.file_tree_object.get(
+                child_key)
+            if not file_manager:
+                continue
+
+            if not compression:  # Non-compressed download
+                path_types = file_manager.check_path_type_list(
+                    paths_to_download)
+                files_to_add_ui = [
+                    p for p, t in path_types.items() if t == "file"]
+                for path in files_to_add_ui:
+                    self._add_transfer_item_if_not_exists(
+                        child_key, path, "download")
+                file_manager.download_path_async(
+                    paths_to_download, compression=compression)
+
+            else:  # Compressed download
+                self._add_transfer_item_if_not_exists(
+                    child_key, paths_to_download, "download")
+                file_manager.download_path_async(
+                    paths_to_download, compression=compression)
 
     def _refresh_paths(self, child_key: str):
         print("Refresh the page")

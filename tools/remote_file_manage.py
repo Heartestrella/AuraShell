@@ -1206,6 +1206,55 @@ class RemoteFileManager(QThread):
         except IOError:
             return False
 
+    def check_path_type_list(self, paths: List[str]) -> Dict[str, str]:
+        """
+        Checks the type of multiple remote paths using a single shell command.
+        Returns a dictionary mapping each path to its type ('directory', 'file', or 'unknown').
+        This is a synchronous method and will block until the command completes.
+        """
+        if not paths or self.conn is None:
+            return {p: 'unknown' for p in paths}
+
+        quoted_paths = " ".join([shlex.quote(p) for p in paths])
+        command = f"""
+        for p in {quoted_paths}; do
+            if [ -L "$p" ]; then
+                if [ -d "$p" ]; then echo "directory:$p"; else echo "file:$p"; fi
+            elif [ -d "$p" ]; then echo "directory:$p"
+            elif [ -f "$p" ]; then echo "file:$p"
+            else echo "unknown:$p"; fi
+        done
+        """
+
+        try:
+            stdin, stdout, stderr = self.conn.exec_command(command, timeout=20)
+            exit_status = stdout.channel.recv_exit_status()
+            output = stdout.read().decode('utf-8', errors='ignore').strip()
+            error_output = stderr.read().decode('utf-8', errors='ignore').strip()
+
+            if exit_status != 0:
+                print(f"Error in check_path_type_list command: {error_output}")
+                return {p: self.check_path_type(p) for p in paths}
+
+            result = {}
+            for line in output.splitlines():
+                if not line:
+                    continue
+                try:
+                    type_str, path_str = line.split(':', 1)
+                    result[path_str] = type_str
+                except ValueError:
+                    print(f"Could not parse line from check_path_type_list: {line}")
+            # Ensure all paths get a result
+            for p in paths:
+                if p not in result:
+                    result[p] = 'unknown'
+            return result
+
+        except Exception as e:
+            print(f"Exception in check_path_type_list: {e}")
+            return {p: self.check_path_type(p) for p in paths}
+
     def get_default_path(self) -> Optional[str]:
         try:
             if self.conn is None:
