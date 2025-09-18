@@ -1092,6 +1092,7 @@ if __name__ == '__main__':
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
         QApplication.setAttribute(Qt.AA_UseOpenGLES)
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
         app = QApplication(sys.argv)
 
         # set icon
