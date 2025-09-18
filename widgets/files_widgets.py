@@ -1,6 +1,6 @@
 
 from PyQt5.QtWidgets import (QApplication, QWidget, QLayout, QSizePolicy,
-                             QRubberBand,  QVBoxLayout, QTableView, QHeaderView, QAbstractItemDelegate)
+                             QRubberBand,  QVBoxLayout, QTableView, QHeaderView, QAbstractItemDelegate, QStyledItemDelegate)
 from PyQt5.QtGui import QFont, QPainter, QColor, QStandardItemModel, QStandardItem
 from PyQt5.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
 from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit, ScrollArea, TableView, CheckableMenu
@@ -347,6 +347,19 @@ class FileItem(QWidget):
             self.rename_edit.hide()
             self.update()
 
+class NameDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        # Add 5px left padding
+        option.rect.adjust(5, 0, 0, 0)
+        super().paint(painter, option, index)
+
+
+class CenteredDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        option.displayAlignment = Qt.AlignCenter | Qt.AlignVCenter
+        super().paint(painter, option, index)
+
+
 # Detail Mode
 
 
@@ -368,6 +381,12 @@ class DetailItem(QWidget):
         self.details_view.setSelectionBehavior(QTableView.SelectRows)
         self.details_view.setSelectionMode(QTableView.ExtendedSelection)
         self.details_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.details_view.setItemDelegateForColumn(0, NameDelegate(self))
+        centered_delegate = CenteredDelegate(self)
+        self.details_view.setItemDelegateForColumn(1, centered_delegate)
+        self.details_view.setItemDelegateForColumn(2, centered_delegate)
+        self.details_view.setItemDelegateForColumn(3, centered_delegate)
+        self.details_view.setItemDelegateForColumn(4, centered_delegate)
 
         self.details_view.customContextMenuRequested.connect(
             self._show_context_menu)
