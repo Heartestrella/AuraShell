@@ -417,7 +417,7 @@ class DetailItem(QWidget):
                     border-bottom: 1px solid #454545;
                 }
                 QTableView::item:selected {
-                    background-color: #555;
+                    background-color: #6A5ACD;
                     color: white;
                 }
                 QHeaderView::section {
