@@ -2,3 +2,5 @@ __pycache__/
 .vscode/
 _ssh_download/
 /*.bat
+/*.zip
+/tmp

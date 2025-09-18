@@ -1,5 +1,5 @@
 # remote_file_manage.py
-from PyQt5.QtCore import pyqtSignal, QThread, QMutex, QWaitCondition, QThreadPool, QTimer
+from PyQt5.QtCore import pyqtSignal, QThread, QMutex, QWaitCondition, QThreadPool
 from tools.transfer_worker import TransferWorker
 from tools.setting_config import SCM
 import paramiko
@@ -19,8 +19,8 @@ class RemoteFileManager(QThread):
     file_tree_updated = pyqtSignal(dict, str)  # file tree , path
     error_occurred = pyqtSignal(str)
     sftp_ready = pyqtSignal()
-    upload_progress = pyqtSignal(str, int)  # File path, progress percentage
-    download_progress = pyqtSignal(str, int)  # File path, progress percentage
+    upload_progress = pyqtSignal(str, int, int, int)
+    download_progress = pyqtSignal(str, int, int, int)
     # File path, success, error message
     upload_finished = pyqtSignal(str, bool, str)
     # Path, success, error message
@@ -44,6 +44,7 @@ class RemoteFileManager(QThread):
     start_to_compression = pyqtSignal(str)
     # remote_path_path
     start_to_uncompression = pyqtSignal(str)
+    compression_finished = pyqtSignal(str, str)
 
     def __init__(self, session_info, parent=None, child_key=None):
         super().__init__(parent)
@@ -138,7 +139,8 @@ class RemoteFileManager(QThread):
                                 'upload',
                                 task['local_path'],
                                 task['remote_path'],
-                                task['compression']
+                                task['compression'],
+                                task_id=task.get('task_id')
                             )
                         elif ttype == 'delete':
                             self._handle_delete_task(
@@ -253,42 +255,24 @@ class RemoteFileManager(QThread):
         except Exception:
             pass
 
-    def _dispatch_transfer_task(self, action, local_path, remote_path, compression, open_it=False, interval=2000):
-        """Creates and starts TransferWorker(s) for uploads or downloads with optional interval."""
+    def _dispatch_transfer_task(self, action, local_path, remote_path, compression, open_it=False, task_id=None):
+        """Creates and starts TransferWorker(s) for uploads or downloads."""
         if action == 'upload':
             self._dispatch_upload_task(
-                local_path, remote_path, compression, open_it)
+                local_path, remote_path, compression, open_it, task_id=task_id)
         elif action == 'download':
-            # 构建下载队列
-            paths_to_process = remote_path if isinstance(
-                remote_path, list) else [remote_path]
-            download_queue = []
+            self._dispatch_download_task(
+                remote_path, compression, open_it)
 
-            for path_item in paths_to_process:
-                is_dir = self.check_path_type(path_item) == "directory"
-                if is_dir and not compression:
-                    all_files, dirs_to_create = self._list_remote_files_recursive(
-                        path_item)
-                    for file_path in all_files:
-                        download_queue.append((file_path, path_item))
-                else:
-                    download_queue.append((path_item, None))
-
-            # 定义递归调度函数
-            def schedule_next(index=0):
-                if index >= len(download_queue):
-                    return
-                file_path, context = download_queue[index]
-                self._create_and_start_worker(
-                    'download', self.download_conn, None, file_path, compression, open_it, download_context=context
-                )
-                QTimer.singleShot(interval, lambda: schedule_next(index + 1))
-
-            # 启动第一个任务
-            schedule_next()
-
-    def _dispatch_upload_task(self, local_path, remote_path, compression, open_it):
+    def _dispatch_upload_task(self, local_path, remote_path, compression, open_it, task_id=None):
         """Handles dispatching of upload tasks, expanding directories if necessary."""
+        # If compression is on and we have a list of paths, treat it as a single batch job.
+        if compression and isinstance(local_path, list):
+            self._create_and_start_worker(
+                'upload', self.upload_conn, local_path, remote_path, compression, open_it, task_id=task_id)
+            return
+
+        # Fallback to original logic for single items or non-compressed lists.
         paths_to_process = local_path if isinstance(
             local_path, list) else [local_path]
 
@@ -358,7 +342,7 @@ class RemoteFileManager(QThread):
                 file_paths.append(os.path.join(root, file))
         return file_paths
 
-    def _create_and_start_worker(self, action, connection, local_path, remote_path, compression, open_it=False, download_context=None, upload_context=None):
+    def _create_and_start_worker(self, action, connection, local_path, remote_path, compression, open_it=False, download_context=None, upload_context=None, task_id=None):
         """Helper to create, connect signals, and start a single TransferWorker."""
         worker = TransferWorker(
             connection,
@@ -367,7 +351,8 @@ class RemoteFileManager(QThread):
             remote_path,
             compression,
             download_context,
-            upload_context
+            upload_context,
+            task_id
         )
 
         if action == 'upload':
@@ -382,6 +367,8 @@ class RemoteFileManager(QThread):
                 self.start_to_compression)
             worker.signals.start_to_uncompression.connect(
                 self.start_to_uncompression)
+            worker.signals.compression_finished.connect(
+                self.compression_finished)
 
         elif action == 'download':
             worker.signals.finished.connect(
@@ -394,8 +381,11 @@ class RemoteFileManager(QThread):
         self.thread_pool.start(worker)
 
         # Track the worker
-        identifier = str(
-            local_path if action == 'upload' else remote_path)
+        if task_id:
+            identifier = task_id
+        else:
+            identifier = str(
+                local_path if action == 'upload' else remote_path)
         self.active_workers[identifier] = worker
 
     # ---------------------------
@@ -572,7 +562,7 @@ class RemoteFileManager(QThread):
         self.condition.wakeAll()
         self.mutex.unlock()
 
-    def upload_file(self, local_path, remote_path: str, compression: bool, callback=None):
+    def upload_file(self, local_path, remote_path: str, compression: bool, callback=None, task_id=None):
         """
         Uploads a local file to the remote server asynchronously.
 
@@ -600,7 +590,8 @@ class RemoteFileManager(QThread):
             'local_path': local_path,
             'remote_path': remote_path,
             'compression': compression,
-            'callback': callback
+            'callback': callback,
+            'task_id': task_id
         })
         self.condition.wakeAll()
         self.mutex.unlock()
@@ -1214,6 +1205,55 @@ class RemoteFileManager(QThread):
                 return False
         except IOError:
             return False
+
+    def check_path_type_list(self, paths: List[str]) -> Dict[str, str]:
+        """
+        Checks the type of multiple remote paths using a single shell command.
+        Returns a dictionary mapping each path to its type ('directory', 'file', or 'unknown').
+        This is a synchronous method and will block until the command completes.
+        """
+        if not paths or self.conn is None:
+            return {p: 'unknown' for p in paths}
+
+        quoted_paths = " ".join([shlex.quote(p) for p in paths])
+        command = f"""
+        for p in {quoted_paths}; do
+            if [ -L "$p" ]; then
+                if [ -d "$p" ]; then echo "directory:$p"; else echo "file:$p"; fi
+            elif [ -d "$p" ]; then echo "directory:$p"
+            elif [ -f "$p" ]; then echo "file:$p"
+            else echo "unknown:$p"; fi
+        done
+        """
+
+        try:
+            stdin, stdout, stderr = self.conn.exec_command(command, timeout=20)
+            exit_status = stdout.channel.recv_exit_status()
+            output = stdout.read().decode('utf-8', errors='ignore').strip()
+            error_output = stderr.read().decode('utf-8', errors='ignore').strip()
+
+            if exit_status != 0:
+                print(f"Error in check_path_type_list command: {error_output}")
+                return {p: self.check_path_type(p) for p in paths}
+
+            result = {}
+            for line in output.splitlines():
+                if not line:
+                    continue
+                try:
+                    type_str, path_str = line.split(':', 1)
+                    result[path_str] = type_str
+                except ValueError:
+                    print(f"Could not parse line from check_path_type_list: {line}")
+            # Ensure all paths get a result
+            for p in paths:
+                if p not in result:
+                    result[p] = 'unknown'
+            return result
+
+        except Exception as e:
+            print(f"Exception in check_path_type_list: {e}")
+            return {p: self.check_path_type(p) for p in paths}
 
     def get_default_path(self) -> Optional[str]:
         try:

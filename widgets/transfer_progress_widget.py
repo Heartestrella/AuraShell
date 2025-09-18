@@ -1,6 +1,6 @@
 from PyQt5.QtCore import Qt, QTimer, QEasingCurve, QEvent, pyqtSignal
 from PyQt5.QtGui import QColor, QFont
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QScrollArea
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QScrollArea, QToolTip
 from qfluentwidgets import FluentIcon as FIF, IconWidget
 from tools.font_config import font_config
 
@@ -143,7 +143,8 @@ class TransferProgressWidget(QWidget):
 
         # --- Filename ---
         filename_label = QLabel(filename, item_widget)
-        filename_label.setWordWrap(True)
+        filename_label.setWordWrap(False)
+        filename_label.setMinimumWidth(1)
 
         item_layout.addWidget(status_icon)
         item_layout.addSpacing(10)
@@ -197,6 +198,10 @@ class TransferProgressWidget(QWidget):
         item_widget.setProperty("last_data", data)
         transfer_type = data.get("type", "upload")
         progress = data.get("progress", 0)
+        filename = data.get("filename", "")
+        filename_label = item_widget.findChild(QLabel)
+        bytes_so_far = data.get("bytes_so_far", 0)
+        total_bytes = data.get("total_bytes", 0)
         status_icon = item_widget.findChild(IconWidget, "statusIcon")
         progress_label = item_widget.findChild(QLabel, "progressLabel")
         completed_icon = item_widget.findChild(IconWidget, "completedIcon")
@@ -209,6 +214,17 @@ class TransferProgressWidget(QWidget):
         # Hide cancel icon unless it's being hovered
         if not item_widget.underMouse():
             cancel_icon.hide()
+
+        if filename_label:
+            if total_bytes > 0:
+                # Convert bytes to MB and format the string
+                transferred_mb = bytes_so_far / (1024 * 1024)
+                total_mb = total_bytes / (1024 * 1024)
+                filename_label.setText(
+                    f"{filename} ({transferred_mb:.2f}/{total_mb:.2f} MB)")
+            elif filename:
+                filename_label.setText(filename)
+            item_widget.setToolTip(filename_label.text())
 
         # --- Update widgets based on transfer type ---
         if transfer_type == "completed":
@@ -414,3 +430,14 @@ class TransferProgressWidget(QWidget):
                     child.setFont(font)
                 if isinstance(child, IconWidget):
                     child.setFont(font)
+
+    def event(self, event):
+        if event.type() == QEvent.ToolTip:
+            # Find the item widget under the mouse
+            pos = self.mapFromGlobal(event.globalPos())
+            for item_widget in self.transfer_items.values():
+                if item_widget.geometry().contains(pos):
+                    QToolTip.showText(event.globalPos(),
+                                      item_widget.toolTip(), self)
+                    return True
+        return super().event(event)

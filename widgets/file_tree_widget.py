@@ -1,6 +1,6 @@
 from qfluentwidgets import BreadcrumbBar, LineEdit, TransparentToolButton
 from typing import Dict, Optional
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QStyle, QFrame
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QStyle, QFrame
 from qfluentwidgets import isDarkTheme
 from PyQt5.QtCore import Qt, pyqtSignal
 from qfluentwidgets import TreeWidget, RoundMenu, Action, FluentIcon as FIF
@@ -26,6 +26,7 @@ class File_Navigation_Bar(QWidget):
     new_folder_clicked = pyqtSignal()
     refresh_clicked = pyqtSignal()
     view_switch_clicked = pyqtSignal()
+    upload_mode_toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -77,6 +78,24 @@ class File_Navigation_Bar(QWidget):
         self.view_switch_button = TransparentToolButton(FIF.VIEW, self)
         self.hBoxLayout.addWidget(self.view_switch_button)
 
+        self.upload_mode_button = TransparentToolButton(
+            FIF.ZIP_FOLDER, self)
+        self.upload_mode_button.setCheckable(True)
+        self.upload_mode_button.setProperty('isChecked', False)
+        style = """
+            TransparentToolButton[isChecked="true"] {
+                background-color: rgba(0, 0, 0, 0.1);
+            }
+        """
+        if isDarkTheme():
+            style = """
+            TransparentToolButton[isChecked="true"] {
+                background-color: rgba(255, 255, 255, 0.1);
+            }
+        """
+        self.upload_mode_button.setStyleSheet(style)
+        self.hBoxLayout.addWidget(self.upload_mode_button)
+
         self.new_folder_button = TransparentToolButton(FIF.FOLDER_ADD, self)
         self.new_folder_button.setToolTip(self.tr('New folder'))
         self.refresh_button = TransparentToolButton(FIF.UPDATE, self)
@@ -88,6 +107,7 @@ class File_Navigation_Bar(QWidget):
         self.new_folder_button.clicked.connect(self.new_folder_clicked.emit)
         self.refresh_button.clicked.connect(self.refresh_clicked.emit)
         self.view_switch_button.clicked.connect(self.view_switch_clicked.emit)
+        self.upload_mode_button.toggled.connect(self.upload_mode_toggled.emit)
 
         self.breadcrumbBar.currentItemChanged.connect(self.updatePathLabel)
         self.path_edit.returnPressed.connect(self._submit_path_from_edit)
@@ -100,6 +120,17 @@ class File_Navigation_Bar(QWidget):
         else:
             self.view_switch_button.setIcon(FIF.APPLICATION)
             self.view_switch_button.setToolTip(self.tr('Icon View'))
+
+    def update_upload_mode_button(self, is_checked: bool):
+        self.upload_mode_button.setChecked(is_checked)
+        self.upload_mode_button.setProperty('isChecked', is_checked)
+        self.upload_mode_button.setStyle(QApplication.style())
+        if is_checked:
+            self.upload_mode_button.setToolTip(
+                self.tr('Compression Upload mode is on'))
+        else:
+            self.upload_mode_button.setToolTip(
+                self.tr('Compression Upload mode is off'))
 
     def mousePressEvent(self, event):
         if not self.path_edit.isVisible() and self.breadcrumb_container.geometry().contains(event.pos()):

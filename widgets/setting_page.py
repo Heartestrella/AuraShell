@@ -513,10 +513,10 @@ class SettingPage(ScrollArea):
             FluentIcon.SPEED_HIGH,
             self.tr("Max Concurrent Transfers"),
             self.tr(
-                "Set the maximum number of concurrent uploads/downloads (must be > 0 and ≤ 10)"),
+                "Set the maximum number of concurrent uploads/downloads (must be > 0 and ≤ 50000)"),
         )
         self.transfer_edit = LineEdit(self.transfer_card)
-        self.transfer_edit.setValidator(QIntValidator(1, 10))
+        self.transfer_edit.setValidator(QIntValidator(1, 50000))
         self.transfer_edit.setFixedWidth(150)
         self.transfer_edit.editingFinished.connect(
             self._save_transfer_value_from_edit)
