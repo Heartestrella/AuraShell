@@ -117,31 +117,57 @@ class TransferWorker(QRunnable):
     # ==================================================================================
 
     def _handle_upload_task(self, identifier, local_path, remote_path, compression, upload_context=None):
+        """
+        Handles upload of a single file or list of files.
+        Emits one finished signal per batch (for non-compressed lists).
+        """
         try:
             if isinstance(local_path, list):
                 if compression:
-                    # For compressed lists, the whole list is one task.
+                    # Compressed list upload: whole list as one archive
                     self._upload_list_compressed(
                         identifier, local_path, remote_path)
                 else:
-                    # For uncompressed lists, each item is a sub-task.
+                    # Non-compressed list: upload each file individually, but emit finished once at the end
                     all_successful = True
                     error_messages = []
+
                     for path in local_path:
-                        # Each item will emit its own finished signal.
-                        # We capture the result here to give a final status for the whole batch.
-                        success, message = self._upload_item(
-                            path, path, remote_path, compression=False, upload_context=upload_context)
-                        if not success:
+                        if not os.path.exists(path):
+                            error_msg = f"Local path does not exist: {path}"
                             all_successful = False
-                            error_messages.append(message)
-                    # Optionally, emit a final signal for the whole batch if needed,
-                    # but individual signals are now sent. For now, we rely on individual signals.
+                            error_messages.append(error_msg)
+                            continue
+
+                        try:
+                            if os.path.isfile(path):
+                                self._upload_file(
+                                    path, path, remote_path, upload_context)
+                            elif os.path.isdir(path):
+                                # Non-compressed directory: upload files inside directory
+                                for root, _, files in os.walk(path):
+                                    for f in files:
+                                        local_file = os.path.join(root, f)
+                                        self._upload_file(
+                                            local_file, local_file, remote_path, upload_context)
+                        except Exception as e:
+                            tb = traceback.format_exc()
+                            all_successful = False
+                            error_messages.append(
+                                f"Failed to upload {path}: {e}\n{tb}")
+
+                    # Emit a single finished signal for the whole batch
+                    final_msg = "; ".join(error_messages)
+                    print(f"发送上传钩子:{all_successful}")
+                    self.signals.finished.emit(
+                        identifier, all_successful, final_msg)
 
             elif isinstance(local_path, str):
-                self._upload_item(identifier, local_path,
-                                  remote_path, compression, upload_context)
-
+                # Single file or directory
+                status, msg = self._upload_item(identifier, local_path,
+                                                remote_path, compression, upload_context)
+                self.signals.finished.emit(
+                    identifier, status, msg)
         except Exception as e:
             tb = traceback.format_exc()
             error_msg = f"Error during upload task: {e}\n{tb}"
@@ -229,22 +255,22 @@ class TransferWorker(QRunnable):
             if os.path.exists(tmp_tar_path):
                 os.remove(tmp_tar_path)
 
-    def _upload_file(self, identifier, local_path, remote_path, upload_context=None, emit_finish_signal=True):
+    def _upload_file(self, identifier, local_path, remote_path, upload_context=None):
+        """
+        Upload a single file, emitting progress signals.
+        Does NOT emit finished signal (handled at batch level).
+        """
         try:
             if upload_context:
-                # Reconstruct the target path to preserve directory structure
                 relative_path = os.path.relpath(local_path, upload_context)
-                # The root of the uploaded dir should also be created
                 upload_root_name = os.path.basename(upload_context)
                 full_remote_path = os.path.join(
                     remote_path, upload_root_name, relative_path).replace('\\', '/')
             else:
-                # Original behavior for single file uploads
-                remote_filename = os.path.basename(local_path)
                 full_remote_path = os.path.join(
-                    remote_path, remote_filename).replace('\\', '/')
+                    remote_path, os.path.basename(local_path)).replace('\\', '/')
 
-            # Ensure the parent directory of the target file exists
+            # Ensure remote parent directory exists
             self._ensure_remote_directory_exists(
                 os.path.dirname(full_remote_path))
 
@@ -256,18 +282,9 @@ class TransferWorker(QRunnable):
 
             self.sftp.put(local_path, full_remote_path,
                           callback=progress_callback)
-            if emit_finish_signal:
-                self.signals.finished.emit(identifier, True, "")
 
         except Exception as e:
-            tb = traceback.format_exc()
-            error_msg = f"File upload error: {e}\n{tb}"
-            if emit_finish_signal:
-                self.signals.finished.emit(identifier, False, error_msg)
-            else:
-                # If we don't emit finished, we should at least raise the exception
-                # so the calling function knows something went wrong.
-                raise e
+            raise e
 
     def _upload_directory(self, identifier, local_dir, remote_dir):
         try:

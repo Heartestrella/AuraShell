@@ -1,4 +1,4 @@
-from PyQt5.QtCore import Qt, QTimer, QEasingCurve, QEvent, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEvent, pyqtSignal
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QScrollArea, QToolTip
 from qfluentwidgets import FluentIcon as FIF, IconWidget
@@ -13,7 +13,7 @@ class TransferProgressWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setObjectName("transferProgressWidget")
-        self.setMaximumHeight(200)
+        self.setMaximumHeight(300)
         self.is_expanded = False
         self._animations = []
         self.transfer_items = {}
@@ -324,6 +324,13 @@ class TransferProgressWidget(QWidget):
         """)
 
     def remove_transfer_item(self, file_id: str):
+        # import inspect
+        # caller_frame = inspect.stack()[1]  # 1 表示上一级调用者
+        # caller_filename = caller_frame.filename
+        # caller_line_no = caller_frame.lineno
+        # caller_func_name = caller_frame.function
+        # print(
+        #     f"Called from {caller_func_name} in {caller_filename}:{caller_line_no}")
         item_widget = self.transfer_items.pop(file_id, None)
         if item_widget:
             if item_widget.property("is_completed"):
@@ -337,15 +344,31 @@ class TransferProgressWidget(QWidget):
         #     self.setVisible(False)
 
     def toggle_view(self):
+        """Toggle the expanded/collapsed state with smooth animation."""
         self.is_expanded = not self.is_expanded
         self.expansionChanged.emit(self.is_expanded)
 
+        # 计算内容高度（ScrollArea的内容高度 + padding）
+        content_height = self.scroll_content.sizeHint().height() + 10
+
+        # 创建动画
+        animation = QPropertyAnimation(self.content_area, b"maximumHeight")
+        animation.setDuration(200)  # 动画持续时间，单位毫秒
+
         if self.is_expanded:
-            self.content_area.setMaximumHeight(1000)
             self.content_area.setVisible(True)
+            animation.setStartValue(0)
+            animation.setEndValue(content_height)
         else:
-            self.content_area.setVisible(False)
-            self.content_area.setMaximumHeight(0)
+            animation.setStartValue(self.content_area.maximumHeight())
+            animation.setEndValue(0)
+            # 动画结束后隐藏content_area
+            animation.finished.connect(
+                lambda: self.content_area.setVisible(False))
+
+        animation.start()
+        # 防止动画被垃圾回收
+        self._animations.append(animation)
 
     def eventFilter(self, obj, event):
         if obj is self.header and event.type() == QEvent.MouseButtonPress:

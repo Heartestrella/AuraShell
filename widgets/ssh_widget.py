@@ -473,7 +473,7 @@ class Widget(QWidget):
         self.file_bar.update_view_switch_button(new_mode)
 
     def _process_selected_path(self, path_dict: dict):
-        # print(f"选中了: {path_dict}")
+        print(f"选中了: {path_dict}")
         name = next(iter(path_dict.keys()))
         is_dir = next(iter(path_dict.values()))
         if name == '..':

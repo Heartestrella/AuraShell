@@ -10,6 +10,7 @@ import os
 from typing import Tuple
 from datetime import datetime
 import shlex
+from functools import partial
 
 
 class RemoteFileManager(QThread):
@@ -639,11 +640,11 @@ class RemoteFileManager(QThread):
 
                 # common executable-related MIME strings
                 if ("executable" in mime_out
-                        or "x-executable" in mime_out
-                        or mime_out.startswith("application/x-sharedlib")
-                        or "x-mach-binary" in mime_out
-                        or "pe" in mime_out  # covers various PE-like mimes
-                    ):
+                            or "x-executable" in mime_out
+                            or mime_out.startswith("application/x-sharedlib")
+                            or "x-mach-binary" in mime_out
+                            or "pe" in mime_out  # covers various PE-like mimes
+                        ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
 
@@ -1244,7 +1245,8 @@ class RemoteFileManager(QThread):
                     type_str, path_str = line.split(':', 1)
                     result[path_str] = type_str
                 except ValueError:
-                    print(f"Could not parse line from check_path_type_list: {line}")
+                    print(
+                        f"Could not parse line from check_path_type_list: {line}")
             # Ensure all paths get a result
             for p in paths:
                 if p not in result:
@@ -1381,6 +1383,7 @@ class RemoteFileManager(QThread):
     def _handle_delete_task(self, paths, callback=None):
         """
         Handles the deletion task for one or more remote paths.
+        删除逻辑优化：一次性调用 rm -rf 删除多个路径，而不是逐个遍历。
         """
         if self.conn is None:
             error_msg = "SSH connection is not ready"
@@ -1390,62 +1393,54 @@ class RemoteFileManager(QThread):
                 callback(False, error_msg)
             return
 
+        # 统一成列表
         if isinstance(paths, str):
             paths = [paths]
 
-        all_successful = True
-        errors = []
-        parent_dirs_to_refresh = set()
+        try:
+            print(f"🗑️ Starting deletion of {len(paths)} paths")
 
-        for path in paths:
-            try:
-                print(f"🗑️ Starting deletion of: {path}")
+            # 拼接命令，注意路径加引号防止空格问题
+            quoted_paths = " ".join(f'"{p}"' for p in paths)
+            cmd = f"rm -rf {quoted_paths}"
+            print(f"🔧 Executing command: {cmd}")
 
-                path_type = self.check_path_type(path)
-                if not path_type:
-                    error_msg = f"Path does not exist: {path}"
-                    print(f"❌ Deletion failed - {error_msg}")
-                    errors.append(error_msg)
-                    all_successful = False
-                    continue
+            stdin, stdout, stderr = self.conn.exec_command(cmd)
+            exit_status = stdout.channel.recv_exit_status()
+            error_output = stderr.read().decode('utf-8').strip()
 
-                print(f"📁 Path type: {path_type}")
-                cmd = f'rm -rf "{path}"'
-                print(f"🔧 Executing command: {cmd}")
+            if exit_status == 0:
+                print(f"✅ Deletion successful: {paths}")
 
-                stdin, stdout, stderr = self.conn.exec_command(cmd)
-                exit_status = stdout.channel.recv_exit_status()
-                error_output = stderr.read().decode('utf-8').strip()
+                # 计算所有父目录，刷新文件树
+                parent_dirs = {os.path.dirname(p)
+                               for p in paths if os.path.dirname(p)}
+                if parent_dirs:
+                    print(f"🔄 Refreshing parent directories: {parent_dirs}")
+                    self.refresh_paths(list(parent_dirs))
 
-                if exit_status == 0:
-                    print(f"✅ Deletion successful: {path}")
-                    parent_dir = os.path.dirname(path)
-                    if parent_dir:
-                        parent_dirs_to_refresh.add(parent_dir)
-                else:
-                    error_msg = f"Deletion command failed for {path}: {error_output}" if error_output else "Unknown error"
-                    print(f"❌ Deletion failed - {error_msg}")
-                    errors.append(error_msg)
-                    all_successful = False
+                # 发信号：成功
+                display_path = "Multiple files" if len(paths) > 1 else paths[0]
+                self.delete_finished.emit(display_path, True, "")
+                if callback:
+                    callback(True, "")
 
-            except Exception as e:
-                error_msg = f"Error during deletion of {path}: {str(e)}"
-                print(f"❌ Deletion failed - {error_msg}")
-                traceback.print_exc()
-                errors.append(error_msg)
-                all_successful = False
+            else:
+                error_msg = f"Deletion failed: {error_output or 'Unknown error'}"
+                print(f"❌ {error_msg}")
+                display_path = "Multiple files" if len(paths) > 1 else paths[0]
+                self.delete_finished.emit(display_path, False, error_msg)
+                if callback:
+                    callback(False, error_msg)
 
-        final_error_message = "; ".join(errors)
-        display_path = "Multiple files" if len(paths) > 1 else paths[0]
-        self.delete_finished.emit(
-            display_path, all_successful, final_error_message)
-
-        if parent_dirs_to_refresh:
-            print(f"🔄 Refreshing parent directories: {parent_dirs_to_refresh}")
-            self.refresh_paths(list(parent_dirs_to_refresh))
-
-        if callback:
-            callback(all_successful, final_error_message)
+        except Exception as e:
+            error_msg = f"Error during deletion: {str(e)}"
+            print(f"❌ {error_msg}")
+            traceback.print_exc()
+            display_path = "Multiple files" if len(paths) > 1 else paths[0]
+            self.delete_finished.emit(display_path, False, error_msg)
+            if callback:
+                callback(False, error_msg)
 
     # ---------------------------
     # 辅助方法 - 添加安全的路径处理
@@ -1505,3 +1500,106 @@ class RemoteFileManager(QThread):
         except Exception as e:
             print(f"删除路径 {path} 出错: {e}")
             return False
+
+
+class FileManagerHandler:
+    """负责处理 RemoteFileManager 的所有信号，避免匿名函数乱飞"""
+
+    def __init__(self, file_manager: RemoteFileManager, session_widget, child_key, parent):
+        self.fm = file_manager
+        self.session_widget = session_widget
+        self.child_key = child_key
+        self.parent = parent  # main_window or whoever owns the callbacks
+
+        # 绑定信号
+        self._connect_signals()
+
+    def _connect_signals(self):
+        fm = self.fm
+        ck = self.child_key
+
+        fm.file_tree_updated.connect(
+            lambda file_tree, path: self.parent.on_file_tree_updated(
+                file_tree, self.session_widget, path)
+        )
+        fm.error_occurred.connect(self.parent.on_file_manager_error)
+
+        fm.delete_finished.connect(
+            partial(self._wrap_show_info, type_="delete"))
+        fm.upload_finished.connect(
+            partial(self._wrap_show_info, type_="upload"))
+        fm.download_finished.connect(self._on_download_finished)
+        fm.copy_finished.connect(self._on_copy_finished)
+        fm.rename_finished.connect(self._on_rename_finished)
+        fm.file_type_ready.connect(self._on_file_type_ready)
+        fm.file_info_ready.connect(self._on_file_info_ready)
+        fm.mkdir_finished.connect(partial(self._wrap_show_info, type_="mkdir"))
+
+        fm.start_to_compression.connect(
+            partial(self._wrap_show_info, type_="compression"))
+        fm.start_to_uncompression.connect(
+            partial(self._wrap_show_info, type_="uncompression"))
+
+        fm.compression_finished.connect(self._on_compression_finished)
+        fm.upload_progress.connect(partial(self._on_progress, mode="upload"))
+        fm.download_progress.connect(
+            partial(self._on_progress, mode="download"))
+
+        self.session_widget.file_explorer.upload_file.connect(
+            self._on_upload_request)
+
+    # ---- 封装的槽函数 ----
+
+    def _wrap_show_info(self, path, status, msg, type_, local_path=None, target_path=None, open_it=False):
+        print(f"type : {type_}")
+        self.parent._show_info(path, status, msg, type_, self.child_key,
+                               local_path=local_path,  open_it=open_it)
+
+    def _on_download_finished(self, remote_path, local_path, status, error_msg, open_it):
+        self._wrap_show_info(remote_path, status, error_msg, "download",
+                             local_path=local_path, open_it=open_it)
+
+    def _on_copy_finished(self, source_path, target_path, status, error_msg):
+        self._wrap_show_info(source_path, status, error_msg,
+                             "paste", target_path=target_path)
+
+    def _on_rename_finished(self, source_path, new_path, status, error_msg):
+        self._wrap_show_info(source_path, status, error_msg,
+                             "rename", local_path=new_path)
+
+    def _on_file_type_ready(self, path, type_):
+        self.parent._open_server_files(path, type_, self.child_key)
+
+    def _on_file_info_ready(self, path, info, status, error_msg):
+        self._wrap_show_info(path, status, error_msg, "info", local_path=info)
+
+    def _on_compression_finished(self, identifier, new_name):
+        self.parent._update_transfer_item_name(
+            identifier, new_name, self.child_key)
+
+    def _on_progress(self, path, percentage, bytes_so_far, total_bytes, mode):
+        self.parent._show_progresses(path, percentage, bytes_so_far, total_bytes,
+                                     self.child_key, mode)
+
+    def _on_upload_request(self, local_path, remote_path, compression):
+        self.parent._handle_upload_request(self.child_key, local_path, remote_path,
+                                           compression, self.fm)
+
+    def cleanup(self):
+        """断开所有信号，防止 widget 删除后还有事件进来"""
+        self.fm.file_tree_updated.disconnect()
+        self.fm.error_occurred.disconnect()
+        self.fm.delete_finished.disconnect()
+        self.fm.upload_finished.disconnect()
+        self.fm.download_finished.disconnect()
+        self.fm.copy_finished.disconnect()
+        self.fm.rename_finished.disconnect()
+        self.fm.file_type_ready.disconnect()
+        self.fm.file_info_ready.disconnect()
+        self.fm.mkdir_finished.disconnect()
+        self.fm.start_to_compression.disconnect()
+        self.fm.start_to_uncompression.disconnect()
+        self.fm.compression_finished.disconnect()
+        self.fm.upload_progress.disconnect()
+        self.fm.download_progress.disconnect()
+        self.session_widget.file_explorer.upload_file.disconnect()

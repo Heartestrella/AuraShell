@@ -544,3 +544,56 @@ class WebTerminal(QWidget):
             self.view.page().runJavaScript(js)
         except Exception as e:
             print("fit_terminal runJavaScript error:", e)
+
+    def cleanup(self):
+        """
+        安全清理 WebTerminal：
+        - 注销 TerminalBridge 的信号
+        - 清理 QWebEngineView
+        - 断开 worker
+        - 删除子控件
+        """
+        # 1️⃣ 断开 bridge 的信号
+        try:
+            self.bridge.directoryChanged.disconnect()
+        except Exception:
+            pass
+
+        # 2️⃣ 注销 worker
+        if self.bridge.worker:
+            try:
+                self.bridge.worker.result_ready.disconnect(
+                    self.bridge._on_worker_output)
+            except Exception:
+                pass
+            self.bridge.worker = None
+
+        # 3️⃣ 清空输入缓冲
+        self.bridge._input_buffer = ""
+        self.bridge.current_directory = "/"
+
+        # 4️⃣ 清理 QWebEngineView
+        if hasattr(self, 'view') and self.view:
+            try:
+                self.view.page().setWebChannel(None)
+                self.view.setParent(None)
+                self.view.deleteLater()
+            except Exception:
+                pass
+            self.view = None
+
+        # 5️⃣ 删除主布局里的所有 item
+        if hasattr(self, 'main_layout') and self.main_layout:
+            while self.main_layout.count():
+                item = self.main_layout.takeAt(0)
+                w = item.widget()
+                if w:
+                    w.setParent(None)
+                    w.deleteLater()
+            self.main_layout = None
+
+        # 6️⃣ 从父控件中移除自己
+        parent_layout = self.parentWidget().layout() if self.parentWidget() else None
+        if parent_layout:
+            parent_layout.removeWidget(self)
+        self.setParent(None)

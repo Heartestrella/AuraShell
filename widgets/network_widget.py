@@ -73,16 +73,18 @@ class NetMonitor(CardWidget):
             self.download_data.pop(0)
 
         x = list(range(len(self.upload_data)))
-        self.upload_curve.setData(x, self.upload_data)
-        self.download_curve.setData(x, self.download_data)
+        if self.upload_curve:
+            self.upload_curve.setData(x, self.upload_data)
+            self.download_curve.setData(x, self.download_data)
 
-        # 更新标签
-        self.upload_label.setText(f"↑ {self.format_speed(upload_kbps)}")
-        self.download_label.setText(f"↓ {self.format_speed(download_kbps)}")
+            # 更新标签
+            self.upload_label.setText(f"↑ {self.format_speed(upload_kbps)}")
+            self.download_label.setText(
+                f"↓ {self.format_speed(download_kbps)}")
 
-        # 强制刷新绘图
-        self.plot_widget.update()
-        self.plot_widget.repaint()
+            # 强制刷新绘图
+            self.plot_widget.update()
+            self.plot_widget.repaint()
 
     def format_speed(self, value: float) -> str:
         """根据 KB/s 数值自动选择单位显示"""

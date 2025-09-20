@@ -16,14 +16,15 @@ from tools.session_manager import SessionManager
 from tools.logger import setup_global_logging, main_logger
 from widgets.ssh_widget import Widget
 from tools.ssh import SSHWorker
-from tools.icons import My_Icons
-from tools.remote_file_manage import RemoteFileManager
-from tools.setting_config import SCM
+from tools.remote_file_manage import RemoteFileManager, FileManagerHandler
 from widgets.sync_widget import SycnWidget
 import os
 import subprocess
 from tools.atool import resource_path
 from tools.setting_config import SCM
+from widgets.new_ssh_widget import SSHPage, SSHWidget
+from tools.icons import My_Icons
+from functools import partial
 font_ = font_config()
 setting_ = SCM()
 
@@ -33,6 +34,7 @@ class Window(FramelessWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        self.icons = My_Icons()
         self.active_transfers = {}
         self._download_debounce_timer = QTimer(self)
         self._download_debounce_timer.setSingleShot(True)
@@ -44,7 +46,7 @@ class Window(FramelessWindow):
         self._resize_timer = QTimer(self)
         self._resize_timer.setSingleShot(True)
         self._resize_timer.timeout.connect(self.apply_locked_ratio)
-        self.icons = My_Icons()
+
         self.setMinimumSize(800, 600)
         self.setTitleBar(StandardTitleBar(self))
         self._bg_ratio = None
@@ -90,8 +92,10 @@ class Window(FramelessWindow):
                 parent=self
             )
         )
-        self.sessions = Widget(
-            self.tr('No conversation selected yet'), True, self)
+        # self.sessions = Widget(
+        #     self.tr('No conversation selected yet'), True, self)
+        self.ssh_page = SSHPage()
+        self.ssh_page.menuActionTriggered.connect(self._handle_action)
 
         self.navigationInterface.setStyleSheet("background: transparent;")
         self.navigationInterface.setCollapsible(True)
@@ -151,13 +155,13 @@ class Window(FramelessWindow):
             parent=self
         )
 
-    def _set_usage(self, child_key, usage):
+    def _set_usage(self, widget_key, usage):
         try:
             result = dict(usage)
-            parent_key = child_key.split("-", 1)[0].strip()
+            parent_key = widget_key.split("-", 1)[0].strip()
             # print(self.session_widgets)
             # print(parent_key)
-            widget = self.session_widgets[parent_key][child_key]
+            widget = self.session_widgets[widget_key]
             if widget:
                 cpu_percent = result["cpu_percent"]
                 mem_percent = result["mem_percent"]
@@ -185,16 +189,15 @@ class Window(FramelessWindow):
         except Exception as e:
             print(e)
 
-    def _show_info(self, path: str = None, status: bool = None, msg: str = None, type_: str = None, child_key: str = None, local_path: str = None, open_it: bool = False):
+    def _show_info(self, path: str = None, status: bool = None, msg: str = None, type_: str = None, widget_key: str = None, local_path: str = None, open_it: bool = False):
         no_refresh_types = ["download",
                             "start_upload", "start_download", "info"]
-
-        parent_key = child_key.split("-")[0].strip()
-        session_widget = self.session_widgets.get(
-            parent_key, {}).get(child_key)
+       #  print(f"showinfo : {type_} {widget_key}")
+        duration = 3000
+        session_widget = self.session_widgets[widget_key]
         if not session_widget:
             return
-
+        title = ""
         if type_ == "upload":
             paths = path if isinstance(path, list) else [path]
             for p in paths:
@@ -202,14 +205,14 @@ class Window(FramelessWindow):
                 file_id = self.active_transfers.get(p, {}).get("id")
                 if not file_id:
                     # Fallback for safety, though it should exist
-                    file_id = f"{child_key}_{p}_{time.time()}"
+                    file_id = f"{widget_key}_{p}_{time.time()}"
 
                 if status:
                     if p not in self.active_transfers:
                         # This can happen if the file is very small and finishes
                         # before any progress signal is emitted.
                         self._add_transfer_item_if_not_exists(
-                            child_key, p, "upload")
+                            widget_key, p, "upload")
                         file_id = self.active_transfers[p]["id"]
 
                     if p in self.active_transfers:
@@ -219,7 +222,11 @@ class Window(FramelessWindow):
                     data = {"type": "completed", "progress": 100}
                     session_widget.transfer_progress.update_transfer_item(
                         file_id, data)
+                    title = self.tr(f"Upload {p} completed")
+                    duration = 2000
                 else:
+                    title = f"Uoload {p} failure"
+                    duration = -1
                     if p in self.active_transfers:
                         session_widget.transfer_progress.remove_transfer_item(
                             self.active_transfers[p]["id"])
@@ -234,7 +241,7 @@ class Window(FramelessWindow):
         elif type_ == "start_download":
             paths = path if isinstance(path, list) else [path]
             for p in paths:
-                file_id = f"{child_key}_{os.path.basename(p)}_{time.time()}"
+                file_id = f"{widget_key}_{os.path.basename(p)}_{time.time()}"
                 data = {
                     "type": "download",
                     "filename": os.path.basename(p),
@@ -274,7 +281,7 @@ class Window(FramelessWindow):
                     del self.active_transfers[path]
             elif status:  # Finished signal for a small file that sent no progress
                 self._add_transfer_item_if_not_exists(
-                    child_key, path, "download")
+                    widget_key, path, "download")
                 if path in self.active_transfers:
                     file_id = self.active_transfers[path]["id"]
                     self.active_transfers[path]['type'] = 'completed'
@@ -290,6 +297,7 @@ class Window(FramelessWindow):
                 title = self.tr(f"Start to {type_} : {path}")
                 msg = ""
             elif type_ == "delete":
+                print("delete showinfo")
                 if status:
                     title = self.tr(f"Deleted {path} successfully")
                 else:
@@ -317,32 +325,31 @@ class Window(FramelessWindow):
                         f"Failed to create directory {path}\n{msg}")
                     duration = -1
 
-            if title:
-                InfoBar.info(
-                    title=title,
-                    content=msg,
-                    orient=Qt.Horizontal,
-                    isClosable=True,
-                    position=InfoBarPosition.BOTTOM_RIGHT,
-                    duration=duration,
-                    parent=self.window()
-                )
+        if title:
+            InfoBar.info(
+                title=title,
+                content=msg,
+                orient=Qt.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.BOTTOM_RIGHT,
+                duration=duration,
+                parent=self.window()
+            )
 
-        if type_ not in no_refresh_types and child_key:
-            self._refresh_paths(child_key)
+        if type_ not in no_refresh_types and widget_key:
+            self._refresh_paths(widget_key)
+            print(f"刷新路径: {widget_key}")
 
-    def _show_progresses(self, path, percentage, bytes_so_far, total_bytes, child_key, transfer_type):
+    def _show_progresses(self, path, percentage, bytes_so_far, total_bytes, widget_key, transfer_type):
         """Handles progress updates for both uploads and downloads."""
-        parent_key = child_key.split("-")[0].strip()
-        session_widget = self.session_widgets.get(
-            parent_key, {}).get(child_key)
+        session_widget = self.session_widgets[widget_key]
         if not session_widget:
             return
 
         # 'path' is the unique identifier (local for upload, remote for download)
         if path not in self.active_transfers:
             self._add_transfer_item_if_not_exists(
-                child_key, path, transfer_type)
+                widget_key, path, transfer_type)
 
         if path in self.active_transfers:
             file_id = self.active_transfers[path]["id"]
@@ -355,60 +362,19 @@ class Window(FramelessWindow):
             session_widget.transfer_progress.update_transfer_item(
                 file_id, data)
 
-    def _start_ssh_connect(self, session, child_key):
-
-        parent_key = child_key.split("-")[0].strip()
-        session_widget = self.session_widgets[parent_key][child_key]
+    def _start_ssh_connect(self,  widget_key):
+        parent_key = widget_key.split("-")[0].strip()
+        session = self.sessionmanager.get_session_by_name(parent_key)
+        session_widget = self.session_widgets[widget_key]
         processes = SSHWorker(session, for_resources=True)
-        self.ssh_session[f'{child_key}-processes'] = processes
+        self.ssh_session[f'{widget_key}-processes'] = processes
         processes.sys_resource.connect(
-            lambda usage, key=child_key: self._set_usage(key, usage))
+            lambda usage, key=widget_key: self._set_usage(key, usage))
         processes.start()
 
         file_manager = RemoteFileManager(session)
-        file_manager.file_tree_updated.connect(
-            lambda file_tree, path, sw=session_widget: self.on_file_tree_updated(
-                file_tree, sw, path)
-        )
-
-        file_manager.error_occurred.connect(
-            self.on_file_manager_error)
-        file_manager.delete_finished.connect(lambda path, status, msg:
-                                             self._show_info(path, status, msg, "delete", child_key))
-        file_manager.upload_finished.connect(lambda path, status, msg:
-                                             self._show_info(path, status, msg, "upload", child_key))
-        file_manager.download_finished.connect(lambda remote_path, local_path, status, error_msg, open_it:
-                                               self._show_info(remote_path, status, error_msg, "download", child_key, local_path=local_path, open_it=open_it))
-        file_manager.copy_finished.connect(lambda source_path, target_path, status, error_msg:
-                                           self._show_info(source_path, status, error_msg, "paste", child_key, target_path))
-        file_manager.rename_finished.connect(lambda source_path, new_path, status, error_msg: self._show_info(
-            path=source_path, status=status, msg=error_msg, local_path=new_path, type_="rename", child_key=child_key
-        ))
-        file_manager.file_type_ready.connect(
-            lambda path, type_: self._open_server_files(path, type_, child_key))
-        file_manager.file_info_ready.connect(
-            lambda path, info, status, error_msg: self._show_info(path=path, status=status, child_key=child_key, msg=error_msg, type_="info", local_path=info))
-        file_manager.mkdir_finished.connect(lambda path, status, msg: self._show_info(
-            path=path, status=status, msg=msg, type_="mkdir", child_key=child_key
-        ))
-        file_manager.start_to_compression.connect(
-            lambda path: self._show_info(path=path, type_="compression", child_key=child_key))
-        file_manager.start_to_uncompression.connect(
-            lambda path: self._show_info(path=path, type_="uncompression", child_key=child_key))
-        file_manager.compression_finished.connect(
-            lambda identifier, new_name: self._update_transfer_item_name(identifier, new_name, child_key))
-        file_manager.upload_progress.connect(
-            lambda path, percentage, bytes_so_far, total_bytes: self._show_progresses(
-                path, percentage, bytes_so_far, total_bytes, child_key, 'upload')
-        )
-        file_manager.download_progress.connect(
-            lambda path, percentage, bytes_so_far, total_bytes: self._show_progresses(
-                path, percentage, bytes_so_far, total_bytes, child_key, 'download')
-        )
-        session_widget.file_explorer.upload_file.connect(
-            lambda local_path, remote_path, compression: self._handle_upload_request(
-                child_key, local_path, remote_path, compression, file_manager)
-        )
+        handler = FileManagerHandler(
+            file_manager, session_widget, widget_key, self)
 
         def on_sftp_ready():
             global home_path
@@ -427,14 +393,21 @@ class Window(FramelessWindow):
                 # session_widget.ssh_widget.bridge.home_path = home_path
             session_widget.file_explorer.path = home_path
             file_manager.add_path(home_path)
+
+            def _on_path_check_result(self, widget_key, path, result):
+                """替代 lambda 的槽函数"""
+                self._update_file_tree_branch_when_cd(path, widget_key)
             file_manager.path_check_result.connect(
-                lambda path, result: self._update_file_tree_branch_when_cd(path, child_key), Qt.QueuedConnection)
+                partial(_on_path_check_result,
+                        widget_key), Qt.QueuedConnection
+            )
+
         file_manager.sftp_ready.connect(on_sftp_ready)
         file_manager.start()
-        self.file_tree_object[child_key] = file_manager
-
+        self.file_tree_object[widget_key] = file_manager
+        self.file_tree_object[f"{widget_key}-handler"] = handler
         worker = SSHWorker(session, for_resources=False)
-        self.ssh_session[child_key] = worker
+        self.ssh_session[widget_key] = worker
 
         worker.connected.connect(
             lambda success, msg: self._on_ssh_connected(success, msg))
@@ -442,7 +415,7 @@ class Window(FramelessWindow):
 
         try:
 
-            child_widget = self.session_widgets[parent_key][child_key]
+            child_widget = self.session_widgets[widget_key]
             if hasattr(child_widget, 'ssh_widget'):
                 child_widget.ssh_widget.set_worker(worker)
             else:
@@ -455,11 +428,11 @@ class Window(FramelessWindow):
             lambda path: file_manager.check_path_async(path)
         )
         session_widget.disk_storage.refresh.triggered.connect(
-            lambda checked, ck=child_key: self._refresh_paths(ck)
+            lambda checked, ck=widget_key: self._refresh_paths(ck)
         )
 
-    def _open_server_files(self, path: str, type_: str, child_key: str):
-        file_manager: RemoteFileManager = self.file_tree_object[child_key]
+    def _open_server_files(self, path: str, type_: str, widget_key: str):
+        file_manager: RemoteFileManager = self.file_tree_object[widget_key]
         duration = 2000
         title = self.tr(f"File: {path} Type: {type_}\n")
         msg = self.tr(
@@ -480,8 +453,8 @@ class Window(FramelessWindow):
         if type_ != "executable":
             file_manager.download_path_async(path, True)
 
-    def _handle_files(self, action_type, full_path, copy_to, cut, child_key):
-        file_manager: RemoteFileManager = self.file_tree_object[child_key]
+    def _handle_files(self, action_type, full_path, copy_to, cut, widget_key):
+        file_manager: RemoteFileManager = self.file_tree_object[widget_key]
         if action_type == "delete":
             file_manager.delete_path(full_path)
         elif action_type == "copy_path":
@@ -490,13 +463,13 @@ class Window(FramelessWindow):
             clipboard.setText('\n'.join(paths_to_copy))
         elif action_type == "download":
             # Debounce download requests
-            if child_key not in self._pending_download_paths:
-                self._pending_download_paths[child_key] = {
+            if widget_key not in self._pending_download_paths:
+                self._pending_download_paths[widget_key] = {
                     "paths": [], "compression": cut}
 
             # Since _handle_files is called for each item, full_path is a single path string
-            self._pending_download_paths[child_key]["paths"].append(full_path)
-            self._pending_download_paths[child_key]["compression"] = cut
+            self._pending_download_paths[widget_key]["paths"].append(full_path)
+            self._pending_download_paths[widget_key]["compression"] = cut
             self._download_debounce_timer.start()
 
         elif action_type == "paste":
@@ -529,7 +502,7 @@ class Window(FramelessWindow):
         paths_to_process_now = self._pending_download_paths
         self._pending_download_paths = {}
 
-        for child_key, download_info in paths_to_process_now.items():
+        for widget_key, download_info in paths_to_process_now.items():
             paths_to_download = download_info["paths"]
             compression = download_info["compression"]
 
@@ -537,7 +510,7 @@ class Window(FramelessWindow):
                 continue
 
             file_manager: RemoteFileManager = self.file_tree_object.get(
-                child_key)
+                widget_key)
             if not file_manager:
                 continue
 
@@ -548,20 +521,19 @@ class Window(FramelessWindow):
                     p for p, t in path_types.items() if t == "file"]
                 for path in files_to_add_ui:
                     self._add_transfer_item_if_not_exists(
-                        child_key, path, "download")
+                        widget_key, path, "download")
                 file_manager.download_path_async(
                     paths_to_download, compression=compression)
 
             else:  # Compressed download
                 self._add_transfer_item_if_not_exists(
-                    child_key, paths_to_download, "download")
+                    widget_key, paths_to_download, "download")
                 file_manager.download_path_async(
                     paths_to_download, compression=compression)
 
-    def _refresh_paths(self, child_key: str):
+    def _refresh_paths(self, widget_key: str):
         print("Refresh the page")
-        parent_key = child_key.split("-")[0].strip()
-        session_widget: Widget = self.session_widgets[parent_key][child_key]
+        session_widget: Widget = self.session_widgets[widget_key]
         session_widget._update_file_explorer()
 
     def parse_linux_path(self, path: str) -> list:
@@ -590,8 +562,8 @@ class Window(FramelessWindow):
 
         return path_list
 
-    def _update_file_tree_branch_when_cd(self, path: str, child_key: str):
-        file_manager: RemoteFileManager = self.file_tree_object[child_key]
+    def _update_file_tree_branch_when_cd(self, path: str, widget_key: str):
+        file_manager: RemoteFileManager = self.file_tree_object[widget_key]
         file_manager.add_path(path, update_tree_sign=True)
         # path_status = file_manager.check_path_type(path)
         # # print(f"更新目录：{path}")
@@ -625,60 +597,55 @@ class Window(FramelessWindow):
                 count += 1
         return count
 
-    def _on_session_selected(self, session_id=None, parent_key=None):
+    def _on_session_selected(self, session_id=None, session_name=None):
         """Handling session selection"""
-        # self.MainInterface.card_dict[session_id].set_connect_status(True)
+
+        def _connect_file_explorer_signals(self, widget, widget_key):
+            # 文件操作
+            widget.file_explorer.file_action.connect(
+                partial(self._handle_files, widget_key=widget_key)
+            )
+
+            # 目录选择
+            widget.disk_storage.directory_selected.connect(
+                partial(self._update_file_tree_branch_when_cd,
+                        widget_key=widget_key)
+            )
+
+            # 取消传输
+            widget.transfer_progress.cancelRequested.connect(
+                partial(self._handle_transfer_cancellation,
+                        widget_key=widget_key)
+            )
+            self.windowResized.connect(widget.on_main_window_resized)
+        if session_name:
+            name = session_name.rsplit(" - ", 1)[0]
+            session = self.sessionmanager.get_session_by_name(name)
+
         if session_id:
             session = self.sessionmanager.get_session(session_id=session_id)
-        elif parent_key:
-            session = self.sessionmanager.get_session_by_name(parent_key)
-        if not parent_key:
-            parent_key = session.name
-        if parent_key not in self.session_widgets:
-            # Create a parent widget
-            print(f"partent_key: {parent_key}")
-            parent_widget = Widget(parent_key, True, self,)
-            parent_widget.setObjectName(parent_key)
-            self.addSubInterface(
-                parent_widget, FIF.ALBUM, parent_key, parent=self.sessions
-            )
-            self.session_widgets[parent_key] = {}
-            self.session_widgets[parent_key]["widget"] = parent_widget
-        else:
-            parent_widget = self.session_widgets[parent_key]["widget"]
+
+        name = session.name
 
         child_number = 1
-        for key in self.session_widgets[parent_key].keys():
-            if key.startswith(f"{parent_key} - "):
+        for key in self.session_widgets.keys():
+            if key.startswith(f"{name} - "):
                 try:
                     existing_num = int(key.split(" - ")[-1])
                     child_number = max(child_number, existing_num + 1)
                 except ValueError:
                     continue
-
-        child_key = f"{parent_key} - {child_number}"
+        widget_key = f"{name} - {child_number}"
+        print(widget_key)
         font_name, font_size = font_.read_font()
-        child_widget = Widget(child_key, False, self,
-                              font_name=font_name, user_name=session.username)
-        # Add to parent
-        child_widget.file_explorer.file_action.connect(
-            lambda action_type, full_path, copy_to, cut: self._handle_files(action_type, full_path, copy_to, cut, child_key))
-        child_widget.disk_storage.directory_selected.connect(
-            lambda path: self._update_file_tree_branch_when_cd(path, child_key))
-        child_widget.transfer_progress.cancelRequested.connect(
-            lambda file_id: self._handle_transfer_cancellation(
-                file_id, child_key)
-        )
-        self.addSubInterface(
-            child_widget, FIF.ALBUM, child_key, parent=parent_widget,
-        )
+        widget = SSHWidget(widget_key, font_name=font_name)
+        self.ssh_page.add_session(widget_key, widget_key, widget=widget)
+        _connect_file_explorer_signals(self, widget, widget_key)
 
-        self.session_widgets[parent_key][child_key] = child_widget
-        self.windowResized.connect(child_widget.on_main_window_resized)
-        self.switchTo(widget=child_widget, window_tittle=child_key)
-        print(f"Creating a Child Session: {child_key} (Parent: {parent_key})")
-        print(session, child_key)
-        self._start_ssh_connect(session, child_key)
+        self.session_widgets[widget_key] = widget
+
+        self._start_ssh_connect(widget_key)
+        self.switchTo(self.ssh_page, widget_key)
 
     def apply_locked_ratio(self, event=None):
         new_width, new_height = 0, 0
@@ -721,8 +688,10 @@ class Window(FramelessWindow):
 
         self.navigationInterface.addSeparator()
 
-        self.addSubInterface(self.sessions, FIF.ALBUM,
-                             self.tr("SSH session"), NavigationItemPosition.SCROLL)
+        # self.addSubInterface(self.sessions, FIF.ALBUM,
+        #                      self.tr("SSH session"), NavigationItemPosition.SCROLL)
+
+        self.addSubInterface(self.ssh_page, FIF.ALBUM, self.tr("SSH Session"))
 
         self.addSubInterface(self.sycn_widget, FIF.SYNC, self.tr(
             "Sync"), NavigationItemPosition.BOTTOM)
@@ -753,83 +722,33 @@ class Window(FramelessWindow):
 
         self.setQss()
 
-    # I cant del the widget's parent widget on remove_sub_interface!!!
+    def _handle_action(self, action, name):
+        if action == "close":
+            self.remove_interface(name)
+        elif action == "copy":
+            self._on_session_selected(session_name=name)
 
-    def remove_sub_interface(self, widget=None, close_sub_all: bool = False, parent_id: str = None):
-
-        # Only for main interface.SSHCARD close all sub interface
-        # close_sub_all Must be true!!!
-        remove_keys = []
+    def remove_interface(self, widget_name):
         try:
-            if parent_id:
-                parent = parent_id
-            else:
-                widget_name = widget.objectName()
-                parent = widget_name.split("-")[0].strip()
-            if close_sub_all == True:
-                # remove and close widget
-                for widget_name in self.session_widgets[parent].keys():
-                    if widget_name != "widget":
-                        self.navigationInterface.removeWidget(
-                            routeKey=widget_name)
-                        remove_keys.append(widget_name)
-                for widget_name in remove_keys:
-                    ssh_widget = self.session_widgets[parent].pop(
-                        widget_name, None)
-                    if ssh_widget:
-                        ssh_widget._cleanup()
-                # remove and close ssh
-                keys_to_remove = [
-                    key for key in self.ssh_session if key.startswith(parent)]
-
-                for key in keys_to_remove:
-                    worker = self.ssh_session.pop(key, None)
-                    if worker:
-                        worker.close()
-
-                keys_to_remove_files = [
-                    key for key, value in self.file_tree_object.items() if key.startswith(parent)]
-                for key in keys_to_remove_files:
-                    file_manager = self.file_tree_object.pop(key, None)
-                    if file_manager:
-                        file_manager._cleanup()
-                # for key, ssh_session in self.ssh_session.items():
-                #     if key.startswith(parent):
-                #         remove_ssh_sessions[key] = ssh_session
-                # for key, ssh_session in remove_ssh_sessions.items():
-                #     self.ssh_session.pop(key, None)
-                #     ssh_session.close()
-
-            else:
-                self.navigationInterface.removeWidget(routeKey=widget_name)
-                ssh_widget = self.session_widgets[parent].pop(
-                    widget_name, None)
-                if ssh_widget:
-                    ssh_widget._cleanup()
-                worker = self.ssh_session.pop(widget_name, None)
-                worker_processes = self.ssh_session.pop(
-                    f'{widget_name}-processes', None)
-                if worker:
-                    worker.close()
-                if worker_processes:
-                    worker_processes.close()
-                file_manager = self.file_tree_object.pop(widget_name, None)
-                if file_manager:
-                    file_manager._cleanup()
-            print(f"After close {self.ssh_session} {self.file_tree_object}")
-            if not parent_id:
-                self.switchTo(self.session_widgets[parent]["widget"])
-            close_count = 1 if len(remove_keys) == 0 else len(remove_keys)
-            InfoBar.success(
-                title=self.tr('Session closed successfully!'),
-                content=self.tr(
-                    f'Closed {close_count} sessions under "{parent}"'),
-                orient=Qt.Horizontal,
-                isClosable=True,
-                position=InfoBarPosition.TOP_RIGHT,
-                duration=3000,
-                parent=self
-            )
+            self.ssh_page.remove_session(widget_name)
+            widget = self.session_widgets[widget_name]
+            widget.cleanup()
+            self.session_widgets.pop(widget_name, None)
+            widget.deleteLater()
+            worker = self.ssh_session.pop(widget_name, None)
+            worker_processes = self.ssh_session.pop(
+                f'{widget_name}-processes', None)
+            if worker:
+                worker.close()
+            if worker_processes:
+                worker_processes.close()
+            file_manager = self.file_tree_object.pop(widget_name, None)
+            if file_manager:
+                file_manager._cleanup()
+            file_manager_handler = self.file_tree_object.pop(
+                f"{widget_name}-handler", None)
+            if file_manager_handler:
+                file_manager_handler.cleanup()
         except Exception as e:
             InfoBar.error(
                 title=self.tr('Error closing session!'),
@@ -870,32 +789,31 @@ class Window(FramelessWindow):
         widget = self.stackWidget.widget(index)
         self.navigationInterface.setCurrentItem(widget.objectName())
 
-    def _handle_upload_request(self, child_key, local_path, remote_path, compression, file_manager):
+    def _handle_upload_request(self, widget_key, local_path, remote_path, compression, file_manager):
         """Pre-handles upload requests to determine if UI items should be pre-created."""
         # If compression is on and we have a list, create a single UI item for the batch.
         if compression and isinstance(local_path, list):
             task_id = f"compress_upload_{time.time()}"
             self._add_transfer_item_if_not_exists(
-                child_key, local_path, 'upload', task_id=task_id)
+                widget_key, local_path, 'upload', task_id=task_id)
             file_manager.upload_file(
                 local_path, remote_path, compression, task_id=task_id)
             return
 
         # Original logic for other cases (single files, non-compressed lists/dirs)
         paths = local_path if isinstance(local_path, list) else [local_path]
+        print(f"Paths Len : {len(paths)}")
         for p in paths:
             # For non-compressed dirs, we don't create items here.
             # They will be created dynamically on first progress/finished signal.
             if not (os.path.isdir(p) and not compression):
                 self._add_transfer_item_if_not_exists(
-                    child_key, p, 'upload')
+                    widget_key, p, 'upload')
             file_manager.upload_file(p, remote_path, compression)
 
-    def _add_transfer_item_if_not_exists(self, child_key, path, transfer_type, task_id=None):
+    def _add_transfer_item_if_not_exists(self, widget_key, path, transfer_type, task_id=None):
         """Helper to add a transfer item to the UI if it doesn't exist."""
-        parent_key = child_key.split("-")[0].strip()
-        session_widget = self.session_widgets.get(
-            parent_key, {}).get(child_key)
+        session_widget = self.session_widgets[widget_key]
         if not session_widget:
             return
 
@@ -908,7 +826,7 @@ class Window(FramelessWindow):
             return  # Avoid creating duplicate entries
 
         # Create a truly unique ID for the UI widget
-        file_id = f"{child_key}_{task_identifier}_{time.time()}"
+        file_id = f"{widget_key}_{task_identifier}_{time.time()}"
 
         if isinstance(path, list) and transfer_type == 'upload':
             # Special handling for compressed list uploads
@@ -934,9 +852,16 @@ class Window(FramelessWindow):
         self.active_transfers[task_identifier] = data
         session_widget.transfer_progress.add_transfer_item(file_id, data)
 
-    def _handle_transfer_cancellation(self, file_id, child_key):
-        """Handles the request to cancel a file transfer."""
-        file_manager = self.file_tree_object.get(child_key)
+    def _handle_transfer_cancellation(self, file_id, widget_key):
+        # import inspect
+        # caller_frame = inspect.stack()[1]
+        # caller_filename = caller_frame.filename
+        # caller_line_no = caller_frame.lineno
+        # caller_func_name = caller_frame.function
+        # print(
+        #     f"Called from {caller_func_name} in {caller_filename}:{caller_line_no}")
+
+        file_manager = self.file_tree_object.get(widget_key)
         if not file_manager:
             return
 
@@ -952,9 +877,7 @@ class Window(FramelessWindow):
             file_manager.cancel_transfer(task_identifier)
 
             # Remove from UI and tracking dictionary
-            parent_key = child_key.split("-")[0].strip()
-            session_widget = self.session_widgets.get(
-                parent_key, {}).get(child_key)
+            session_widget = self.session_widgets[widget_key]
             if session_widget:
                 session_widget.transfer_progress.remove_transfer_item(file_id)
 
@@ -971,10 +894,8 @@ class Window(FramelessWindow):
             }
         """)
 
-    def _update_transfer_item_name(self, identifier, new_name, child_key):
-        parent_key = child_key.split("-")[0].strip()
-        session_widget = self.session_widgets.get(
-            parent_key, {}).get(child_key)
+    def _update_transfer_item_name(self, identifier, new_name, widget_key):
+        session_widget = self.session_widgets[widget_key]
         if not session_widget:
             return
 

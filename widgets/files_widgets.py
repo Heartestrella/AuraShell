@@ -5,7 +5,6 @@ from PyQt5.QtGui import QFont, QPainter, QColor, QStandardItemModel, QStandardIt
 from PyQt5.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
 from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit, ScrollArea, TableView, CheckableMenu
 import os
-from functools import partial
 from qfluentwidgets import isDarkTheme
 from tools.setting_config import SCM
 
@@ -184,14 +183,14 @@ class FileItem(QWidget):
     # new_dir_name
     mkdir_action = pyqtSignal(str)
 
-    def __init__(self, name, is_dir, parent=None, explorer=None, icons=None):
+    def __init__(self, name, is_dir, parent=None, explorer=None):
         super().__init__(parent)
         self.name = name
         self.is_dir = is_dir
         self.selected = False
         self.parent_explorer = explorer
-        self.icons = icons
         self.mkdir = False
+        icons = self._get_icons()
         self.icon = icons.Folder_Icon if is_dir else icons.File_Icon
         self.setMinimumSize(self.WIDTH, self.HEIGHT)
 
@@ -204,6 +203,13 @@ class FileItem(QWidget):
         self.rename_edit.editingFinished.connect(self._apply_rename)
         self._rename_applied = False
         self._init_actions()
+
+    def _get_icons(self):
+        parent = self.parent()
+        while parent:
+            if hasattr(parent, 'icons'):
+                return parent.icons
+            parent = parent.parent()
 
     def _update_style(self):
         """Update styles based on the theme"""
@@ -346,6 +352,7 @@ class FileItem(QWidget):
                     "rename", self.name, new_name, str(self.is_dir))
             self.rename_edit.hide()
             self.update()
+
 
 class NameDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index):
@@ -652,12 +659,11 @@ class FileExplorer(QWidget):
     upload_file = pyqtSignal(object, str, bool)
     refresh_action = pyqtSignal()
 
-    def __init__(self, parent=None, path=None, icons=None):
+    def __init__(self, parent=None, path=None):
         super().__init__(parent)
         self.view_mode = "icon"  # "icon" or "details"
         self.copy_file_path = None
         self.cut_ = False
-        self.icons = icons
         self.path = path
         self._is_loading = False
 
@@ -691,6 +697,7 @@ class FileExplorer(QWidget):
         self._init_actions()
 
     def _request_directory_change(self, item_info):
+        print(item_info)
         is_dir = list(item_info.values())[0]
         if not is_dir:
             self.selected.emit(item_info)
@@ -821,7 +828,7 @@ class FileExplorer(QWidget):
 
         for name, is_dir, *_ in entries:
             item_widget = FileItem(
-                name, is_dir, parent=self.container, explorer=self, icons=self.icons)
+                name, is_dir, parent=self.container, explorer=self)
             item_widget.selected_sign.connect(self._request_directory_change)
             item_widget.action_triggered.connect(self._handle_file_action)
             item_widget.rename_action.connect(
