@@ -148,8 +148,9 @@ class File_Navigation_Bar(QWidget):
         self._is_submitting = True
         new_path = self.path_edit.text().strip()
         if new_path:
-            self.current_path = new_path
-            self.bar_path_changed.emit(new_path)
+            if self.current_path != new_path:
+                self.current_path = new_path
+                self.bar_path_changed.emit(new_path)
         self._hide_path_edit()
         self._is_submitting = False
 

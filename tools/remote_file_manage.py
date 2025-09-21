@@ -296,22 +296,29 @@ class RemoteFileManager(QThread):
         """Handles dispatching of download tasks, expanding directories if necessary."""
         paths_to_process = remote_path if isinstance(
             remote_path, list) else [remote_path]
+        print(f"paths_to_process : {paths_to_process}")
+        if compression:
+            # compression all files to a tar
+            self._create_and_start_worker(
+                'download', self.download_conn, None, paths_to_process, compression, open_it)
+        else:
+            for path_item in paths_to_process:
+                print(f"非压缩下载 {path_item}")
+                is_dir = self.check_path_type(path_item) == "directory"
 
-        for path_item in paths_to_process:
-            is_dir = self.check_path_type(path_item) == "directory"
-
-            if is_dir and not compression:
-                # Expand directory into a list of files for individual download
-                all_files, dirs_to_create = self._list_remote_files_recursive(
-                    path_item)
-                for file_path in all_files:
-                    # For each file, we pass the original directory as 'context'
+                if is_dir:
+                    # Expand directory into a list of files for individual download
+                    all_files, dirs_to_create = self._list_remote_files_recursive(
+                        path_item)
+                    for file_path in all_files:
+                        # For each file, we pass the original directory as 'context'
+                        print(f"添加 {file_path} 到任务")
+                        self._create_and_start_worker(
+                            'download', self.download_conn, None, file_path, compression, open_it, download_context=path_item)
+                else:
+                    # It's a single file, a list of files, or a compressed directory
                     self._create_and_start_worker(
-                        'download', self.download_conn, None, file_path, compression, open_it, download_context=path_item)
-            else:
-                # It's a single file, a list of files, or a compressed directory
-                self._create_and_start_worker(
-                    'download', self.download_conn, None, path_item, compression, open_it)
+                        'download', self.download_conn, None, path_item, compression, open_it)
 
     def _list_remote_files_recursive(self, remote_path):
         """Recursively lists all files in a remote directory. Returns a tuple of (file_paths, dir_paths)."""
@@ -640,11 +647,11 @@ class RemoteFileManager(QThread):
 
                 # common executable-related MIME strings
                 if ("executable" in mime_out
-                            or "x-executable" in mime_out
-                            or mime_out.startswith("application/x-sharedlib")
-                            or "x-mach-binary" in mime_out
-                            or "pe" in mime_out  # covers various PE-like mimes
-                        ):
+                        or "x-executable" in mime_out
+                        or mime_out.startswith("application/x-sharedlib")
+                        or "x-mach-binary" in mime_out
+                        or "pe" in mime_out  # covers various PE-like mimes
+                    ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
 
@@ -1535,10 +1542,10 @@ class FileManagerHandler:
         fm.file_info_ready.connect(self._on_file_info_ready)
         fm.mkdir_finished.connect(partial(self._wrap_show_info, type_="mkdir"))
 
-        fm.start_to_compression.connect(
-            partial(self._wrap_show_info, type_="compression"))
-        fm.start_to_uncompression.connect(
-            partial(self._wrap_show_info, type_="uncompression"))
+        # fm.start_to_compression.connect(
+        #     partial(self._wrap_show_info, type_="compression"))
+        # fm.start_to_uncompression.connect(
+        #     partial(self._wrap_show_info, type_="uncompression"))
 
         fm.compression_finished.connect(self._on_compression_finished)
         fm.upload_progress.connect(partial(self._on_progress, mode="upload"))

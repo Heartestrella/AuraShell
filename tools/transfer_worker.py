@@ -215,7 +215,7 @@ class TransferWorker(QRunnable):
             self.signals.compression_finished.emit(
                 identifier, os.path.basename(tmp_tar_path))
             self._upload_file(
-                identifier, tmp_tar_path, remote_path, emit_finish_signal=False)
+                identifier, tmp_tar_path, remote_path)
             remote_zip_path = f"{remote_path.rstrip('/')}/{os.path.basename(tmp_tar_path)}"
             self._remote_untar(remote_zip_path, remote_path)
             self.signals.finished.emit(identifier, True, "")
@@ -327,7 +327,7 @@ class TransferWorker(QRunnable):
         local_base = "_ssh_download"
         os.makedirs(local_base, exist_ok=True)
         paths = [remote_path] if isinstance(remote_path, str) else remote_path
-
+        print(f"download1 : {remote_path}")
         try:
             if compression:
                 # Simplified compression logic for now
@@ -343,7 +343,8 @@ class TransferWorker(QRunnable):
                         progress = int((bytes_so_far / total_bytes) * 100)
                         # We can perhaps divide progress for different stages
                         # Assuming download is the main part
-                        self.signals.progress.emit(identifier, progress)
+                        self.signals.progress.emit(
+                            identifier, progress, bytes_so_far, total_bytes)
 
                 self.sftp.get(remote_tar, local_tar_path,
                               callback=progress_callback)
@@ -434,7 +435,6 @@ class TransferWorker(QRunnable):
     def _remote_tar(self, paths):
         if not paths:
             return None
-
         common_path = os.path.dirname(paths[0]).replace('\\', '/')
         tar_name = f"archive_{os.path.basename(paths[0])}.tar.gz"
         remote_tar_path = f"{common_path}/{tar_name}"

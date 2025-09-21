@@ -14,7 +14,6 @@ from widgets.home_interface import MainInterface
 from tools.font_config import font_config
 from tools.session_manager import SessionManager
 from tools.logger import setup_global_logging, main_logger
-from widgets.ssh_widget import Widget
 from tools.ssh import SSHWorker
 from tools.remote_file_manage import RemoteFileManager, FileManagerHandler
 from widgets.sync_widget import SycnWidget
@@ -22,7 +21,7 @@ import os
 import subprocess
 from tools.atool import resource_path
 from tools.setting_config import SCM
-from widgets.new_ssh_widget import SSHPage, SSHWidget
+from widgets.ssh_widget import SSHPage, SSHWidget
 from tools.icons import My_Icons
 from functools import partial
 font_ = font_config()
@@ -395,7 +394,6 @@ class Window(FramelessWindow):
             file_manager.add_path(home_path)
 
             def _on_path_check_result(self, widget_key, path, result):
-                """替代 lambda 的槽函数"""
                 self._update_file_tree_branch_when_cd(path, widget_key)
             file_manager.path_check_result.connect(
                 partial(_on_path_check_result,
@@ -526,14 +524,15 @@ class Window(FramelessWindow):
                     paths_to_download, compression=compression)
 
             else:  # Compressed download
+                print(f"{type(paths_to_download)} {paths_to_download}")
                 self._add_transfer_item_if_not_exists(
-                    widget_key, paths_to_download, "download")
+                    widget_key, paths_to_download[0], "download")
                 file_manager.download_path_async(
-                    paths_to_download, compression=compression)
+                    paths_to_download[0], compression=compression)
 
     def _refresh_paths(self, widget_key: str):
         print("Refresh the page")
-        session_widget: Widget = self.session_widgets[widget_key]
+        session_widget: SSHWidget = self.session_widgets[widget_key]
         session_widget._update_file_explorer()
 
     def parse_linux_path(self, path: str) -> list:
@@ -813,6 +812,7 @@ class Window(FramelessWindow):
 
     def _add_transfer_item_if_not_exists(self, widget_key, path, transfer_type, task_id=None):
         """Helper to add a transfer item to the UI if it doesn't exist."""
+        print(f"{type(path)} {path}")
         session_widget = self.session_widgets[widget_key]
         if not session_widget:
             return
@@ -835,7 +835,7 @@ class Window(FramelessWindow):
             count = len(path)
             if count == 0:
                 return
-            file_name = f"{os.path.basename(path[0])}"
+            file_name = f"{os.path.basename(path[0][0])}"
             if count > 1:
                 file_name += f" and {count - 1} others"
         else:
