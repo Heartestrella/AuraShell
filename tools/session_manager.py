@@ -139,3 +139,17 @@ class SessionManager:
             if session.name == name:
                 return session
         return None
+
+    def add_command_to_session(self, name: str, command: str):
+        session = self.get_session_by_name(name)
+        if session:
+            session.add_command(command)
+            print(session.history)
+            self.save_sessions(self.sessions_cache)
+
+    def clear_history(self, name: str):
+        """清空指定 session 的历史命令"""
+        session = self.get_session_by_name(name)
+        if session:
+            session.history.clear()
+            self.save_sessions(self.sessions_cache)

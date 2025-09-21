@@ -16,9 +16,10 @@ from widgets.file_tree_widget import File_Navigation_Bar, FileTreeWidget
 from widgets.files_widgets import FileExplorer
 from widgets.transfer_progress_widget import TransferProgressWidget
 from widgets.command_input import CommandInput
-
+from tools.session_manager import SessionManager
 
 CONFIGER = SCM()
+session_manager = SessionManager()
 
 
 class SSHPage(QWidget):
@@ -144,6 +145,7 @@ class SSHWidget(QWidget):
         self.file_manager = None
         self.setObjectName(name)
         self.router = name
+        self.parentkey = name.split('-')[0].strip()
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         config = CONFIGER.read_config()
@@ -296,7 +298,7 @@ class SSHWidget(QWidget):
         command_bar_layout.setSpacing(8)
 
         self.command_icon = ToolButton(FIF.BROOM, self.command_bar)
-
+        self.history = ToolButton(FIF.HISTORY, self.command_bar)
         # Add bash wrap toggle button
         # Add bash wrap toggle button
         self.bash_wrap_button = ToolButton(
@@ -317,13 +319,13 @@ class SSHWidget(QWidget):
         self.command_input = CommandInput(self.command_bar)
         self.command_input.setObjectName("command_input")
         self.command_input.setPlaceholderText(
-            self.tr("Enter command here,Shift+Enter for new line,Enter to sendExec"))
+            self.tr("Enter command here,Shift+Enter for new line,Enter to sendExec,or Enter Alt to show history command"))
         # self.command_input.setFixedHeight(32) # Remove fixed height
         self.command_input.setVerticalScrollBarPolicy(
             Qt.ScrollBarAlwaysOff)
         self.command_input.textChanged.connect(self.adjust_input_height)
         self.command_input.executeCommand.connect(self.send_command_to_ssh)
-
+        self.command_input.clear_history_.connect(self._clear_history)
         self.command_input.setStyleSheet("""
             CommandInput#command_input {
                 background-color: transparent;
@@ -333,9 +335,13 @@ class SSHWidget(QWidget):
                 padding-left: 5px;
             }
         """ % config["ssh_widget_text_color"])
+        self.command_input.add_history(
+            session_manager.get_session_by_name(self.parentkey).history)
         self.command_icon.clicked.connect(self.ssh_widget.clear_screen)
+        self.history.clicked.connect(self.command_input.toggle_history)
         command_bar_layout.addWidget(self.command_icon)
         command_bar_layout.addWidget(self.bash_wrap_button)
+        command_bar_layout.addWidget(self.history)
         command_bar_layout.addWidget(self.command_input)
 
         top_container_layout.addWidget(self.ssh_widget)
@@ -418,6 +424,9 @@ class SSHWidget(QWidget):
         self.resize_timer.timeout.connect(self.ssh_widget.fit_terminal)
         rsplitter.splitterMoved.connect(self.resize_timer.start)
 
+    def _clear_history(self):
+        session_manager.clear_history(self.parentkey)
+
     def _on_upload_mode_toggled(self, checked):
         CONFIGER.revise_config("compress_upload", checked)
         self.file_explorer.upload_mode_switch.setChecked(checked)
@@ -459,6 +468,8 @@ class SSHWidget(QWidget):
             else:
                 final_command = command + '\n'
             self.ssh_widget.send_command(final_command)
+            session_manager.add_command_to_session(
+                self.parentkey, final_command)
 
     def _on_bash_wrap_toggled(self, checked):
         self.bash_wrap_enabled = checked

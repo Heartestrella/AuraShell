@@ -1085,5 +1085,13 @@ class FileExplorer(QWidget):
             self.refresh_action.emit()
         elif event.key() == Qt.Key_Backspace:
             self.selected.emit({'..': True})
+        elif event.key() == Qt.Key_A and (event.modifiers() & Qt.ControlModifier):
+            if self.view_mode == 'icon':
+                self.selected_items.clear()
+                for i in range(self.flow_layout.count()):
+                    widget = self.flow_layout.itemAt(i).widget()
+                    widget.selected = True
+                    widget.update()
+                    self.selected_items.add(widget)
         else:
             super().keyPressEvent(event)

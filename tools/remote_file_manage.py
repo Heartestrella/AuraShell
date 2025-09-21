@@ -651,7 +651,7 @@ class RemoteFileManager(QThread):
                         or mime_out.startswith("application/x-sharedlib")
                         or "x-mach-binary" in mime_out
                         or "pe" in mime_out  # covers various PE-like mimes
-                    ):
+                        ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
 
@@ -1594,19 +1594,32 @@ class FileManagerHandler:
 
     def cleanup(self):
         """断开所有信号，防止 widget 删除后还有事件进来"""
-        self.fm.file_tree_updated.disconnect()
-        self.fm.error_occurred.disconnect()
-        self.fm.delete_finished.disconnect()
-        self.fm.upload_finished.disconnect()
-        self.fm.download_finished.disconnect()
-        self.fm.copy_finished.disconnect()
-        self.fm.rename_finished.disconnect()
-        self.fm.file_type_ready.disconnect()
-        self.fm.file_info_ready.disconnect()
-        self.fm.mkdir_finished.disconnect()
-        self.fm.start_to_compression.disconnect()
-        self.fm.start_to_uncompression.disconnect()
-        self.fm.compression_finished.disconnect()
-        self.fm.upload_progress.disconnect()
-        self.fm.download_progress.disconnect()
-        self.session_widget.file_explorer.upload_file.disconnect()
+        signals = [
+            "file_tree_updated",
+            "error_occurred",
+            "sftp_ready",
+            "upload_progress",
+            "download_progress",
+            "upload_finished",
+            "delete_finished",
+            "list_dir_finished",
+            "path_check_result",
+            "download_finished",
+            "copy_finished",
+            "rename_finished",
+            "file_info_ready",
+            "file_type_ready",
+            "mkdir_finished",
+            "start_to_compression",
+            "start_to_uncompression",
+            "compression_finished",
+        ]
+
+        for sig_name in signals:
+            sig = getattr(self, sig_name, None)
+            if sig is not None:
+                try:
+                    sig.disconnect()
+                except (TypeError, RuntimeError):
+                    # 信号没连接任何槽或已经断开，忽略
+                    pass
