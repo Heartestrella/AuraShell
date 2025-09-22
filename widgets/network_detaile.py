@@ -253,7 +253,7 @@ class NetProcessMonitor(QWidget):
         header.resizeSection(3, 120)  # 本地IP
         header.resizeSection(4, 100)  # 远程端口
         header.resizeSection(5, 100)  # 连接数
-        header.resizeSection(6, 120)  # 上传/下载
+        header.resizeSection(6, 200)  # 上传/下载
 
         # 添加到布局
         layout.addLayout(control_layout)
