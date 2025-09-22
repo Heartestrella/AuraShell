@@ -9,7 +9,7 @@ from qfluentwidgets import SegmentedWidget, RoundMenu, Action, FluentIcon as FIF
 
 from tools.setting_config import SCM
 from tools.ssh_webterm import WebTerminal
-
+from widgets.network_detaile import NetProcessMonitor
 from widgets.system_resources_widget import ProcessTable
 from widgets.task_widget import Tasks
 from widgets.file_tree_widget import File_Navigation_Bar, FileTreeWidget
@@ -399,8 +399,14 @@ class SSHWidget(QWidget):
 
             self.file_bar.update_view_switch_button(
                 self.file_explorer.view_mode)
+            self.file_bar.pivot.currentItemChanged.connect(
+                self._change_file_or_net)
         connect_file_explorer()
+        self.net_monitor = NetProcessMonitor()
         file_manage_layout.addWidget(self.file_bar)
+        self.net_monitor.hide()
+        file_manage_layout.addWidget(self.net_monitor)
+        self.now_ui = "file_explorer"
         file_manage_layout.addWidget(self.file_explorer, 1)
 
         rightLayout.addWidget(rsplitter)
@@ -414,8 +420,8 @@ class SSHWidget(QWidget):
         rsplitter.setStretchFactor(0, 3)   # top_container
         rsplitter.setStretchFactor(1, 2)   # file_manage
 
-        splitter_lr.setStretchFactor(0, 1)  # 左侧面板
-        splitter_lr.setStretchFactor(1, 9)  # 右侧主区
+        splitter_lr.setStretchFactor(0, 25)  # 左侧面板
+        splitter_lr.setStretchFactor(1, 75)  # 右侧主区
 
         # ---- Debounce terminal resize on splitter move ----
         self.resize_timer = QTimer(self)
@@ -423,6 +429,16 @@ class SSHWidget(QWidget):
         self.resize_timer.setInterval(50)  # 150ms delay
         self.resize_timer.timeout.connect(self.ssh_widget.fit_terminal)
         rsplitter.splitterMoved.connect(self.resize_timer.start)
+
+    def _change_file_or_net(self, router):
+        if router == "file_explorer" and self.now_ui != "file_explorer":
+            self.net_monitor.hide()
+            self.file_explorer.show()
+            self.now_ui = "file_explorer"
+        elif router == "net" and self.now_ui != "net":
+            self.file_explorer.hide()
+            self.net_monitor.show()
+            self.now_ui = "net"
 
     def _clear_history(self):
         session_manager.clear_history(self.parentkey)

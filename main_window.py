@@ -2,7 +2,7 @@
 import sys
 import ctypes
 import time
-from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal
+from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal, QLibraryInfo
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget
 
@@ -1013,39 +1013,152 @@ def language_code_to_locale(code: str) -> str:
     return mapping.get(code, "en_US")
 
 
+def enable_hardware_acceleration():
+    """启用硬件加速配置"""
+    # 1. 设置环境变量（必须在 QApplication 创建之前）
+    env_vars = {
+        # Chromium 相关（QWebEngineView）
+        'QTWEBENGINE_CHROMIUM_FLAGS': (
+            '--enable-gpu --enable-gpu-rasterization --enable-accelerated-2d-canvas '
+            '--enable-zero-copy --ignore-gpu-blocklist --enable-gpu-sandbox '
+            '--disable-gpu-driver-bug-workarounds --enable-native-gpu-memory-buffers'
+        ),
+
+        # Qt 渲染优化
+        'QT_AUTO_SCREEN_SCALE_FACTOR': '1',
+        'QT_SCALE_FACTOR': '1',
+        'QT_DEVICE_PIXEL_RATIO': 'auto',
+
+        # OpenGL 优化
+        'QSG_RENDER_LOOP': 'basic',  # 基本渲染循环，更稳定
+        'QSG_DISTANCEFIELD_SCALE': '1.5',  # 高清文字渲染
+
+        # 禁用不必要的特性以提升性能
+        'QT_QUICK_BACKEND': 'native',  # 使用原生渲染后端
+        'QTWEBENGINE_DISABLE_SANDBOX': '0',  # 保持沙箱安全
+
+        # Windows 特定优化
+        'QML_DISABLE_DISTANCEFIELD': '0',
+        'QSG_NO_DEPTH_BUFFER': '0'
+    }
+
+    for key, value in env_vars.items():
+        os.environ[key] = value
+        print(f"✅ 设置环境变量: {key} = {value}")
+
+    # 2. 检查 GPU 支持
+    try:
+        # 检查 OpenGL 支持
+        from PyQt5.QtGui import QOpenGLContext, QSurfaceFormat
+        format = QSurfaceFormat.defaultFormat()
+        print(f"默认 OpenGL 格式: {format.version()}, Profile: {format.profile()}")
+
+        # 强制启用 OpenGL 2.0+
+        if format.majorVersion() < 2:
+            format.setVersion(2, 0)
+            format.setProfile(QSurfaceFormat.CoreProfile)
+            QSurfaceFormat.setDefaultFormat(format)
+            print("🔧 强制设置 OpenGL 2.0+")
+
+    except Exception as gl_error:
+        print(f"⚠️  OpenGL 配置警告: {gl_error}")
+
+    # 3. 打印硬件信息
+    print(f"🖥️  系统平台: {sys.platform}")
+    print(f"💻  Python 版本: {sys.version}")
+    # print(
+    #     f"🖼️  Qt 版本: {QLibraryInfo.libraryLocation(QLibraryInfo.LibraryLocation.PrefixPath)}")
+
+    # 4. 检测 GPU 驱动
+    try:
+        import platform
+        if platform.system() == "Windows":
+            # Windows GPU 信息
+            import subprocess
+            try:
+                result = subprocess.run(
+                    ['nvidia-smi', '--query-gpu=name',
+                        '--format=csv,noheader,nounits'],
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    print(f"🎮  NVIDIA GPU: {result.stdout.strip()}")
+                else:
+                    print("📱  使用集成显卡或无 NVIDIA GPU")
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                print("📱  无 NVIDIA GPU 或驱动未安装")
+    except ImportError:
+        pass
+
+
 if __name__ == '__main__':
     try:
+        print("🚀 启动硬件加速配置...")
+        enable_hardware_acceleration()
+
+        # 1. 配置管理器
         configer = SCM()
 
+        # 2. 设置日志
         setup_global_logging()
-        main_logger.info("Application Startup")
+        main_logger.info("Application Startup with Hardware Acceleration")
+
+        # 3. Qt 高 DPI 和硬件加速属性（在 QApplication 之前设置）
         QApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
-        QApplication.setAttribute(Qt.AA_UseOpenGLES)
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+        # 硬件加速相关属性
+        # 禁用 OpenGLES，优先使用 OpenGL
+        QApplication.setAttribute(Qt.AA_UseOpenGLES, False)
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+        QApplication.setAttribute(Qt.AA_UseDesktopOpenGL, True)  # 使用桌面 OpenGL
+        # QApplication.setAttribute(
+        #     Qt.AA_CompositingBackgroundEnabled, True)  # 合成背景
+        QApplication.setAttribute(
+            Qt.AA_DontCreateNativeWidgetSiblings, True)  # 优化窗口管理
+
+        # 4. 创建 QApplication
         app = QApplication(sys.argv)
 
-        # set icon
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            "su8aru.remmotessh.1.0.0")
+        # 5. 设置应用图标和 ID
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "su8aru.remmotessh.1.0.0")
+            main_logger.info("✅ Windows 应用 ID 设置成功")
+        except Exception as icon_error:
+            main_logger.warning(f"⚠️  应用 ID 设置失败: {icon_error}")
 
+        # 6. 读取配置
         config = configer.read_config()
         lang = language_code_to_locale(config.get("language", "system"))
+        main_logger.info(f"🌐  语言设置: {lang}")
 
-        # print(f"Language setting: {lang}")
+        # 7. 加载翻译
         translator = QTranslator()
         translator_1 = FluentTranslator()
+
         if lang == "en_US":
-            pass
+            main_logger.info("使用英语界面")
         elif translator.load(resource_path(f"resource/i18n/pssh_{lang}.qm")):
             app.installTranslator(translator)
+            main_logger.info(f"✅ 翻译文件加载成功: {lang}")
         else:
+            main_logger.warning(f"⚠️  翻译文件加载失败: {lang}")
             print("Translation file loading failed")
+
         app.installTranslator(translator_1)
+
+        # 8. 剪贴板初始化
         clipboard = app.clipboard()
+        main_logger.info("📋 剪贴板初始化完成")
+
+        # 9. 创建并显示主窗口
         w = Window()
         w.show()
+        main_logger.info("🖥️  主窗口显示成功")
+
+        # 10. 启动应用
+        main_logger.info("🎯 应用启动成功，进入事件循环")
         app.exec_()
     except Exception as e:
         main_logger.critical("Application startup failure", exc_info=True)

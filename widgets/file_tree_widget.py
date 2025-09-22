@@ -1,7 +1,7 @@
 from qfluentwidgets import BreadcrumbBar, LineEdit, TransparentToolButton
 from typing import Dict, Optional
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QStyle, QFrame
-from qfluentwidgets import isDarkTheme
+from qfluentwidgets import isDarkTheme, SegmentedWidget
 from PyQt5.QtCore import Qt, pyqtSignal
 from qfluentwidgets import TreeWidget, RoundMenu, Action, FluentIcon as FIF
 from typing import Optional, Dict, Set
@@ -101,10 +101,13 @@ class File_Navigation_Bar(QWidget):
         self.new_folder_button.setToolTip(self.tr('New folder'))
         self.refresh_button = TransparentToolButton(FIF.UPDATE, self)
         self.refresh_button.setToolTip(self.tr('Refresh') + '(F5)')
-
+        self.pivot = SegmentedWidget(self)
+        self.pivot.addItem("file_explorer", self.tr("File Explorer"))
+        self.pivot.addItem("net", self.tr("Network Detail"))
+        self.pivot.setCurrentItem("file_explorer")
         self.hBoxLayout.addWidget(self.new_folder_button)
         self.hBoxLayout.addWidget(self.refresh_button)
-
+        self.hBoxLayout.addWidget(self.pivot)
         self.new_folder_button.clicked.connect(self.new_folder_clicked.emit)
         self.refresh_button.clicked.connect(self.refresh_clicked.emit)
         self.view_switch_button.clicked.connect(self.view_switch_clicked.emit)
