@@ -6,6 +6,7 @@ import paramiko
 from typing import Dict, List
 from PyQt5.QtCore import QThread, QTimer, pyqtSignal
 from tools.atool import resource_path
+import binascii
 
 
 class SSHWorker(QThread):
@@ -14,7 +15,8 @@ class SSHWorker(QThread):
     error_occurred = pyqtSignal(str)
     sys_resource = pyqtSignal(dict)
     file_tree_updated = pyqtSignal(dict)
-
+    # host_key , processes_md5 key
+    key_verification = pyqtSignal(str, str)
     stop_timer_sig = pyqtSignal()
 
     def __init__(self, session_info, parent=None, for_resources=False, for_file=False):
@@ -37,6 +39,34 @@ class SSHWorker(QThread):
         self.file_tree: Dict = {}
         # Store the contents of each directory
         self.dir_contents: Dict[str, List[str]] = {}
+
+    def get_hostkey_fp_hex(self) -> str:
+        try:
+            transport = self.conn.get_transport()
+            if transport is None:
+                return None
+            host_key = transport.get_remote_server_key()
+            if host_key is None:
+                return None
+            fp_bytes = host_key.get_fingerprint()
+            if not fp_bytes:
+                return None
+            fp_hex = binascii.hexlify(fp_bytes).decode().lower()
+            return fp_hex
+        except Exception:
+            return None
+
+    def get_remote_md5(self, path):
+        try:
+            cmd = f"md5sum {path} 2>/dev/null | awk '{{print $1}}'"
+            stdin, stdout, stderr = self.conn.exec_command(cmd, timeout=10)
+            result = stdout.read().decode().strip()
+            if result:
+                return result
+            else:
+                return None
+        except Exception:
+            return None
 
     def run(self):
         try:
@@ -61,7 +91,6 @@ class SSHWorker(QThread):
                     sftp = self.conn.open_sftp()
                     remote_dir = "./.ssh"
                     remote_proc = "./.ssh/processes.sh"
-
                     # ensure remote .ssh dir exists
                     try:
                         sftp.stat(remote_dir)
@@ -128,6 +157,10 @@ class SSHWorker(QThread):
             self.timer.timeout.connect(self._check_output)
             self.timer.start(100)
             if self.for_resources:
+                md5 = self.get_remote_md5(remote_proc)
+                host_key = self.get_hostkey_fp_hex()
+                self.key_verification.emit(md5, host_key)
+                # print(md5, host_key)
                 try:
                     cmd = f'echo {self.password} | sudo -S ./.ssh/processes.sh'
                     self.run_command(cmd)
@@ -141,6 +174,22 @@ class SSHWorker(QThread):
         except Exception as e:
             tb = traceback.format_exc()
             self.error_occurred.emit(f"{e}\n{tb}")
+
+    def disconnect_all_signals(self):
+        signals = [
+            self.result_ready,
+            self.connected,
+            self.error_occurred,
+            self.sys_resource,
+            self.file_tree_updated,
+            self.key_verification,
+            self.stop_timer_sig,
+        ]
+        for sig in signals:
+            try:
+                sig.disconnect()
+            except TypeError:
+                pass
 
     def _cleanup(self):
         try:
@@ -159,6 +208,7 @@ class SSHWorker(QThread):
                 self.conn.close()
         except Exception:
             pass
+        self.disconnect_all_signals()
         # try:
         #     signals = [
         #         'result_ready', 'connected', 'error_occurred', 'sys_resource', 'file_tree_updated', 'stop_timer_sig'

@@ -7,7 +7,7 @@ from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget
 
 from qfluentwidgets import (NavigationInterface, NavigationItemPosition, InfoBar,
-                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget)
+                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget, Dialog)
 from qframelesswindow import FramelessWindow, StandardTitleBar
 from widgets.setting_page import SettingPage
 from widgets.home_interface import MainInterface
@@ -365,10 +365,35 @@ class Window(FramelessWindow):
                 file_id, data)
 
     def _start_ssh_connect(self,  widget_key):
+
         parent_key = widget_key.split("-")[0].strip()
         session = self.sessionmanager.get_session_by_name(parent_key)
+
+        def key_verification(file_md5, host_key):
+            msg = ''
+            session_file_md5 = session.processes_md5
+            session_host_key = session.host_key
+            if session_file_md5 != file_md5:
+                msg += self.tr(
+                    f"The MD5 file fingerprint of the Processes file does not match the record and may have been tampered with to become a dangerous file.\nMD5:{file_md5}\n")
+            if session_host_key != host_key:
+                msg += self.tr(
+                    f"The host key does not match the recorded one, there may be a man-in-the-middle attack.\n{host_key}\n")
+            if msg:
+                msg += self.tr("Are U sure to continue")
+                w = Dialog(self.tr("Warning!!!!!"), msg, self)
+                if w.exec():
+                    self.sessionmanager.update_session_processes_md5(
+                        parent_key, file_md5)
+                    self.sessionmanager.update_session_host_key(
+                        parent_key, host_key)
+                else:
+                    processes.close()
+                    return
+
         session_widget = self.session_widgets[widget_key]
         processes = SSHWorker(session, for_resources=True)
+        processes.key_verification.connect(key_verification)
         self.ssh_session[f'{widget_key}-processes'] = processes
         processes.sys_resource.connect(
             lambda usage, key=widget_key: self._set_usage(key, usage))

@@ -166,6 +166,7 @@ class SSHWidget(QWidget):
 
         # sys_resources
         self.sys_resources = ProcessTable(leftContainer)
+        self.sys_resources.set_font_family(font_name)
         self.sys_resources.setObjectName("sys_resources")
         self.sys_resources.setMinimumHeight(80)
         self.sys_resources.setSizePolicy(
