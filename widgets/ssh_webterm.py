@@ -238,13 +238,13 @@ class WebTerminal(QWidget):
     """
     directoryChanged = pyqtSignal(str)
 
-    def __init__(self, parent=None, cols=120, rows=30, text_color="white", bg_color="transparent", text_shadow=False, font_name=None, user_name=None):
+    def __init__(self, parent=None, cols=120, rows=30, text_color="white", bg_color="transparent", text_shadow=False, font_name=None, user_name=None, devmode=False):
         super().__init__(parent)
         self._rows = int(rows)
         self._cols = cols
         # Means not set color
         if text_color == "white":
-            pass
+            self._text_color = text_color
             # config = configer.read_config()
             # self._text_color = config["ssh_widget_text_color"]
             # print(self._text_color)
@@ -305,19 +305,11 @@ class WebTerminal(QWidget):
         self.bridge.directoryChanged.connect(self._on_directory_changed)
         self.channel.registerObject("bridge", self.bridge)
         self.view.page().setWebChannel(self.channel)
-        # DevTools 调试窗口
-        # 独立 DevTools 窗口（没有 parent）
-        self.devtools = QWebEngineView()
-        self.devtools.setWindowTitle("DevTools")
-        self.devtools.resize(900, 700)
-        self.view.page().setDevToolsPage(self.devtools.page())
 
-        shortcut = QShortcut(QKeySequence("Ctrl+Shift+I"), self)
-        shortcut.activated.connect(self._toggle_devtools)
+        if devmode:
+            self._open_dev_mode()
 
-        # 隐藏原生滚动条的 JavaScript 代码
         self.hide_scrollbars_js = """
-        // 隐藏所有滚动条
         const style = document.createElement('style');
         style.innerHTML = `
             ::-webkit-scrollbar {
@@ -337,15 +329,16 @@ class WebTerminal(QWidget):
         html = self._build_html()
         self.view.setHtml(html, QUrl("qrc:///"))
 
-        # 添加透明度调试输出
-        print(f"WebTerminal transparency check:")
-        print(
-            f"  Widget transparent: {self.testAttribute(Qt.WA_TranslucentBackground)}")
-        print(
-            f"  View transparent: {self.view.testAttribute(Qt.WA_TranslucentBackground)}")
-
-        # 在页面加载完成后检查背景色和隐藏滚动条
         self.view.page().loadFinished.connect(self._on_page_loaded)
+
+    def _open_dev_mode(self):
+        self.devtools = QWebEngineView()
+        self.devtools.setWindowTitle("DevTools")
+        self.devtools.resize(900, 700)
+        self.view.page().setDevToolsPage(self.devtools.page())
+
+        shortcut = QShortcut(QKeySequence("Ctrl+Shift+I"), self)
+        shortcut.activated.connect(self._toggle_devtools)
 
     def _toggle_devtools(self):
         if self.devtools.isVisible():

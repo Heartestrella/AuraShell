@@ -162,6 +162,7 @@ class Window(FramelessWindow):
             # print(parent_key)
             widget = self.session_widgets[widget_key]
             if widget:
+                connections = result["connections"]
                 cpu_percent = result["cpu_percent"]
                 mem_percent = result["mem_percent"]
                 net_usage = result["net_usage"]
@@ -182,6 +183,8 @@ class Window(FramelessWindow):
                         f"{processes_cpu_percent:.1f}",
                         processes_name
                     )
+                if connections:
+                    widget.net_monitor.updateProcessData(connections)
                     # print(processes_cpu_percent, processes_name, processes_mem)
             else:
                 print("Failed to obtain the SSH Widget")

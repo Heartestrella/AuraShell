@@ -129,14 +129,11 @@ class SSHWorker(QThread):
             self.timer.start(100)
             if self.for_resources:
                 try:
-                    self.run_command("./.ssh/processes.sh")
+                    cmd = f'echo {self.password} | sudo -S ./.ssh/processes.sh'
+                    self.run_command(cmd)
                     print("已启动远端 processes 可执行文件（./.ssh/processes）")
                 except Exception as e:
-                    print(f"启动 processes 失败，尝试回退：{e}")
-                    try:
-                        self.run_command("python3 processes.py")
-                    except Exception as e2:
-                        print(f"回退执行 python3 也失败: {e2}")
+                    print(f"启动 processes 失败：{e}")
 
             self.exec_()
             self._cleanup()

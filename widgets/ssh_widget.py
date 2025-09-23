@@ -8,7 +8,7 @@ from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPainterPath
 from qfluentwidgets import SegmentedWidget, RoundMenu, Action, FluentIcon as FIF, ToolButton
 
 from tools.setting_config import SCM
-from tools.ssh_webterm import WebTerminal
+from widgets.ssh_webterm import WebTerminal
 from widgets.network_detaile import NetProcessMonitor
 from widgets.system_resources_widget import ProcessTable
 from widgets.task_widget import Tasks

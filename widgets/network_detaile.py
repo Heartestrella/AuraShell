@@ -36,11 +36,6 @@ class NetConnectionModel(QAbstractTableModel):
                 return Qt.AlignRight | Qt.AlignVCenter
             return Qt.AlignLeft | Qt.AlignVCenter
 
-        # 移除所有颜色设置，保持透明
-        # elif role == Qt.BackgroundRole:
-        #     # 交替行颜色 - 已移除
-        #     pass
-
         return None
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
@@ -74,10 +69,8 @@ class NetProcessMonitor(QWidget):
         self.setWindowTitle(self.tr("Process Network Connections Monitor"))
         self.resize(1000, 600)
 
-        # 设置主题
         setTheme(Theme.DARK)
 
-        # 定义表头
         self.headers = [
             self.tr("Process Name"),
             self.tr("PID"),
@@ -88,11 +81,9 @@ class NetProcessMonitor(QWidget):
             self.tr("Upload/Download")
         ]
 
-        # 创建UI
         self.initUI()
 
-        # 生成示例数据
-        self.generateSampleData()
+        # self.generateSampleData()
 
     def initUI(self):
         # 设置透明背景
@@ -320,6 +311,21 @@ class NetProcessMonitor(QWidget):
         if col >= 0:
             self.proxy_model.sort(col, order)
 
+    def convert_connections_for_api(self, connections):
+        api_data = []
+        for conn in connections:
+            api_item = {
+                "Process Name": conn.get("name", ""),
+                "PID": conn.get("pid", 0),
+                "Local Port": conn.get("local_port", 0),
+                "Local IP": conn.get("local_ip", ""),
+                "Remote Port": conn.get("remote_port", 0),
+                "Connections": conn.get("connections", 0),
+                "Upload/Download": f"{conn.get('upload_kbps', 0)} KB / {conn.get('download_kbps', 0)} KB"
+            }
+            api_data.append(api_item)
+        return api_data
+
     def updateProcessData(self, process_data):
         """
         提供给外部调用的接口，用于更新进程数据
@@ -340,7 +346,8 @@ class NetProcessMonitor(QWidget):
                     ...
                 ]
         """
-        self.source_model.updateData(process_data)
+        self.source_model.updateData(
+            self.convert_connections_for_api(process_data))
 
     def tr(self, text):
         """翻译函数"""
