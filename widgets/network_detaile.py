@@ -69,7 +69,7 @@ class NetProcessMonitor(QWidget):
         self.setWindowTitle(self.tr("Process Network Connections Monitor"))
         self.resize(1000, 600)
 
-        setTheme(Theme.DARK)
+        # setTheme(Theme.DARK)
 
         self.headers = [
             self.tr("Process Name"),

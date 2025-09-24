@@ -364,8 +364,7 @@ class Window(FramelessWindow):
             session_widget.transfer_progress.update_transfer_item(
                 file_id, data)
 
-    def _start_ssh_connect(self,  widget_key):
-
+    def _start_ssh_connect(self, widget_key):
         parent_key = widget_key.split("-")[0].strip()
         session = self.sessionmanager.get_session_by_name(parent_key)
 
@@ -373,89 +372,96 @@ class Window(FramelessWindow):
             msg = ''
             session_file_md5 = session.processes_md5
             session_host_key = session.host_key
+
             if session_file_md5 != file_md5:
                 msg += self.tr(
-                    f"The MD5 file fingerprint of the Processes file does not match the record and may have been tampered with to become a dangerous file.\nMD5:{file_md5}\n")
+                    f"The MD5 file fingerprint of the Processes file does not match the record.\nMD5:{file_md5}\n")
             if session_host_key != host_key:
                 msg += self.tr(
-                    f"The host key does not match the recorded one, there may be a man-in-the-middle attack.\n{host_key}\n")
+                    f"The host key does not match the recorded one.\n{host_key}\n")
+
             if msg:
-                msg += self.tr("Are U sure to continue")
+                msg += self.tr("Are you sure to continue?")
                 w = Dialog(self.tr("Warning!!!!!"), msg, self)
                 if w.exec():
                     self.sessionmanager.update_session_processes_md5(
                         parent_key, file_md5)
                     self.sessionmanager.update_session_host_key(
                         parent_key, host_key)
+                    start_real_connection()
                 else:
-                    processes.close()
                     return
+            else:
+                start_real_connection()
 
-        session_widget = self.session_widgets[widget_key]
-        processes = SSHWorker(session, for_resources=True)
-        processes.key_verification.connect(key_verification)
-        self.ssh_session[f'{widget_key}-processes'] = processes
-        processes.sys_resource.connect(
-            lambda usage, key=widget_key: self._set_usage(key, usage))
-        processes.start()
+        def start_real_connection():
+            session_widget = self.session_widgets[widget_key]
+            # processes = SSHWorker(session, for_resources=True)
+            # processes.key_verification.connect(key_verification)
+            self.ssh_session[f'{widget_key}-processes'] = processes
+            processes.sys_resource.connect(
+                lambda usage, key=widget_key: self._set_usage(key, usage))
+            processes.start()
 
-        file_manager = RemoteFileManager(session)
-        handler = FileManagerHandler(
-            file_manager, session_widget, widget_key, self)
+            file_manager = RemoteFileManager(session)
+            handler = FileManagerHandler(
+                file_manager, session_widget, widget_key, self)
 
-        def on_sftp_ready():
-            global home_path
-            home_path = file_manager.get_default_path()
-            path_list = self.parse_linux_path(home_path)
-            # print(f"home_path : {home_path}\npath_list : {path_list}")
-            _count = 0
-            session_widget.file_bar.send_signal = False
-            for path in path_list:
-                _count += 1
-                if _count == len(path_list):
-                    session_widget.file_bar.send_signal = True
-                session_widget.file_bar.breadcrumbBar.addItem(
-                    path, path)
+            def on_sftp_ready():
+                global home_path
+                home_path = file_manager.get_default_path()
+                path_list = self.parse_linux_path(home_path)
 
-                # session_widget.ssh_widget.bridge.home_path = home_path
-            session_widget.file_explorer.path = home_path
-            file_manager.add_path(home_path)
+                session_widget.file_bar.send_signal = False
+                for i, path in enumerate(path_list):
+                    if i == len(path_list) - 1:
+                        session_widget.file_bar.send_signal = True
+                    session_widget.file_bar.breadcrumbBar.addItem(path, path)
 
-            def _on_path_check_result(self, widget_key, path, result):
-                self._update_file_tree_branch_when_cd(path, widget_key)
-            file_manager.path_check_result.connect(
-                partial(_on_path_check_result,
-                        widget_key), Qt.QueuedConnection
+                session_widget.file_explorer.path = home_path
+                file_manager.add_path(home_path)
+
+                def _on_path_check_result(widget_key, path, result):
+                    self._update_file_tree_branch_when_cd(path, widget_key)
+
+                file_manager.path_check_result.connect(
+                    partial(_on_path_check_result,
+                            widget_key), Qt.QueuedConnection
+                )
+
+            file_manager.sftp_ready.connect(on_sftp_ready)
+            file_manager.start()
+
+            self.file_tree_object[widget_key] = file_manager
+            self.file_tree_object[f"{widget_key}-handler"] = handler
+
+            worker = SSHWorker(session, for_resources=False)
+            self.ssh_session[widget_key] = worker
+            worker.connected.connect(
+                lambda success, msg: self._on_ssh_connected(success, msg))
+            worker.error_occurred.connect(lambda e: self._on_ssh_error(e))
+
+            try:
+                child_widget = self.session_widgets[widget_key]
+                if hasattr(child_widget, 'ssh_widget'):
+                    child_widget.ssh_widget.set_worker(worker)
+                else:
+                    print("child_widget does not have an ssh_widget attribute")
+            except Exception as e:
+                print("Injecting worker failed:", e)
+
+            worker.start()
+            session_widget.ssh_widget.directoryChanged.connect(
+                lambda path: file_manager.check_path_async(path)
+            )
+            session_widget.disk_storage.refresh.triggered.connect(
+                lambda checked, ck=widget_key: self._refresh_paths(ck)
             )
 
-        file_manager.sftp_ready.connect(on_sftp_ready)
-        file_manager.start()
-        self.file_tree_object[widget_key] = file_manager
-        self.file_tree_object[f"{widget_key}-handler"] = handler
-        worker = SSHWorker(session, for_resources=False)
-        self.ssh_session[widget_key] = worker
-
-        worker.connected.connect(
-            lambda success, msg: self._on_ssh_connected(success, msg))
-        worker.error_occurred.connect(lambda e: self._on_ssh_error(e))
-
-        try:
-
-            child_widget = self.session_widgets[widget_key]
-            if hasattr(child_widget, 'ssh_widget'):
-                child_widget.ssh_widget.set_worker(worker)
-            else:
-                print("child_widget does not have an ssh_widget attribute")
-        except Exception as e:
-            print("Injecting worker failed:", e)
-
-        worker.start()
-        session_widget.ssh_widget.directoryChanged.connect(
-            lambda path: file_manager.check_path_async(path)
-        )
-        session_widget.disk_storage.refresh.triggered.connect(
-            lambda checked, ck=widget_key: self._refresh_paths(ck)
-        )
+        # 第一次触发，先建立 processes worker，让它发出 key_verification
+        processes = SSHWorker(session, for_resources=True)
+        processes.key_verification.connect(key_verification)
+        processes.start()
 
     def _open_server_files(self, path: str, type_: str, widget_key: str):
         file_manager: RemoteFileManager = self.file_tree_object[widget_key]
