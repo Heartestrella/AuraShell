@@ -91,6 +91,7 @@ class Window(FramelessWindow):
                 parent=self
             )
         )
+        self.sycn_widget.hide()
         # self.sessions = Widget(
         #     self.tr('No conversation selected yet'), True, self)
         self.ssh_page = SSHPage()
@@ -729,8 +730,13 @@ class Window(FramelessWindow):
 
         self.addSubInterface(self.ssh_page, FIF.ALBUM, self.tr("SSH Session"))
 
-        self.addSubInterface(self.sycn_widget, FIF.SYNC, self.tr(
-            "Sync"), NavigationItemPosition.BOTTOM)
+        self.navigationInterface.addWidget(
+            routeKey='sync',
+            widget=NavigationAvatarWidget(
+                'Sync', resource_path('resource/icons/sync.svg')),
+            onClick=lambda: self.sycn_widget.exec_(),
+            position=NavigationItemPosition.BOTTOM,
+        )
 
         self.navigationInterface.addWidget(
             routeKey='about',

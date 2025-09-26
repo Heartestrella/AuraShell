@@ -1,6 +1,6 @@
 # setting_page.py
 import logging
-from PyQt5.QtCore import Qt, pyqtSignal, QCoreApplication
+from PyQt5.QtCore import Qt, pyqtSignal, QCoreApplication, QTimer
 from PyQt5.QtGui import QFontDatabase, QFont, QColor, QPalette, QKeySequence, QIntValidator
 from PyQt5.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout,
@@ -376,6 +376,26 @@ class SettingPage(ScrollArea):
         layout.setAlignment(Qt.AlignTop)
         self.init_window_size = False
 
+        # ----------------- Search box (NEW) -----------------
+        self.search_box = LineEdit()
+        self.search_box.setPlaceholderText(self.tr("Search settings..."))
+        self.search_box.setClearButtonEnabled(True)
+        self.search_box.textChanged.connect(self._on_search_text_changed)
+        self.search_box.returnPressed.connect(self._jump_to_first_match)
+        layout.addWidget(self.search_box)
+
+        self._no_results_label = QLabel(self.tr("No matching settings"))
+        self._no_results_label.setVisible(False)
+        layout.addWidget(self._no_results_label)
+
+        # internal structure to hold searchable items
+        # each item: { 'widget': QWidget, 'title': str, 'keywords': [str] }
+        self._search_items = []
+
+        # helpers for highlight timer
+        self._highlight_timers = {}
+
+        # ----------------- Original settings -----------------
         self.language_card = ComboBoxSettingCard(
             configItem=self.cfg.language,
             icon=FluentIcon.GLOBE,
@@ -392,6 +412,8 @@ class SettingPage(ScrollArea):
         self.language_card.comboBox.currentIndexChanged.connect(
             self._change_language)
         layout.addWidget(self.language_card)
+        self._register_searchable(self.language_card, self.tr("Language"),
+                                  ["language", "语言", "lang", "system default", "english", "中文", "简体中文", "日本語", "русский"])
 
         self.Color_card = ComboBoxSettingCard(
             configItem=self.cfg.background_color,
@@ -402,6 +424,8 @@ class SettingPage(ScrollArea):
                    self.tr("Follow system settings")]
         )
         layout.addWidget(self.Color_card)
+        self._register_searchable(self.Color_card, self.tr("Background Color"), [
+                                  "background", "color", "theme", "light", "dark"])
 
         self.bgCard = PushSettingCard(
             self.tr("Choose Background Image"),
@@ -412,6 +436,8 @@ class SettingPage(ScrollArea):
 
         self.bgCard.clicked.connect(self._pick_bg)
         layout.addWidget(self.bgCard)
+        self._register_searchable(self.bgCard, self.tr("Choose Background Image"), [
+                                  "background", "image", "photo", "custom background"])
 
         self.opacityEdit = RangeSettingCard(
             self.cfg.opacity,
@@ -422,6 +448,8 @@ class SettingPage(ScrollArea):
 
         self.opacityEdit.valueChanged.connect(self._save_opacity_value)
         layout.addWidget(self.opacityEdit)
+        self._register_searchable(self.opacityEdit, self.tr(
+            "Background Opacity"), ["opacity", "transparent", "alpha"])
 
         self.clearBgCard = PushSettingCard(
             self.tr("Clear Background"),
@@ -434,6 +462,8 @@ class SettingPage(ScrollArea):
             self.parent_class.clear_global_background)
         self.clearBgCard.clicked.connect(self._clear_bg_pic_to_config)
         layout.addWidget(self.clearBgCard)
+        self._register_searchable(self.clearBgCard, self.tr("Clear Background"), [
+                                  "clear", "remove", "background", "restore"])
 
         self.lock_ratio_card = SwitchSettingCard(
             icon=FluentIcon.LINK,
@@ -444,6 +474,8 @@ class SettingPage(ScrollArea):
 
         self.lock_ratio_card.checkedChanged.connect(self.on_lock_ratio_changed)
         layout.addWidget(self.lock_ratio_card)
+        self._register_searchable(self.lock_ratio_card, self.tr(
+            "Lock Aspect Ratio"), ["lock", "ratio", "aspect", "比例"])
 
         self.cd_follow = SwitchSettingCard(
             icon=FluentIcon.ACCEPT,
@@ -454,6 +486,8 @@ class SettingPage(ScrollArea):
         )
         self.cd_follow.checkedChanged.connect(self._set_cd_follow)
         layout.addWidget(self.cd_follow)
+        self._register_searchable(self.cd_follow, self.tr("Follow CD Directory"), [
+                                  "cd", "directory", "follow", "file manager"])
 
         self.font_select = PushSettingCard(
             self.tr("Set Font"),
@@ -462,6 +496,8 @@ class SettingPage(ScrollArea):
         )
         self.font_select.clicked.connect(self._select_font)
         layout.addWidget(self.font_select)
+        self._register_searchable(self.font_select, self.tr(
+            "Set Font"), ["font", "terminal", "typeface"])
 
         self.font_size = ComboBoxSettingCard(
             configItem=self.cfg.sizes,
@@ -473,6 +509,8 @@ class SettingPage(ScrollArea):
         self.font_size.comboBox.currentIndexChanged.connect(
             self._set_font_size)
         layout.addWidget(self.font_size)
+        self._register_searchable(self.font_size, self.tr(
+            "Font Size"), ["size", "fontsize", "字号"])
 
         self.setWidget(container)
         self.setWidgetResizable(True)
@@ -490,6 +528,8 @@ class SettingPage(ScrollArea):
         self.default_view_card.comboBox.currentIndexChanged.connect(
             self._on_default_view_changed)
         layout.addWidget(self.default_view_card)
+        self._register_searchable(self.default_view_card, self.tr("Default file manager view"), [
+                                  "view", "default view", "file manager", "icon", "info"])
 
         self.choose_color = PushSettingCard(
             self.tr("Open Color Picker"),
@@ -499,6 +539,8 @@ class SettingPage(ScrollArea):
         )
         self.choose_color.clicked.connect(self._open_color_dialog)
         layout.addWidget(self.choose_color)
+        self._register_searchable(self.choose_color, self.tr("Open Color Picker"), [
+                                  "color", "picker", "font color", "ssh"])
 
         self.unbelievable_button = PushSettingCard(
             self.tr("Click me to delay school"),
@@ -507,6 +549,8 @@ class SettingPage(ScrollArea):
         )
         self.unbelievable_button.clicked.connect(self._unbelievable)
         layout.addWidget(self.unbelievable_button)
+        self._register_searchable(self.unbelievable_button, self.tr(
+            "Click me to delay school"), ["delay", "school", "click me"])
 
         # Create a custom setting card with a LineEdit for direct input
         self.transfer_card = SettingCard(
@@ -523,9 +567,74 @@ class SettingPage(ScrollArea):
         self.transfer_card.hBoxLayout.addWidget(
             self.transfer_edit, 0, Qt.AlignRight)
         layout.addWidget(self.transfer_card)
+        self._register_searchable(self.transfer_card, self.tr("Max Concurrent Transfers"), [
+                                  "transfer", "concurrent", "uploads", "downloads", "并发"])
 
         self._restore_saved_settings()
 
+    # ----------------- Search helpers -----------------
+    def _register_searchable(self, widget: QWidget, title: str, keywords=None):
+        keywords = keywords or []
+        self._search_items.append({
+            'widget': widget,
+            'title': title,
+            'keywords': [k.lower() for k in keywords]
+        })
+
+    def _on_search_text_changed(self, text: str):
+        q = text.strip().lower()
+        any_visible = False
+        if q == "":
+            # show all
+            for it in self._search_items:
+                it['widget'].setVisible(True)
+            self._no_results_label.setVisible(False)
+            return
+
+        for it in self._search_items:
+            title = it['title'].lower() if it['title'] else ""
+            kws = it['keywords']
+            widget = it['widget']
+            matched = q in title or any(q in kw for kw in kws)
+            widget.setVisible(matched)
+            if matched:
+                any_visible = True
+        self._no_results_label.setVisible(not any_visible)
+
+    def _jump_to_first_match(self):
+        # Scroll to first visible matching widget
+        for it in self._search_items:
+            if it['widget'].isVisible():
+                target = it['widget']
+                try:
+                    self.ensureWidgetVisible(target)
+                except Exception:
+                    # fallback: try parent
+                    target.parent().setFocus()
+                # briefly highlight the widget
+                self._highlight_widget(target)
+                return
+
+    def _highlight_widget(self, widget: QWidget, duration_ms: int = 1500):
+        # apply temporary stylesheet to highlight a widget, then restore
+        old = widget.styleSheet()
+        highlight_ss = "border: 2px solid #0078d4; border-radius: 6px;"
+        widget.setStyleSheet(old + "\n" + highlight_ss)
+
+        # clear any previous timer
+        if widget in self._highlight_timers:
+            try:
+                self._highlight_timers[widget].stop()
+            except Exception:
+                pass
+
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda: widget.setStyleSheet(old))
+        timer.start(duration_ms)
+        self._highlight_timers[widget] = timer
+
+    # ----------------- rest of your existing methods (unchanged) -----------------
     def _save_opacity_value(self, value: int):
         configer.revise_config("background_opacity", value)
 

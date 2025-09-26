@@ -437,19 +437,22 @@ class SSHWidget(QWidget):
         rsplitter.splitterMoved.connect(self.resize_timer.start)
 
     def _change_file_or_net(self, router):
+        self.net_monitor.hide()
+        self.task_detaile.hide()
+        self.file_explorer.hide()
         if router == "file_explorer" and self.now_ui != "file_explorer":
-            self.net_monitor.hide()
-            self.task_detaile.hide()
+            # self.net_monitor.hide()
+            # self.task_detaile.hide()
             self.file_explorer.show()
             self.now_ui = "file_explorer"
         elif router == "net" and self.now_ui != "net":
-            self.file_explorer.hide()
-            self.task_detaile.hide()
+            # self.file_explorer.hide()
+            # self.task_detaile.hide()
             self.net_monitor.show()
             self.now_ui = "net"
         elif router == "task" and self.now_ui != "task":
-            self.file_explorer.hide()
-            self.net_monitor.hide()
+            # self.file_explorer.hide()
+            # self.net_monitor.hide()
             self.task_detaile.show()
             self.now_ui = "task"
 
