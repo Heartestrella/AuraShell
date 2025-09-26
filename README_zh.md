@@ -15,17 +15,24 @@
 - 🖥 **SSH 终端**  
   基于 `xterm.js` 与 `QWebEngineView` 实现，支持：  
   - 命令行交互  
-  - 文本复制/粘贴（支持快捷键）  
+  - 历史指令复用
+  - 集成Ai 多功能的命令输入栏 (Ai生成指令将于后续加入支持)  
   - 可调整字体与配色方案  
 
 - 📂 **远程文件管理器**  
   - 文件上传 / 下载  
-  - 文件重命名 / 删除 / 权限修改  
+  - 文件重命名 / 删除 / 权限修改 等等
   - 类似 Windows 资源管理器的交互体验  
+  - 图标/列表显示文件信息 满足不同人群喜好
 
 - ⚡ **多会话管理**  
   - 支持同时连接多个远程主机  
   - 方便切换不同会话  
+  - 支持直接复制/关闭会话
+
+- 🛜 **网络进程/详细应用进程查看**
+  - 支持查看 并且操作网络与系统进程 (当前版本未实现操作 马上了)
+  - 文件上传下载进度显示与终止
 
 ---
 
@@ -56,9 +63,10 @@ python main_window.py
 
 ## 📷 界面截图
 
-<img width="1557" height="780" alt="2fd06349e71c266d6e154124fb468eea" src="https://github.com/user-attachments/assets/8d5fa40d-7783-4cf2-9467-36c6f76c735b" />
-<img width="1557" height="780" alt="07eaa1154efbc5ac496323983e92fe7e" src="https://github.com/user-attachments/assets/41c15ef4-b3bb-4cb8-b08b-454b0aa32ced" />
-<img width="1557" height="780" alt="99804f59c816008c0647800ac79a0f8e" src="https://github.com/user-attachments/assets/115abcc7-c140-484a-bc67-38e82f2636a8" />
+<img width="1920" height="1040" alt="46d1914a-129b-464b-b08c-ac13bc94f14c" src="https://github.com/user-attachments/assets/4853b2a5-c0a0-404f-a295-9e5c93aead41" />
+<img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/b27f0d00-a65f-4a6c-8fd2-9a8ff6e6d521" />
+<img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/9a34ce06-4ba1-4853-997c-d7e2a71679b7" />
+<img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/94ed1648-f667-4434-b891-80018a70e618" />
 
 ---
 
@@ -84,17 +92,15 @@ PSSH 的源代码仍在开发中
 ## ⚠️ 已知问题与使用须知
 
 
-- 在 SSH 终端中，选中文本时不会显示光标，  
-  但文本实际上已被选中，可使用 `Ctrl+Shift+C` 复制，`Ctrl+Shift+V` 粘贴
 - 部分页面可能未正确显示自定义字体
 - 部分界面元素可能与主窗口风格不完全一致
 - 关于选择字体调用的是已经安装到系统中的字体 而非选择字符路径
 
+
+
 > ⚠️ **Beta 版本说明：**  
 > 这是一个测试版本如果遇到任何 bug，请将运行日志以及大致复现方法提交到 [GitHub Issues](https://github.com/Heartestrella/P-SSH/issues)
 > 尚未实现的功能
-- 显示文件上传/下载进度
-- 终止文件上传/下载进度
 - 监听打开的Text类型文件保存并自动上传
 - 内置的notepad
 
