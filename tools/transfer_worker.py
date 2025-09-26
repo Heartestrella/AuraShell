@@ -404,11 +404,18 @@ class TransferWorker(QRunnable):
                 self._download_file(
                     identifier, remote_item_path, local_target)
 
-            self.signals.finished.emit(identifier, True, local_target)
+            if hasattr(self, '_download_callback'):
+                self._download_callback(identifier, True, local_target)
+            else:
+                self.signals.finished.emit(identifier, True, local_target)
+                
         except Exception as e:
             tb = traceback.format_exc()
             error_msg = f"Failed to download {remote_item_path}: {e}\n{tb}"
-            self.signals.finished.emit(identifier, False, error_msg)
+            if hasattr(self, '_download_callback'):
+                self._download_callback(identifier, False, error_msg)
+            else:
+                self.signals.finished.emit(identifier, False, error_msg)
 
     def _download_file(self, identifier, remote_file, local_file):
         def progress_callback(bytes_so_far, total_bytes):
