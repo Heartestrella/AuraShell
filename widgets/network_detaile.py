@@ -348,8 +348,3 @@ class NetProcessMonitor(QWidget):
         """
         self.source_model.updateData(
             self.convert_connections_for_api(process_data))
-
-    def tr(self, text):
-        """翻译函数"""
-        # 保持英文表头
-        return text

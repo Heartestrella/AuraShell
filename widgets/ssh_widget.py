@@ -17,7 +17,7 @@ from widgets.files_widgets import FileExplorer
 from widgets.transfer_progress_widget import TransferProgressWidget
 from widgets.command_input import CommandInput
 from tools.session_manager import SessionManager
-
+from widgets.task_detaile import ProcessMonitor
 CONFIGER = SCM()
 session_manager = SessionManager()
 
@@ -402,11 +402,16 @@ class SSHWidget(QWidget):
                 self.file_explorer.view_mode)
             self.file_bar.pivot.currentItemChanged.connect(
                 self._change_file_or_net)
+
         connect_file_explorer()
+        self.task_detaile = ProcessMonitor()
         self.net_monitor = NetProcessMonitor()
         file_manage_layout.addWidget(self.file_bar)
         self.net_monitor.hide()
         file_manage_layout.addWidget(self.net_monitor)
+        self.task_detaile.hide()
+        file_manage_layout.addWidget(self.task_detaile)
+
         self.now_ui = "file_explorer"
         file_manage_layout.addWidget(self.file_explorer, 1)
 
@@ -434,12 +439,19 @@ class SSHWidget(QWidget):
     def _change_file_or_net(self, router):
         if router == "file_explorer" and self.now_ui != "file_explorer":
             self.net_monitor.hide()
+            self.task_detaile.hide()
             self.file_explorer.show()
             self.now_ui = "file_explorer"
         elif router == "net" and self.now_ui != "net":
             self.file_explorer.hide()
+            self.task_detaile.hide()
             self.net_monitor.show()
             self.now_ui = "net"
+        elif router == "task" and self.now_ui != "task":
+            self.file_explorer.hide()
+            self.net_monitor.hide()
+            self.task_detaile.show()
+            self.now_ui = "task"
 
     def _clear_history(self):
         session_manager.clear_history(self.parentkey)

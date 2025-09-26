@@ -167,6 +167,7 @@ class Window(FramelessWindow):
                 mem_percent = result["mem_percent"]
                 net_usage = result["net_usage"]
                 top_processes = result["top_processes"]
+                all_processes = result["all_processes"]
                 # 先用第一个切出来的网卡测试 后面加切换网卡
                 if net_usage:
                     upload, download = net_usage[1]["tx_kbps"], net_usage[1]["rx_kbps"]
@@ -183,9 +184,12 @@ class Window(FramelessWindow):
                         f"{processes_cpu_percent:.1f}",
                         processes_name
                     )
-                if connections:
+                if connections and widget.now_ui == "net":
                     widget.net_monitor.updateProcessData(connections)
                     # print(processes_cpu_percent, processes_name, processes_mem)
+                if all_processes and widget.now_ui == "task":
+                    widget.task_detaile.updateProcessData(all_processes)
+
             else:
                 print("Failed to obtain the SSH Widget")
         except Exception as e:
@@ -458,7 +462,6 @@ class Window(FramelessWindow):
                 lambda checked, ck=widget_key: self._refresh_paths(ck)
             )
 
-        # 第一次触发，先建立 processes worker，让它发出 key_verification
         processes = SSHWorker(session, for_resources=True)
         processes.key_verification.connect(key_verification)
         processes.start()

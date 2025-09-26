@@ -104,6 +104,7 @@ class File_Navigation_Bar(QWidget):
         self.pivot = SegmentedWidget(self)
         self.pivot.addItem("file_explorer", self.tr("File Explorer"))
         self.pivot.addItem("net", self.tr("Network Detail"))
+        self.pivot.addItem("task", self.tr("Task Detail"))
         self.pivot.setCurrentItem("file_explorer")
         self.hBoxLayout.addWidget(self.new_folder_button)
         self.hBoxLayout.addWidget(self.refresh_button)
