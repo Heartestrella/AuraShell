@@ -1,14 +1,18 @@
 from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEvent, pyqtSignal
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QScrollArea, QToolTip
-from qfluentwidgets import FluentIcon as FIF, IconWidget
+from qfluentwidgets import FluentIcon as FIF, IconWidget, ToolButton
 from tools.font_config import font_config
+import sys
+import subprocess
+import os
 
 
 class TransferProgressWidget(QWidget):
     """ File Transfer Progress Widget """
     expansionChanged = pyqtSignal(bool)
     cancelRequested = pyqtSignal(str)
+    open_file = pyqtSignal(str)  # file_id
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -39,8 +43,14 @@ class TransferProgressWidget(QWidget):
         self.count_label = QLabel("", self.header)
         self.count_label.setObjectName("countLabel")
 
+        icon_widget = ToolButton(FIF.BROOM)
+        icon_widget.setFixedSize(32, 32)
+        icon_widget.setToolTip(self.tr("Clear finished"))
+        icon_widget.clicked.connect(lambda: self.clear_completed_items())
+
         self.header_layout.addWidget(self.title_label, 0, Qt.AlignLeft)
         self.header_layout.addStretch(1)
+        self.header_layout.addWidget(icon_widget)
         self.header_layout.addWidget(self.count_label, 0, Qt.AlignRight)
 
         self.header.installEventFilter(self)
@@ -51,7 +61,7 @@ class TransferProgressWidget(QWidget):
         self.content_area.setObjectName("contentArea")
         self.content_area_layout = QVBoxLayout(self.content_area)
         self.content_area_layout.setContentsMargins(0, 0, 0, 0)
-        self.content_area_layout.setSpacing(0)
+        self.content_area_layout.setSpacing(3)
 
         self.scroll_area = QScrollArea(self.content_area)
         self.scroll_area.setWidgetResizable(True)
@@ -88,14 +98,12 @@ class TransferProgressWidget(QWidget):
         self.content_layout = QVBoxLayout(self.scroll_content)
         self.content_layout.setContentsMargins(10, 5, 10, 10)
         self.content_layout.setSpacing(5)
-        self.content_layout.addStretch(1)
-
+        # self.content_layout.addStretch(1)
         self.scroll_area.setWidget(self.scroll_content)
         self.content_area_layout.addWidget(self.scroll_area)
 
         # Initial state: collapsed
         self.content_area.setVisible(False)
-        self.content_area.setMaximumHeight(0)
 
         self.main_layout.addWidget(self.header)
         self.main_layout.addWidget(self.content_area)
@@ -172,11 +180,21 @@ class TransferProgressWidget(QWidget):
         completed_icon.hide()
         item_layout.addWidget(completed_icon)
 
+        # --- Open Folder Icon ---
+        open_folder_icon = ToolButton(FIF.FOLDER, item_widget)
+        open_folder_icon.setObjectName("openFolderIcon")
+        open_folder_icon.setFixedSize(16, 16)
+        open_folder_icon.setStyleSheet("color: #605E5C;")
+        open_folder_icon.clicked.connect(lambda: self.open_file.emit(file_id))
+        open_folder_icon.hide()
+        item_layout.addWidget(open_folder_icon)
+
         # --- Cancel Icon (for hover) ---
-        cancel_icon = IconWidget(FIF.DELETE, item_widget)
+        cancel_icon = ToolButton(FIF.DELETE, item_widget)
         cancel_icon.setObjectName("cancelIcon")
         cancel_icon.setFixedSize(16, 16)
         cancel_icon.setStyleSheet("color: #E81123;")
+        cancel_icon.clicked.connect(lambda: self.stop_transmission(file_id))
         cancel_icon.hide()
         item_layout.addWidget(cancel_icon)
 
@@ -188,6 +206,11 @@ class TransferProgressWidget(QWidget):
         self.content_layout.insertWidget(0, item_widget)
 
         self.update_transfer_item(file_id, data)
+
+    def stop_transmission(self, file_id):
+        if file_id:
+            self.cancelRequested.emit(file_id)
+            return True
 
     def update_transfer_item(self, file_id: str, data: dict):
         item_widget = self.transfer_items.get(file_id)
@@ -206,15 +229,15 @@ class TransferProgressWidget(QWidget):
         progress_label = item_widget.findChild(QLabel, "progressLabel")
         completed_icon = item_widget.findChild(IconWidget, "completedIcon")
         waiting_icon = item_widget.findChild(IconWidget, "waitingIcon")
-        cancel_icon = item_widget.findChild(IconWidget, "cancelIcon")
-
+        cancel_icon = item_widget.findChild(ToolButton, "cancelIcon")
+        open_folder_icon = item_widget.findChild(ToolButton, "openFolderIcon")
         if not all([status_icon, progress_label, completed_icon, waiting_icon, cancel_icon]):
             return
 
         # Hide cancel icon unless it's being hovered
         if not item_widget.underMouse():
             cancel_icon.hide()
-
+            open_folder_icon.hide()
         if filename_label:
             if total_bytes > 0:
                 # Convert bytes to MB and format the string
@@ -380,7 +403,8 @@ class TransferProgressWidget(QWidget):
             progress_label = obj.findChild(QLabel, "progressLabel")
             completed_icon = obj.findChild(IconWidget, "completedIcon")
             waiting_icon = obj.findChild(IconWidget, "waitingIcon")
-            cancel_icon = obj.findChild(IconWidget, "cancelIcon")
+            cancel_icon = obj.findChild(ToolButton, "cancelIcon")
+            open_folder_icon = obj.findChild(ToolButton, "openFolderIcon")
 
             if event.type() == QEvent.Enter:
                 if progress_label:
@@ -391,6 +415,8 @@ class TransferProgressWidget(QWidget):
                     waiting_icon.hide()
                 if cancel_icon:
                     cancel_icon.show()
+                if open_folder_icon:
+                    open_folder_icon.show()
                 return True
 
             elif event.type() == QEvent.Leave:
@@ -402,13 +428,6 @@ class TransferProgressWidget(QWidget):
                 last_data = obj.property("last_data")
                 if file_id and last_data:
                     self.update_transfer_item(file_id, last_data)
-                return True
-
-            elif event.type() == QEvent.MouseButtonPress:
-                file_id = next(
-                    (fid for fid, widget in self.transfer_items.items() if widget == obj), None)
-                if file_id:
-                    self.cancelRequested.emit(file_id)
                 return True
 
         return super().eventFilter(obj, event)
@@ -464,3 +483,18 @@ class TransferProgressWidget(QWidget):
                                       item_widget.toolTip(), self)
                     return True
         return super().event(event)
+
+    def clear_completed_items(self):
+        """清除所有已完成的传输项目"""
+        completed_file_ids = []
+
+        for file_id, item_widget in list(self.transfer_items.items()):
+            if item_widget.property("is_completed"):
+                completed_file_ids.append(file_id)
+
+        for file_id in completed_file_ids:
+            self.remove_transfer_item(file_id)
+
+        self._update_title()
+
+        print(f"清理了 {len(completed_file_ids)} 个已完成项目")

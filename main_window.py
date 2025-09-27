@@ -2,9 +2,9 @@
 import sys
 import ctypes
 import time
-from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal, QLibraryInfo
+from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
-from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget
+from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox
 
 from qfluentwidgets import (NavigationInterface, NavigationItemPosition, InfoBar,
                             isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget, Dialog)
@@ -26,7 +26,7 @@ from tools.icons import My_Icons
 from functools import partial
 from tools.watching_saved import FileWatchThread
 import magic
-
+import traceback
 font_ = font_config()
 setting_ = SCM()
 mime_types = [
@@ -47,6 +47,7 @@ class Window(FramelessWindow):
         self.icons = My_Icons()
         self.active_transfers = {}
         self.watching_dogs = {}
+        self.file_id_to_path = {}
         self._download_debounce_timer = QTimer(self)
         self._download_debounce_timer.setSingleShot(True)
         self._download_debounce_timer.setInterval(500)
@@ -695,6 +696,10 @@ class Window(FramelessWindow):
                 partial(self._handle_transfer_cancellation,
                         widget_key=widget_key)
             )
+
+            widget.transfer_progress.open_file.connect(
+                self.open_in_explorer
+            )
             self.windowResized.connect(widget.on_main_window_resized)
         if session_name:
             name = session_name.rsplit(" - ", 1)[0]
@@ -915,7 +920,8 @@ class Window(FramelessWindow):
 
         # Create a truly unique ID for the UI widget
         file_id = f"{widget_key}_{task_identifier}_{time.time()}"
-
+        self.file_id_to_path[file_id] = os.path.join(
+            "_ssh_download", os.path.basename(path))
         if isinstance(path, list) and transfer_type == 'upload':
             # Special handling for compressed list uploads
             file_name = "Compressing..."
@@ -939,6 +945,19 @@ class Window(FramelessWindow):
         # Use the task_identifier as the key in our tracking dictionary
         self.active_transfers[task_identifier] = data
         session_widget.transfer_progress.add_transfer_item(file_id, data)
+
+    def open_in_explorer(self, file_id: str):
+        filepath = self.file_id_to_path.get(file_id, None)
+        if filepath and os.path.exists(filepath):  # maybe its remote path
+
+            print("Open : ", filepath)
+            if sys.platform == "win32":
+                subprocess.Popen(
+                    ["explorer", "/select,", os.path.normpath(filepath)])
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", "-R", filepath])
+            else:
+                subprocess.Popen(["xdg-open", os.path.dirname(filepath)])
 
     def _handle_transfer_cancellation(self, file_id, widget_key):
         # import inspect
@@ -1101,81 +1120,33 @@ def language_code_to_locale(code: str) -> str:
     return mapping.get(code, "en_US")
 
 
-def enable_hardware_acceleration():
+def excepthook(exc_type, exc_value, exc_traceback):
+    print("Uncaught exception:", exc_type, exc_value)
+    traceback.print_tb(exc_traceback)
+    error_msg = "".join(traceback.format_exception(
+        exc_type, exc_value, exc_traceback))
+    QMessageBox.critical(None, "程序出错", error_msg)
 
-    try:
-        from PyQt5.QtGui import QOpenGLContext, QSurfaceFormat
-        format = QSurfaceFormat.defaultFormat()
-        print(f"默认 OpenGL 格式: {format.version()}, Profile: {format.profile()}")
 
-        # 强制启用 OpenGL 2.0+
-        if format.majorVersion() < 2:
-            format.setVersion(2, 0)
-            format.setProfile(QSurfaceFormat.CoreProfile)
-            QSurfaceFormat.setDefaultFormat(format)
-            print("🔧 强制设置 OpenGL 2.0+")
-
-    except Exception as gl_error:
-        print(f"⚠️  OpenGL 配置警告: {gl_error}")
-
-    # 3. 打印硬件信息
-    print(f"🖥️  系统平台: {sys.platform}")
-    print(f"💻  Python 版本: {sys.version}")
-    # print(
-    #     f"🖼️  Qt 版本: {QLibraryInfo.libraryLocation(QLibraryInfo.LibraryLocation.PrefixPath)}")
-
-    # 4. 检测 GPU 驱动
-    try:
-        import platform
-        if platform.system() == "Windows":
-            # Windows GPU 信息
-            import subprocess
-            try:
-                result = subprocess.run(
-                    ['nvidia-smi', '--query-gpu=name',
-                        '--format=csv,noheader,nounits'],
-                    capture_output=True, text=True, timeout=5
-                )
-                if result.returncode == 0 and result.stdout.strip():
-                    print(f"🎮  NVIDIA GPU: {result.stdout.strip()}")
-                else:
-                    print("📱  使用集成显卡或无 NVIDIA GPU")
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                print("📱  无 NVIDIA GPU 或驱动未安装")
-    except ImportError:
-        pass
-
+# sys.excepthook = excepthook
 
 if __name__ == '__main__':
     try:
-        print("🚀 启动硬件加速配置...")
-        enable_hardware_acceleration()
-
-        # 1. 配置管理器
         configer = SCM()
-
-        # 2. 设置日志
         setup_global_logging()
         main_logger.info("Application Startup with Hardware Acceleration")
-
-        # 3. Qt 高 DPI 和硬件加速属性（在 QApplication 之前设置）
         QApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
-        # 硬件加速相关属性
-        # 禁用 OpenGLES，优先使用 OpenGL
         QApplication.setAttribute(Qt.AA_UseOpenGLES, False)
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-        QApplication.setAttribute(Qt.AA_UseDesktopOpenGL, True)  # 使用桌面 OpenGL
-        # QApplication.setAttribute(
-        #     Qt.AA_CompositingBackgroundEnabled, True)  # 合成背景
-        QApplication.setAttribute(
-            Qt.AA_DontCreateNativeWidgetSiblings, True)  # 优化窗口管理
+        QApplication.setAttribute(Qt.AA_UseDesktopOpenGL, True)
 
-        # 4. 创建 QApplication
+        QApplication.setAttribute(
+            Qt.AA_DontCreateNativeWidgetSiblings, True)
+
         app = QApplication(sys.argv)
 
-        # 5. 设置应用图标和 ID
         try:
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
                 "su8aru.remmotessh.1.0.0")
@@ -1183,12 +1154,10 @@ if __name__ == '__main__':
         except Exception as icon_error:
             main_logger.warning(f"⚠️  应用 ID 设置失败: {icon_error}")
 
-        # 6. 读取配置
         config = configer.read_config()
         lang = language_code_to_locale(config.get("language", "system"))
         main_logger.info(f"🌐  语言设置: {lang}")
 
-        # 7. 加载翻译
         translator = QTranslator()
         translator_1 = FluentTranslator()
 
@@ -1203,16 +1172,13 @@ if __name__ == '__main__':
 
         app.installTranslator(translator_1)
 
-        # 8. 剪贴板初始化
         clipboard = app.clipboard()
         main_logger.info("📋 剪贴板初始化完成")
 
-        # 9. 创建并显示主窗口
         w = Window()
         w.show()
         main_logger.info("🖥️  主窗口显示成功")
 
-        # 10. 启动应用
         main_logger.info("🎯 应用启动成功，进入事件循环")
         app.exec_()
     except Exception as e:

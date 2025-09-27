@@ -1,6 +1,6 @@
 #!/bin/bash
 TOP_N=4
-INTERVAL=3
+INTERVAL=2
 
 # 初始化网卡数据
 declare -A rx_old tx_old

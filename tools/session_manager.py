@@ -123,6 +123,7 @@ class SessionManager:
             raise ValueError(
                 f"A session with the name '{name}' already exists")
         new_session = Session({
+            'id': f"session_{datetime.now().timestamp()}",
             'name': name,
             'host': host,
             'username': username,
@@ -130,9 +131,12 @@ class SessionManager:
             'auth_type': auth_type,
             'password': password,
             'key_path': key_path,
+            'status': 'disconnected',
+            'created_at': datetime.now().isoformat(),
+            'history': [],
+            'console_content': f'Welcome to SSH Session: {name}\n{username}@{host}:~$ ',
             'host_key': host_key,
-            'processes_md5': processes_md5,
-            'console_content': f'Welcome to SSH Session: {name}\n{username}@{host}:~$ '
+            'processes_md5': processes_md5
         })
         sessions = self.sessions_cache.copy()
         sessions.append(new_session)
