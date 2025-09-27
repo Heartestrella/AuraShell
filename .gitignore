@@ -5,3 +5,4 @@ _ssh_download/
 /*.zip
 /tmp
 /debug
+**/__pycache__/
