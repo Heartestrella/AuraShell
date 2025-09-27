@@ -195,6 +195,7 @@ class TransferWorker(QRunnable):
 
             return True, ""
         except Exception as e:
+            traceback.print_exc()
             error_msg = f"Failed to upload {item_path}: {e}"
             self.signals.finished.emit(item_path, False, error_msg)
             return False, error_msg
@@ -408,7 +409,7 @@ class TransferWorker(QRunnable):
                 self._download_callback(identifier, True, local_target)
             else:
                 self.signals.finished.emit(identifier, True, local_target)
-                
+
         except Exception as e:
             tb = traceback.format_exc()
             error_msg = f"Failed to download {remote_item_path}: {e}\n{tb}"

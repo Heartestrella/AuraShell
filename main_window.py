@@ -24,8 +24,19 @@ from tools.setting_config import SCM
 from widgets.ssh_widget import SSHPage, SSHWidget
 from tools.icons import My_Icons
 from functools import partial
+from tools.watching_saved import FileWatchThread
+import magic
+
 font_ = font_config()
 setting_ = SCM()
+mime_types = [
+    "text/plain",
+    "text/html",
+    "text/css",
+    "text/javascript",
+    "application/json",
+    "application/xml"
+]
 
 
 class Window(FramelessWindow):
@@ -35,6 +46,7 @@ class Window(FramelessWindow):
         super().__init__(parent=parent)
         self.icons = My_Icons()
         self.active_transfers = {}
+        self.watching_dogs = {}
         self._download_debounce_timer = QTimer(self)
         self._download_debounce_timer.setSingleShot(True)
         self._download_debounce_timer.setInterval(500)
@@ -271,6 +283,8 @@ class Window(FramelessWindow):
 
                     if open_it and local_path:
                         try:
+                            print(
+                                f"From Remote Path : {path}")
                             # Open the directory containing the downloaded file/folder
                             open_path = local_path if os.path.isfile(
                                 local_path) else os.path.dirname(local_path)
@@ -278,6 +292,24 @@ class Window(FramelessWindow):
                                 subprocess.call(('open', open_path))
                             elif os.name == 'nt':
                                 os.startfile(open_path)
+                                with open(open_path, "rb") as f:
+                                    mime = magic.from_buffer(
+                                        f.read(2048), mime=True)
+                                if mime in mime_types or mime.startswith("text/"):
+                                    print("Text file starting watching")
+                                    file_thread = FileWatchThread(open_path)
+                                    file_thread.file_saved.connect(
+                                        lambda local, : self.reupload_when_saved(widget_key, local, path))
+                                    file_thread.start()
+
+                                    if widget_key not in self.watching_dogs:
+                                        self.watching_dogs[widget_key] = []
+
+                                    self.watching_dogs[widget_key].append(
+                                        file_thread)
+                                else:
+                                    print(
+                                        f"File tpye {mime} is not text file won't watching")
                             elif os.name == 'posix':
                                 subprocess.call(('xdg-open', open_path))
                         except Exception as e:
@@ -368,6 +400,15 @@ class Window(FramelessWindow):
                 data["type"] = "completed"
             session_widget.transfer_progress.update_transfer_item(
                 file_id, data)
+
+    def reupload_when_saved(self, widget_name, local_path, remote_path,):
+        remote_path = os.path.dirname(remote_path)
+        # print(f"将上传 {local_path} 到 {widget_name}的 {remote_path}")
+        file_manager: RemoteFileManager = self.file_tree_object[widget_name]
+
+        if file_manager:
+            self._handle_upload_request(widget_key=widget_name, local_path=local_path,
+                                        remote_path=remote_path, compression=False, file_manager=file_manager)
 
     def _start_ssh_connect(self, widget_key):
         parent_key = widget_key.split("-")[0].strip()
@@ -780,6 +821,7 @@ class Window(FramelessWindow):
             worker = self.ssh_session.pop(widget_name, None)
             worker_processes = self.ssh_session.pop(
                 f'{widget_name}-processes', None)
+            watching_dogs = self.watching_dogs.pop(widget_name, None)
             if worker:
                 worker.close()
             if worker_processes:
@@ -791,6 +833,9 @@ class Window(FramelessWindow):
                 f"{widget_name}-handler", None)
             if file_manager_handler:
                 file_manager_handler.cleanup()
+            if watching_dogs:
+                for dog in watching_dogs:
+                    dog.stop()
         except Exception as e:
             InfoBar.error(
                 title=self.tr('Error closing session!'),
@@ -1057,41 +1102,8 @@ def language_code_to_locale(code: str) -> str:
 
 
 def enable_hardware_acceleration():
-    """启用硬件加速配置"""
-    # 1. 设置环境变量（必须在 QApplication 创建之前）
-    env_vars = {
-        # Chromium 相关（QWebEngineView）
-        'QTWEBENGINE_CHROMIUM_FLAGS': (
-            '--enable-gpu --enable-gpu-rasterization --enable-accelerated-2d-canvas '
-            '--enable-zero-copy --ignore-gpu-blocklist --enable-gpu-sandbox '
-            '--disable-gpu-driver-bug-workarounds --enable-native-gpu-memory-buffers'
-        ),
 
-        # Qt 渲染优化
-        'QT_AUTO_SCREEN_SCALE_FACTOR': '1',
-        'QT_SCALE_FACTOR': '1',
-        'QT_DEVICE_PIXEL_RATIO': 'auto',
-
-        # OpenGL 优化
-        'QSG_RENDER_LOOP': 'basic',  # 基本渲染循环，更稳定
-        'QSG_DISTANCEFIELD_SCALE': '1.5',  # 高清文字渲染
-
-        # 禁用不必要的特性以提升性能
-        'QT_QUICK_BACKEND': 'native',  # 使用原生渲染后端
-        'QTWEBENGINE_DISABLE_SANDBOX': '0',  # 保持沙箱安全
-
-        # Windows 特定优化
-        'QML_DISABLE_DISTANCEFIELD': '0',
-        'QSG_NO_DEPTH_BUFFER': '0'
-    }
-
-    for key, value in env_vars.items():
-        os.environ[key] = value
-        print(f"✅ 设置环境变量: {key} = {value}")
-
-    # 2. 检查 GPU 支持
     try:
-        # 检查 OpenGL 支持
         from PyQt5.QtGui import QOpenGLContext, QSurfaceFormat
         format = QSurfaceFormat.defaultFormat()
         print(f"默认 OpenGL 格式: {format.version()}, Profile: {format.profile()}")

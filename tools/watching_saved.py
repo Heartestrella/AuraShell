@@ -8,19 +8,34 @@ import time
 class FileWatchThread(QThread):
     file_saved = pyqtSignal(str)
 
-    def __init__(self, file_path):
+    def __init__(self, file_path, timeout_hours=1):
+        """
+        :param file_path: 要监控的文件
+        :param timeout_hours: 超时时间（小时），如果这么久没变化就结束线程
+        """
         super().__init__()
         self.file_path = os.path.abspath(file_path)
         self._running = True
+        self.timeout_hours = timeout_hours
+        self._last_event_time = time.time()  # 初始化为当前时间
 
     def run(self):
         class Handler(FileSystemEventHandler):
             def __init__(self, outer):
                 self.outer = outer
+                self._last_emit_time = 0
 
             def on_modified(self, event):
-                if os.path.abspath(event.src_path) == self.outer.file_path:
-                    self.outer.file_saved.emit(self.outer.file_path)
+                if os.path.abspath(event.src_path) != self.outer.file_path:
+                    return
+
+                now = time.time()
+                if now - self._last_emit_time < 1.0:  # 1秒内只触发一次
+                    return
+
+                self.outer._last_event_time = now
+                self._last_emit_time = now
+                self.outer.file_saved.emit(self.outer.file_path)
 
         event_handler = Handler(self)
         observer = Observer()
@@ -30,6 +45,9 @@ class FileWatchThread(QThread):
 
         try:
             while self._running:
+                if time.time() - self._last_event_time > self.timeout_hours * 3600:
+                    print(f"[FileWatchThread] {self.file_path} 超时未修改，自动退出线程")
+                    break
                 time.sleep(0.5)
         finally:
             observer.stop()

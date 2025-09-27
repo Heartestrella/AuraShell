@@ -363,7 +363,7 @@ class RemoteFileManager(QThread):
             upload_context,
             task_id
         )
-        
+
         # Store open_it parameter in worker for download callback
         if action == 'download':
             worker._open_it = open_it
@@ -395,7 +395,8 @@ class RemoteFileManager(QThread):
                     worker._open_it
                 )
             worker._download_callback = emit_download_finished
-            worker.signals.progress.connect(self.download_progress, Qt.QueuedConnection)
+            worker.signals.progress.connect(
+                self.download_progress, Qt.QueuedConnection)
 
         self.thread_pool.start(worker)
 
@@ -662,7 +663,7 @@ class RemoteFileManager(QThread):
                         or mime_out.startswith("application/x-sharedlib")
                         or "x-mach-binary" in mime_out
                         or "pe" in mime_out  # covers various PE-like mimes
-                        ):
+                    ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
 
