@@ -10,6 +10,7 @@ import os
 from typing import Tuple
 from datetime import datetime
 import shlex
+from PyQt5.QtCore import Qt
 from functools import partial
 
 
@@ -362,6 +363,10 @@ class RemoteFileManager(QThread):
             upload_context,
             task_id
         )
+        
+        # Store open_it parameter in worker for download callback
+        if action == 'download':
+            worker._open_it = open_it
 
         if action == 'upload':
             worker.signals.finished.connect(self.upload_finished)
@@ -379,12 +384,18 @@ class RemoteFileManager(QThread):
                 self.compression_finished)
 
         elif action == 'download':
-            worker.signals.finished.connect(
-                lambda identifier, success, msg: self.download_finished.emit(
-                    identifier, msg if success else "", success, "" if success else msg, open_it
+            # Create callback function for download completion
+            def emit_download_finished(identifier, success, msg):
+                """Emit download finished signal with proper parameters"""
+                self.download_finished.emit(
+                    identifier,
+                    msg if success else "",
+                    success,
+                    "" if success else msg,
+                    worker._open_it
                 )
-            )
-            worker.signals.progress.connect(self.download_progress)
+            worker._download_callback = emit_download_finished
+            worker.signals.progress.connect(self.download_progress, Qt.QueuedConnection)
 
         self.thread_pool.start(worker)
 
