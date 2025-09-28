@@ -62,12 +62,13 @@ python main_window.py
 ---
 
 ## 📷 界面截图
+<img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/c4fb44cf-910c-412b-b4a8-0e8d32c465b6" />
 
-<img width="1920" height="1040" alt="46d1914a-129b-464b-b08c-ac13bc94f14c" src="https://github.com/user-attachments/assets/4853b2a5-c0a0-404f-a295-9e5c93aead41" />
-<img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/b27f0d00-a65f-4a6c-8fd2-9a8ff6e6d521" />
-<img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/9a34ce06-4ba1-4853-997c-d7e2a71679b7" />
+<img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/2c99f305-65ef-4af2-affe-5b7d0d902d55" />
+
+<img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/e386c2b1-8283-4362-bd28-207b613cb15f" />
+
 <img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/94ed1648-f667-4434-b891-80018a70e618" />
-
 ---
 
 
