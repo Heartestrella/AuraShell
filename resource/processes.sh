@@ -2,11 +2,68 @@
 TOP_N=4
 INTERVAL=2
 
+# --- 自动检测包管理器并安装依赖 ---
+install_pkg() {
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -y
+        apt-get install -y "$@"
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y "$@"
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y "$@"
+    elif command -v pacman >/dev/null 2>&1; then
+        pacman -Sy --noconfirm "$@"
+    elif command -v zypper >/dev/null 2>&1; then
+        zypper install -y "$@"
+    else
+        echo "❌ 未找到支持的包管理器，请手动安装: $*" >&2
+    fi
+}
+
+check_and_install() {
+    for cmd in "$@"; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            case $cmd in
+                ss) install_pkg iproute2 iproute iproute-ss ;;
+                iostat) install_pkg sysstat ;;
+                lsblk) install_pkg util-linux ;;
+                *) install_pkg "$cmd" ;;
+            esac
+        fi
+    done
+}
+
+# 检查并安装必要命令
+check_and_install ss lsblk iostat
+
+# ================== 系统信息收集 ==================
+print_system_info() {
+    sys_name=$(uname -s)                        # 系统名
+    kernel=$(uname -r)                          # 内核版本
+    arch=$(uname -m)                            # 硬件架构
+    hostname=$(hostname)                        # 主机名
+    cpu_model=$(awk -F: '/model name/ {print $2; exit}' /proc/cpuinfo | sed 's/^ //')
+    cpu_cores=$(nproc)                          # 核心数
+    cpu_freq=$(awk -F: '/cpu MHz/ {printf "%.0f",$2; exit}' /proc/cpuinfo)MHz
+    cpu_cache=$(awk -F: '/cache size/ {print $2; exit}' /proc/cpuinfo | sed 's/^ //')
+    mem_total=$(awk '/MemTotal/ {printf "%.0f",$2/1024}' /proc/meminfo)MB
+    ip_addr=$(hostname -I 2>/dev/null | awk '{print $1}')   # 取第一个 IPv4
+
+    printf '///SysInfo{"system":"%s","kernel":"%s","arch":"%s","hostname":"%s","cpu_model":"%s","cpu_cores":%s,"cpu_freq":"%s","cpu_cache":"%s","mem_total":"%s","ip":"%s"}End///\n' \
+        "$sys_name" "$kernel" "$arch" "$hostname" "$cpu_model" "$cpu_cores" "$cpu_freq" "$cpu_cache" "$mem_total" "$ip_addr"
+}
+
+# --- 首次输出系统信息 ---
+print_system_info
+
 # 初始化网卡数据
 declare -A rx_old tx_old
 
 # 初始化进程流量数据
 declare -A proc_tx_old proc_rx_old
+
+# 初始化磁盘读写
+declare -A disk_read_old disk_write_old
 
 while true; do
     # --- CPU 使用率 ---
@@ -48,6 +105,35 @@ while true; do
         ')
 
 
+    # --- 磁盘使用情况 + 读写速率 ---
+    disks="["
+    while read -r filesystem size used avail usep mount; do
+        [[ "$filesystem" == "tmpfs" || "$filesystem" == "udev" ]] && continue
+
+        dev=$(basename "$filesystem")
+
+        read_sectors=$(awk -v d="$dev" '$3==d {print $6}' /proc/diskstats 2>/dev/null)
+        write_sectors=$(awk -v d="$dev" '$3==d {print $10}' /proc/diskstats 2>/dev/null)
+
+        [[ -z "$read_sectors" ]] && read_sectors=0
+        [[ -z "$write_sectors" ]] && write_sectors=0
+
+        if [[ -n ${disk_read_old[$dev]} ]]; then
+            read_kbps=$(( (read_sectors - disk_read_old[$dev]) * 512 / 1024 / INTERVAL ))
+            write_kbps=$(( (write_sectors - disk_write_old[$dev]) * 512 / 1024 / INTERVAL ))
+        else
+            read_kbps=0
+            write_kbps=0
+        fi
+
+        disk_read_old[$dev]=$read_sectors
+        disk_write_old[$dev]=$write_sectors
+
+        disks+="{\"device\":\"$filesystem\",\"mount\":\"$mount\",\"size_kb\":$size,\"used_kb\":$used,\"avail_kb\":$avail,\"used_percent\":\"$usep\",\"read_kbps\":$read_kbps,\"write_kbps\":$write_kbps},"
+    done < <(df -k --output=source,size,used,avail,pcent,target | tail -n +2)
+
+    disks=$(echo "$disks" | sed 's/,$//')"]"
+
 
     # --- 网卡流量（KB/s） ---
     net_devs="["
@@ -71,9 +157,7 @@ while true; do
 
     # --- 网络进程信息 ---
     connections="["
-    # 获取所有 TCP/UDP socket 对应 PID 和本地/远程地址
     while read -r line; do
-        # ss 输出：Netid State Recv-Q Send-Q Local Address:Port Peer Address:Port Process
         proto=$(echo "$line" | awk '{print $1}')
         state=$(echo "$line" | awk '{print $2}')
         local=$(echo "$line" | awk '{print $5}')
@@ -84,17 +168,13 @@ while true; do
         [[ -z "$pid" ]] && continue
         [[ -z "$pname" ]] && pname="unknown"
 
-        # 分割 IP 和端口
         local_ip=$(echo "$local" | rev | cut -d: -f2- | rev)
         local_port=$(echo "$local" | rev | cut -d: -f1 | rev)
         remote_ip=$(echo "$remote" | rev | cut -d: -f2- | rev)
         remote_port=$(echo "$remote" | rev | cut -d: -f1 | rev)
 
-        # 连接数量
         conn_count=$(ss -tunp | grep "pid=$pid" | wc -l)
 
-        # --- 每个进程的上传/下载速率 ---
-        # 计算 proc 网络流量
         proc_rx=0
         proc_tx=0
         if [[ -r /proc/$pid/net/dev ]]; then
@@ -105,7 +185,6 @@ while true; do
                 proc_tx=$((proc_tx + tx))
             done < <(awk 'NR>2 {print $1, $2, $10}' /proc/$pid/net/dev 2>/dev/null)
         fi
-        # 计算速率
         if [[ -n ${proc_rx_old[$pid]} ]]; then
             rx_rate=$(( (proc_rx - proc_rx_old[$pid]) / INTERVAL / 1024 ))
             tx_rate=$(( (proc_tx - proc_tx_old[$pid]) / INTERVAL / 1024 ))
@@ -122,8 +201,8 @@ while true; do
     connections=$(echo "$connections" | sed 's/,$//')"]"
 
     # --- 输出 JSON ---
-    printf '///Start{"cpu_percent":%.1f,"mem_percent":%.1f,"top_processes":%s,"all_processes":%s,"net_usage":%s,"connections":%s}End///\n' \
-        "$cpu_percent" "$mem_percent" "$processes" "$all_processes" "$net_devs" "$connections"
+    printf '///Start{"cpu_percent":%.1f,"mem_percent":%.1f,"top_processes":%s,"all_processes":%s,"disk_usage":%s,"net_usage":%s,"connections":%s}End///\n' \
+        "$cpu_percent" "$mem_percent" "$processes" "$all_processes" "$disks" "$net_devs" "$connections"
 
     sleep $INTERVAL
 done

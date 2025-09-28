@@ -253,22 +253,27 @@ class SSHWorker(QThread):
 
     def _process_sys_resource_buffer(self):
         """
-        Extract the ///Start ... End/// JSON from _buffer and emit the sys_resource signal
+        Extract the ///Start ... End/// or ///SysInfo ... End/// JSON from _buffer 
+        and emit the sys_resource signal
         """
         try:
             text = self._buffer.decode(errors='ignore')
-            # print(f"Sys resources text {text}")
-            pattern = re.compile(r'///Start(.*?)End///', re.DOTALL)
-            matches = pattern.findall(text)
-            for match in matches:
+
+            pattern = re.compile(r'///(SysInfo|Start)(.*?)End///', re.DOTALL)
+            match = pattern.search(text)
+            if match:
+                tag, payload = match.groups()
                 try:
-                    data = json.loads(match.strip())
-                    # print(data)
+                    data = json.loads(payload.strip())
+                    if tag == "SysInfo":
+                        data = {"type": "sysinfo", **data}
+                    else:
+                        data = {"type": "info", **data}
                     self.sys_resource.emit(data)
-                except Exception as e:
-                    continue
-            if matches:
-                last_end = text.rfind("End///") + len("End///")
+                except Exception:
+                    pass
+
+                last_end = match.end()
                 self._buffer = self._buffer[last_end:]
         except Exception:
             pass

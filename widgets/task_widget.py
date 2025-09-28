@@ -1,7 +1,7 @@
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor, QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QFrame, QVBoxLayout, QSizePolicy
-from qfluentwidgets import TableView, isDarkTheme
+from qfluentwidgets import TableView, isDarkTheme, PrimaryPushButton
 from widgets.network_widget import NetMonitor
 
 
@@ -62,7 +62,23 @@ class Tasks(QFrame):
                 padding: 4px;
             }
         """)
+
+        self.sysinfo_button = PrimaryPushButton("System Info")
+        self.sysinfo_button.setCursor(Qt.PointingHandCursor)
+        self.sysinfo_button.setStyleSheet("""
+            PrimaryPushButton {
+                background: transparent;
+                border: none;
+                color: #0078D4;
+                font-weight: bold;
+            }
+            PrimaryPushButton:hover {
+                text-decoration: underline;
+            }
+        """)
+
         layout.addWidget(self.table)
+        layout.addWidget(self.sysinfo_button)
         layout.addWidget(self.netmonitor)
         self.text_color = "#ffffff" if isDarkTheme() else "#000000"
 

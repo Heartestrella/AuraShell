@@ -1,11 +1,11 @@
 from PyQt5.QtWidgets import (
     QWidget, QStackedWidget, QVBoxLayout, QHBoxLayout, QFrame,
-    QLabel, QSizePolicy, QSplitter
+    QLabel, QSizePolicy, QSplitter, QApplication
 )
 from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QTimer, QSize
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPainterPath
 
-from qfluentwidgets import SegmentedWidget, RoundMenu, Action, FluentIcon as FIF, ToolButton
+from qfluentwidgets import SegmentedWidget, RoundMenu, Action, FluentIcon as FIF, ToolButton, Dialog
 
 from tools.setting_config import SCM
 from widgets.ssh_webterm import WebTerminal
@@ -18,6 +18,7 @@ from widgets.transfer_progress_widget import TransferProgressWidget
 from widgets.command_input import CommandInput
 from tools.session_manager import SessionManager
 from widgets.task_detaile import ProcessMonitor
+from widgets.disk_usage_item import DiskMonitor
 CONFIGER = SCM()
 session_manager = SessionManager()
 
@@ -147,7 +148,7 @@ class SSHWidget(QWidget):
         self.router = name
         self.parentkey = name.split('-')[0].strip()
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
+        self.sys_info_msg = ""
         config = CONFIGER.read_config()
 
         self.mainLayout = QVBoxLayout(self)
@@ -181,6 +182,7 @@ class SSHWidget(QWidget):
 
         # Task
         self.task = Tasks(leftContainer)
+        self.task.sysinfo_button.clicked.connect(self._sys_info_dialog)
         self.task.set_text_color(config["ssh_widget_text_color"])
         self.task.setObjectName("task")
         self.task.setMinimumHeight(80)
@@ -194,21 +196,20 @@ class SSHWidget(QWidget):
             }
         """)
 
-        # disk_storage
-        self.disk_storage = FileTreeWidget(leftContainer)
-        self.disk_storage.directory_selected.connect(self._set_file_bar)
-        self.disk_storage.setObjectName("disk_storage")
-        self.disk_storage.setMinimumHeight(80)
-        self.disk_storage.setSizePolicy(
+        self.disk_usage = DiskMonitor(leftContainer)
+        self.disk_usage.setObjectName("disk_usage")
+        self.disk_usage.setMinimumHeight(80)
+        self.disk_usage.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Preferred)
-        # self.disk_storage.directory_selected.connect(self._set_file_bar)
-        self.disk_storage.setStyleSheet("""
-            QFrame#disk_storage {
-                background-color: rgba(220, 220, 220, 0.06);
-                border: 1px solid rgba(0,0,0,0.06);
+        self.disk_usage.setStyleSheet("""
+            QWidget#disk_usage {
+                background-color: rgba(240,240,240,0.08);
+                border: 1px solid rgba(0,0,0,0.04);
                 border-radius: 6px;
             }
-        """)
+""")
+        self.disk_usage.setAttribute(Qt.WA_StyledBackground, True)
+
         # Transfer Progress Widget
         self.transfer_progress = TransferProgressWidget(leftContainer)
         self.transfer_progress.setObjectName("transfer_progress")
@@ -217,8 +218,8 @@ class SSHWidget(QWidget):
 
         leftLayout.addWidget(self.sys_resources, 15)
         leftLayout.addWidget(self.task, 40)
-        leftLayout.addWidget(self.disk_storage, 45)
-
+        # leftLayout.addWidget(self.disk_storage, 45)
+        leftLayout.addWidget(self.disk_usage, 30)
         # Initially, no stretch
         leftLayout.addWidget(self.transfer_progress, 0)
 
@@ -353,7 +354,8 @@ class SSHWidget(QWidget):
         self.file_manage = QWidget(rsplitter)
         self.file_manage.setObjectName("file_manage")
         self.file_manage.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding)
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
 
         file_manage_layout = QVBoxLayout(self.file_manage)
         file_manage_layout.setContentsMargins(0, 0, 0, 0)
@@ -371,9 +373,27 @@ class SSHWidget(QWidget):
                 border-radius: 6px 6px 0 0;
             }
         """)
+        self.file_splitter = QSplitter(Qt.Horizontal, self.file_manage)
+        # disk_storage
+        self.disk_storage = FileTreeWidget(self.file_splitter)
+        self.disk_storage.directory_selected.connect(self._set_file_bar)
+        self.disk_storage.setObjectName("disk_storage")
+        self.disk_storage.setMinimumHeight(80)
+        self.disk_storage.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Preferred)
+        # self.disk_storage.directory_selected.connect(self._set_file_bar)
+        self.disk_storage.setStyleSheet("""
+            QFrame#disk_storage {
+                background-color: rgba(220, 220, 220, 0.06);
+                border: 1px solid rgba(0,0,0,0.06);
+                border-radius: 6px;
+            }
+        """)
+
         # file_explorer
         self.file_explorer = FileExplorer(
-            self.file_manage)
+            self.file_splitter)
+        self.file_splitter.setSizes([200, 800])
 
         def connect_file_explorer():
             # self.file_explorer.upload_file.connect(
@@ -413,7 +433,7 @@ class SSHWidget(QWidget):
         file_manage_layout.addWidget(self.task_detaile)
 
         self.now_ui = "file_explorer"
-        file_manage_layout.addWidget(self.file_explorer, 1)
+        file_manage_layout.addWidget(self.file_splitter, 1)
 
         rightLayout.addWidget(rsplitter)
 
@@ -439,11 +459,11 @@ class SSHWidget(QWidget):
     def _change_file_or_net(self, router):
         self.net_monitor.hide()
         self.task_detaile.hide()
-        self.file_explorer.hide()
+        self.file_splitter.hide()
         if router == "file_explorer" and self.now_ui != "file_explorer":
             # self.net_monitor.hide()
             # self.task_detaile.hide()
-            self.file_explorer.show()
+            self.file_splitter.show()
             self.now_ui = "file_explorer"
         elif router == "net" and self.now_ui != "net":
             # self.file_explorer.hide()
@@ -645,6 +665,19 @@ class SSHWidget(QWidget):
     def on_main_window_resized(self):
         # A simple way to trigger the debounced resize
         self.resize_timer.start()
+
+    def _sys_info_dialog(self):
+        print("Show system info dialog")
+        # print(self.sys_info_msg)
+        if self.sys_info_msg:
+            w = Dialog(self.tr("System Info"), self.sys_info_msg, self)
+            w.cancelButton.setText(self.tr("Copy all"))
+            w.yesButton.setText(self.tr("Got it"))
+            if w.exec():
+                return
+            else:
+                clipboard = QApplication.clipboard()
+                clipboard.setText(self.sys_info_msg)
 
     def cleanup(self):
         self.ssh_widget.cleanup()

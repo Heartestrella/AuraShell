@@ -176,34 +176,66 @@ class Window(FramelessWindow):
             # print(parent_key)
             widget = self.session_widgets[widget_key]
             if widget:
-                connections = result["connections"]
-                cpu_percent = result["cpu_percent"]
-                mem_percent = result["mem_percent"]
-                net_usage = result["net_usage"]
-                top_processes = result["top_processes"]
-                all_processes = result["all_processes"]
-                # 先用第一个切出来的网卡测试 后面加切换网卡
-                if net_usage:
-                    upload, download = net_usage[1]["tx_kbps"], net_usage[1]["rx_kbps"]
-                    widget.task.netmonitor.update_speed(
-                        upload, download)
-                widget.sys_resources.set_progress("cpu", cpu_percent)
-                widget.sys_resources.set_progress("ram", mem_percent)
-                for processes in top_processes:
-                    processes_cpu_percent = processes["cpu"]
-                    processes_name = processes["name"]
-                    processes_mem = processes["mem"]
-                    widget.task.add_row(
-                        f"{processes_mem:.1f}",
-                        f"{processes_cpu_percent:.1f}",
-                        processes_name
-                    )
-                if connections and widget.now_ui == "net":
-                    widget.net_monitor.updateProcessData(connections)
-                    # print(processes_cpu_percent, processes_name, processes_mem)
-                if all_processes and widget.now_ui == "task":
-                    widget.task_detaile.updateProcessData(all_processes)
+                if result["type"] == "info":
+                    connections = result["connections"]
+                    cpu_percent = result["cpu_percent"]
+                    mem_percent = result["mem_percent"]
+                    net_usage = result["net_usage"]
+                    top_processes = result["top_processes"]
+                    all_processes = result["all_processes"]
+                    disk_usage = result["disk_usage"]
 
+                    # 先用第一个切出来的网卡测试 后面加切换网卡
+                    if net_usage:
+                        upload, download = net_usage[1]["tx_kbps"], net_usage[1]["rx_kbps"]
+                        widget.task.netmonitor.update_speed(
+                            upload, download)
+                    widget.sys_resources.set_progress("cpu", cpu_percent)
+                    widget.sys_resources.set_progress("ram", mem_percent)
+                    for processes in top_processes:
+                        processes_cpu_percent = processes["cpu"]
+                        processes_name = processes["name"]
+                        processes_mem = processes["mem"]
+                        widget.task.add_row(
+                            f"{processes_mem:.1f}",
+                            f"{processes_cpu_percent:.1f}",
+                            processes_name
+                        )
+                    if connections and widget.now_ui == "net":
+                        widget.net_monitor.updateProcessData(connections)
+                        # print(processes_cpu_percent, processes_name, processes_mem)
+                    if all_processes and widget.now_ui == "task":
+                        widget.task_detaile.updateProcessData(all_processes)
+                    if disk_usage:
+                        for disk in disk_usage:
+                            device = disk.get("device", "")
+                            mount = disk.get("mount", "")
+                            # 唯一ID
+                            disk_id = f"{device}:{mount}"
+
+                            widget.disk_usage.update_disk_item(disk_id, {
+                                "device": device,
+                                "mount": mount,
+                                "used_percent": disk.get("used_percent"),
+                                "size_kb": disk.get("size_kb"),
+                                "used_kb": disk.get("used_kb"),
+                                "avail_kb": disk.get("avail_kb"),
+                                "read_kbps": disk.get("read_kbps"),
+                                "write_kbps": disk.get("write_kbps"),
+                            })
+
+                elif result["type"] == "sysinfo":
+                    print("Got SysInfo:", result)
+                    sys_info = f'''
+                    System : {result["system"]} kernel {result["kernel"]}
+                    Arch : {result["arch"]}
+                    Host name : {result["hostname"]}
+                    CPU : {result["cpu_model"]} with {result["cpu_cores"]} cores
+                    Freq : {result["cpu_freq"]} Cache : {result["cpu_cache"]}
+                    Memory : {result["mem_total"]}
+                    Host IP : {result["ip"]}
+                    '''
+                    widget.sys_info_msg = sys_info
             else:
                 print("Failed to obtain the SSH Widget")
         except Exception as e:
