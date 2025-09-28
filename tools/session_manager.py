@@ -151,6 +151,13 @@ class SessionManager:
         for session in self.sessions_cache:
             if session.id == session_id:
                 return session
+
+        self.sessions_cache = self.load_sessions()
+
+        for session in self.sessions_cache:
+            if session.id == session_id:
+                return session
+
         return None
 
     def session_name_exists(self, name: str) -> bool:
@@ -177,6 +184,13 @@ class SessionManager:
         for session in self.sessions_cache:
             if session.name == name:
                 return session
+
+        self.sessions_cache = self.load_sessions()
+
+        for session in self.sessions_cache:
+            if session.name == name:
+                return session
+
         return None
 
     def add_command_to_session(self, name: str, command: str):
