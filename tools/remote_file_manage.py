@@ -1020,6 +1020,7 @@ class RemoteFileManager(QThread):
                 else:
                     node[name] = "is_file"
         except Exception as e:
+            self.error_occurred.emit(f"Error\n{e}")
             print(f"获取目录内容时出错: {e}")
 
     # ---------------------------

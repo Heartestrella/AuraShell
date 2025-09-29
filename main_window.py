@@ -952,8 +952,10 @@ class Window(FramelessWindow):
 
         # Create a truly unique ID for the UI widget
         file_id = f"{widget_key}_{task_identifier}_{time.time()}"
-        self.file_id_to_path[file_id] = os.path.join(
-            "_ssh_download", os.path.basename(path))
+        if type(path) == list:
+            for i in path:
+                self.file_id_to_path[file_id] = os.path.join(
+                    "_ssh_download", os.path.basename(i))
         if isinstance(path, list) and transfer_type == 'upload':
             # Special handling for compressed list uploads
             file_name = "Compressing..."

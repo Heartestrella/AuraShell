@@ -161,8 +161,13 @@ class SSHWorker(QThread):
                 host_key = self.get_hostkey_fp_hex()
                 self.key_verification.emit(md5, host_key)
                 # print(md5, host_key)
-                try:
+                if self.user == "root":
+                    cmd = f'./.ssh/processes.sh'
+                    print("Running without sudo as root")
+                else:
                     cmd = f'echo {self.password} | sudo -S ./.ssh/processes.sh'
+                    print("Running with sudo as non-root")
+                try:
                     self.run_command(cmd)
                     print("已启动远端 processes 可执行文件（./.ssh/processes）")
                 except Exception as e:
@@ -258,7 +263,7 @@ class SSHWorker(QThread):
         """
         try:
             text = self._buffer.decode(errors='ignore')
-
+            # print(text)
             pattern = re.compile(r'///(SysInfo|Start)(.*?)End///', re.DOTALL)
             match = pattern.search(text)
             if match:

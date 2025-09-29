@@ -82,27 +82,29 @@ while true; do
 
     # --- 全部进程 ---
     all_processes=$(ps -eo user,pid,comm,%cpu,%mem,cmd --no-headers \
-        | awk '
-            function escape_json(str) {
-                gsub(/\\/,"\\\\",str);
-                gsub(/\"/,"\\\"",str);
-                gsub(/\t/,"\\t",str);
-                gsub(/\r/,"\\r",str);
-                gsub(/\n/,"\\n",str);
-                return str;
-            }
-            BEGIN{print "["; first=1}
-            {
-                user=$1; pid=$2; name=$3; cpu=$4; mem=$5;
-                $1=$2=$3=$4=$5="";
-                sub(/^ +/,"",$0);       
-                cmd=escape_json($0);    
-                if (!first) printf ",";
-                printf "{\"user\":\"%s\",\"pid\":%s,\"name\":\"%s\",\"cpu\":%s,\"mem\":%s,\"command\":\"%s\"}", user,pid,name,cpu,mem,cmd;
-                first=0
-            }
-            END{print "]"}
-        ')
+    | awk '
+        function escape_json(str) {
+            gsub(/\\/,"\\\\\\\\",str);      # 先转义反斜杠
+            gsub(/\"/,"\\\"",str);          # 转义双引号
+            gsub(/\t/,"\\t",str);           # 转义制表符
+            gsub(/\r/,"\\r",str);           # 转义回车符
+            gsub(/\n/,"\\n",str);           # 转义换行符
+            # 移除或替换控制字符
+            gsub(/[[:cntrl:]]/, "", str);
+            return str;
+        }
+        BEGIN{print "["; first=1}
+        {
+            user=$1; pid=$2; name=$3; cpu=$4; mem=$5;
+            $1=$2=$3=$4=$5="";
+            sub(/^ +/,"",$0);       
+            cmd=escape_json($0);    
+            if (!first) printf ",";
+            printf "{\"user\":\"%s\",\"pid\":%s,\"name\":\"%s\",\"cpu\":%s,\"mem\":%s,\"command\":\"%s\"}", user,pid,name,cpu,mem,cmd;
+            first=0
+        }
+        END{print "]"}
+    ')
 
 
     # --- 磁盘使用情况 + 读写速率 ---
