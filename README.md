@@ -30,7 +30,7 @@ Includes a **remote file manager** and **integrated terminal**, providing a mode
   - Supports copy/close session directly  
 
 - 🛜 **Network & Process Monitoring**  
-  - View network and system processes (operation support coming soon)  
+  - View network and system processes
   - File upload/download progress display and termination  
 ---
 ---
