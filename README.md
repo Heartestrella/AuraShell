@@ -47,7 +47,7 @@ Includes a **remote file manager** and **integrated terminal**, providing a mode
  python main_window.py
 ```
 
-### Running from Precompiled Version
+### Running from Precompiled Version (Really Not recommended)
 1. Download the latest packaged version from the Releases page.
 2. Extract the compressed package.
 3. Run the executable file directly.System requirements: Windows 10 or higher.
