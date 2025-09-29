@@ -51,7 +51,7 @@ pip install -r requirements.txt
 python main_window.py
 ```
 
-### 从预编译版本运行
+### 从预编译版本运行(真心不建议)
 1. 从 Releases 页面 下载最新的打包版本
 
 2. 解压压缩包
