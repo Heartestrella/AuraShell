@@ -45,7 +45,7 @@ class TransferProgressWidget(QWidget):
 
         icon_widget = ToolButton(FIF.BROOM)
         icon_widget.setFixedSize(32, 32)
-        icon_widget.setToolTip(self.tr("Clear finished"))
+        icon_widget.setToolTip(self.tr("Clean finished"))
         icon_widget.clicked.connect(lambda: self.clear_completed_items())
 
         self.header_layout.addWidget(self.title_label, 0, Qt.AlignLeft)

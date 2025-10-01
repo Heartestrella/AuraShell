@@ -150,7 +150,7 @@ class CommandInput(TextEdit):
         clear_btn = ToolButton(FluentIcon.BROOM, self)
         clear_btn.setFixedSize(22, 22)
         clear_btn.setFocusPolicy(Qt.NoFocus)
-        clear_btn.setToolTip(self.tr("Clear History"))
+        clear_btn.setToolTip(self.tr("Clean History"))
         clear_btn.setStyleSheet("""
             PushButton {
                 border: none;

@@ -236,6 +236,7 @@ class SSHWidget(QWidget):
         rightLayout.setContentsMargins(0, 0, 0, 0)
         rightLayout.setSpacing(0)
         rsplitter = QSplitter(Qt.Vertical, rightContainer)
+        rsplitter.setObjectName("splitter_tb_ratio")
         rsplitter.setChildrenCollapsible(False)
         rsplitter.setHandleWidth(2)
         rsplitter.setStyleSheet("""
@@ -443,6 +444,7 @@ class SSHWidget(QWidget):
 
         # Left Right splitter
         splitter_lr = QSplitter(Qt.Horizontal, self)
+        splitter_lr.setObjectName("splitter_lr_ratio")
         splitter_lr.addWidget(leftContainer)
         splitter_lr.addWidget(rightContainer)
         self.mainLayout.addWidget(splitter_lr)
@@ -452,15 +454,37 @@ class SSHWidget(QWidget):
 
         splitter_lr.setStretchFactor(0, 25)  # 左侧面板
         splitter_lr.setStretchFactor(1, 75)  # 右侧主区
-
+        splitter_lr.splitterMoved.connect(self.on_splitter_moved)
         # ---- Debounce terminal resize on splitter move ----
         self.resize_timer = QTimer(self)
         self.resize_timer.setSingleShot(True)
         self.resize_timer.setInterval(50)  # 150ms delay
         self.resize_timer.timeout.connect(self.ssh_widget.fit_terminal)
+        rsplitter.splitterMoved.connect(self.on_splitter_moved)
         rsplitter.splitterMoved.connect(self.resize_timer.start)
+
+        splitter_lr_ratio = config.get("splitter_lr_ratio", [0.2, 0.8])
+        if len(splitter_lr_ratio) == 2:
+            sizes = [int(r * 1000) for r in splitter_lr_ratio]
+            splitter_lr.setSizes(sizes)
+
+        splitter_tb_ratio = config.get("splitter_tb_ratio", [0.7, 0.3])
+        if len(splitter_tb_ratio) == 2:
+            sizes = [int(r * 1000) for r in splitter_tb_ratio]
+            rsplitter.setSizes(sizes)
+
         if use_ai:
             self.handle_concent()
+
+    def on_splitter_moved(self, pos, index):
+        splitter = self.sender()
+        obj_name = splitter.objectName()
+        sizes = splitter.sizes()
+        total = sum(sizes)
+        if total > 0:
+            ratios = [s/total for s in sizes]
+            print(f"移动: {obj_name}, 比例: {ratios}")
+            CONFIGER.revise_config(f"{obj_name}", ratios)
 
     def _change_file_or_net(self, router):
         self.net_monitor.hide()
