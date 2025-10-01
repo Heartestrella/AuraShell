@@ -15,7 +15,7 @@ Includes a **remote file manager** and **integrated terminal**, providing a mode
   Based on `xterm.js` and `QWebEngineView`, supports:  
   - Command-line interaction  
   - Command history reuse  
-  - Integrated AI-enhanced command input (AI-generated commands will be supported in the future)  
+  - Integrated AI-enhanced command input (Currently only supports deepseek)  
   - Adjustable font and color scheme  
 
 - 📂 **Remote File Manager**  
