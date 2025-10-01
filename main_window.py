@@ -35,7 +35,8 @@ mime_types = [
     "text/css",
     "text/javascript",
     "application/json",
-    "application/xml"
+    "application/xml",
+    "application/x-empty"
 ]
 
 
@@ -956,6 +957,9 @@ class Window(FramelessWindow):
             for i in path:
                 self.file_id_to_path[file_id] = os.path.join(
                     "_ssh_download", os.path.basename(i))
+        else:
+            self.file_id_to_path[file_id] = os.path.join(
+                "_ssh_download", os.path.basename(path))
         if isinstance(path, list) and transfer_type == 'upload':
             # Special handling for compressed list uploads
             file_name = "Compressing..."
@@ -982,6 +986,7 @@ class Window(FramelessWindow):
 
     def open_in_explorer(self, file_id: str):
         filepath = self.file_id_to_path.get(file_id, None)
+
         if filepath and os.path.exists(filepath):  # maybe its remote path
 
             print("Open : ", filepath)
