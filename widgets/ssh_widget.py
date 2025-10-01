@@ -8,6 +8,7 @@ from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPainterPath
 from qfluentwidgets import SegmentedWidget, RoundMenu, Action, FluentIcon as FIF, ToolButton, Dialog
 
 from tools.setting_config import SCM
+from tools.llm_helper import LLMHelper
 from widgets.ssh_webterm import WebTerminal
 from widgets.network_detaile import NetProcessMonitor
 from widgets.system_resources_widget import ProcessTable
@@ -144,12 +145,13 @@ class SSHWidget(QWidget):
     def __init__(self, name: str,  parent=None, font_name=None, user_name=None):
         super().__init__(parent=parent)
         self.file_manager = None
+        config = CONFIGER.read_config()
+        use_ai = config.get("aigc_open", False)
         self.setObjectName(name)
         self.router = name
         self.parentkey = name.split('-')[0].strip()
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.sys_info_msg = ""
-        config = CONFIGER.read_config()
 
         self.mainLayout = QVBoxLayout(self)
         self.mainLayout.setContentsMargins(0, 0, 0, 0)
@@ -197,6 +199,7 @@ class SSHWidget(QWidget):
         """)
 
         self.disk_usage = DiskMonitor(leftContainer)
+        self.disk_usage.into_driver_path.connect(self._set_file_bar)
         self.disk_usage.setObjectName("disk_usage")
         self.disk_usage.setMinimumHeight(80)
         self.disk_usage.setSizePolicy(
@@ -318,10 +321,11 @@ class SSHWidget(QWidget):
 
         self.bash_wrap_button.toggled.connect(self._on_bash_wrap_toggled)
 
-        self.command_input = CommandInput(self.command_bar)
+        self.command_input = CommandInput(font_name, use_ai, self.command_bar)
+
         self.command_input.setObjectName("command_input")
         self.command_input.setPlaceholderText(
-            self.tr("Enter command here,Shift+Enter for new line,Enter to sendExec,or Enter Alt to show history command"))
+            self.tr("Shift+Enter for new line. Enter Alt to show history command. Ctrl+O to get AI suggestion (if open)"))
         # self.command_input.setFixedHeight(32) # Remove fixed height
         self.command_input.setVerticalScrollBarPolicy(
             Qt.ScrollBarAlwaysOff)
@@ -455,6 +459,8 @@ class SSHWidget(QWidget):
         self.resize_timer.setInterval(50)  # 150ms delay
         self.resize_timer.timeout.connect(self.ssh_widget.fit_terminal)
         rsplitter.splitterMoved.connect(self.resize_timer.start)
+        if use_ai:
+            self.handle_concent()
 
     def _change_file_or_net(self, router):
         self.net_monitor.hide()
@@ -718,3 +724,9 @@ class SSHWidget(QWidget):
             parent_layout.removeWidget(self)
         self.setParent(None)
         self.deleteLater()
+
+    def handle_concent(self):
+        self.llm = LLMHelper()
+        self.llm.result_signal.connect(self.command_input._on_partial_result)
+        self.llm.error_signal.connect(self.command_input.suggestion_error)
+        self.llm.finished_signal.connect(self.command_input.clear_out)

@@ -1,19 +1,129 @@
-from PyQt5.QtCore import Qt, pyqtSignal, QRect, QPoint, QEvent, QStringListModel
-from PyQt5.QtWidgets import QApplication, QHBoxLayout, QWidget
+from PyQt5.QtCore import Qt, pyqtSignal, QRect, QPoint, QEvent, QStringListModel, QTimer
+from PyQt5.QtGui import QFont, QFontMetrics
+from PyQt5.QtWidgets import QApplication, QHBoxLayout, QWidget, QFrame, QVBoxLayout, QLabel
 from qfluentwidgets import TextEdit, ListView, VBoxLayout, ToolButton, FluentIcon
+import re
+import json
+
+
+class OneSuggestionPopup(QFrame):
+    def __init__(self, parent=None, max_width=440):
+        super().__init__(parent, Qt.Tool | Qt.FramelessWindowHint)
+        self.suggestion_accepted = False
+        self.max_width = max_width
+        self.setMinimumSize(150, 50)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.setFocusPolicy(Qt.NoFocus)
+
+        self.setObjectName("one_sugg_popup")
+        self.setStyleSheet("""
+            QFrame#one_sugg_popup {
+                border-radius: 12px;
+                background: rgb(29,29,29);
+                border: 1px solid rgba(255,255,255,10);
+            }
+            QLabel { color: #FFFFFF; padding: 4px 8px; }
+            QLabel#cmd_label { font-family: "Courier New", monospace; }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+
+        self.expl_label = QLabel("", self)
+        self.expl_label.setWordWrap(True)
+        self.expl_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+        font = QFont()
+        font.setPointSize(10)
+        font.setStyleStrategy(QFont.PreferAntialias)
+        self.expl_label.setFont(font)
+
+        self.cmd_label = QLabel("", self)
+        self.cmd_label.setWordWrap(True)
+        self.cmd_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.cmd_label.setFont(QFont("Courier New", 10))
+        self.cmd_label.setObjectName("cmd_label")
+        self.cmd_label.setStyleSheet("color: #00FF00; padding: 4px;")
+        layout.addWidget(self.expl_label)
+        layout.addWidget(self.cmd_label)
+
+        self.hide()
+
+    def show_suggestion(self, explanation: str = None, command: str = None, input_widget=None):
+        if explanation is None and command is None:
+            self.hide()
+            return
+
+        if explanation is not None:
+            self.expl_label.setText(explanation)
+        if command is not None:
+            self.cmd_label.setText(command)
+
+        fm_expl = QFontMetrics(self.expl_label.font())
+        fm_cmd = QFontMetrics(self.cmd_label.font())
+
+        expl_width = max([fm_expl.horizontalAdvance(line)
+                          for line in self.expl_label.text().split('\n')] + [0])
+        cmd_width = max([fm_cmd.horizontalAdvance(line)
+                        for line in self.cmd_label.text().split('\n')] + [0])
+
+        raw_width = max(expl_width, cmd_width) + 16
+        min_width = 200
+        desired_w = max(min_width, min(self.max_width, raw_width))
+
+        self.expl_label.setFixedWidth(desired_w - 8)
+        self.cmd_label.setFixedWidth(desired_w - 8)
+
+        self.expl_label.adjustSize()
+        self.cmd_label.adjustSize()
+        self.adjustSize()
+
+        if input_widget:
+            rect = input_widget.rect()
+            top_left = input_widget.mapToGlobal(rect.topLeft())
+
+            x = top_left.x()
+            y = top_left.y() - self.height() - 6
+
+            screen_geo = QApplication.desktop().availableGeometry(input_widget)
+            if y < screen_geo.top():
+                y = input_widget.mapToGlobal(rect.bottomLeft()).y() + 6
+            if x + self.width() > screen_geo.right():
+                x = max(screen_geo.left(), screen_geo.right() - self.width() - 6)
+
+            self.move(QPoint(x, y))
+
+        self.show()
+
+    def hide_suggestion(self):
+        self.hide()
+
+    def set_font(self, font):
+
+        self.expl_label.setFont(font)
+        self.cmd_label.setFont(font)
 
 
 class CommandInput(TextEdit):
     executeCommand = pyqtSignal(str)
     clear_history_ = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, font_name, use_ai, parent=None):
         super().__init__(parent)
-
-        # 历史记录数据模型（不直接代表显示顺序，显示顺序由 _refresh_history_model 控制）
+        self.use_ai = use_ai
+        font = QFont(font_name)
+        self.partial_output = ""
+        self.suggestionpopup = OneSuggestionPopup(self, max_width=440)
+        self.suggestionpopup.set_font(font)
+        self.setFont(font)
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_frame)
+        self.frames = [".", "..", "..."]
+        self.frame_index = 0
         self._history_model = QStringListModel()
 
-        # 列表视图（放到 popup 内）
         self._history_view = ListView(None)
         self._history_view.setModel(self._history_model)
         self._history_view.setSelectionMode(ListView.SingleSelection)
@@ -21,10 +131,8 @@ class CommandInput(TextEdit):
         self._history_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._history_view.clicked.connect(self._on_history_index_clicked)
         self._history_view.activated.connect(self._on_history_index_activated)
-        # 列表不抢焦点（弹窗显示时输入框仍接收键入）
         self._history_view.setFocusPolicy(Qt.NoFocus)
 
-        # ---- 历史记录弹窗容器（用 Qt.Tool，避免抢占输入法上下文） ----
         flags = Qt.Tool | Qt.FramelessWindowHint
         self._history_popup = QWidget(None, flags)
         self._history_popup.setAttribute(Qt.WA_TranslucentBackground, False)
@@ -36,14 +144,13 @@ class CommandInput(TextEdit):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # 顶部工具栏（右上角扫把按钮）
         toolbar = QHBoxLayout()
         toolbar.setContentsMargins(0, 0, 0, 0)
 
         clear_btn = ToolButton(FluentIcon.BROOM, self)
         clear_btn.setFixedSize(22, 22)
         clear_btn.setFocusPolicy(Qt.NoFocus)
-        clear_btn.setToolTip("清空历史")
+        clear_btn.setToolTip(self.tr("Clear History"))
         clear_btn.setStyleSheet("""
             PushButton {
                 border: none;
@@ -66,7 +173,6 @@ class CommandInput(TextEdit):
         layout.addLayout(toolbar)
         layout.addWidget(self._history_view)
 
-        # 样式美化（减小行高，减少上下间隙）
         self._history_popup.setStyleSheet("""
             QWidget {
                 background-color: rgb(29, 29, 29);
@@ -89,34 +195,26 @@ class CommandInput(TextEdit):
             }
         """)
 
-        # 历史命令列表（原始顺序保存在这里）
         self._history = []
 
-        # 安装全局事件过滤器（用于点击外部时关闭历史弹窗）
         QApplication.instance().installEventFilter(self)
 
-        # 连接输入变化信号：实时匹配
-        # QTextEdit 的 textChanged 是无参信号，使用 toPlainText() 获取内容
         self.textChanged.connect(self._on_text_changed)
-
-    # ----------------- 历史管理 -----------------
 
     def add_history(self, cmd):
         if isinstance(cmd, (list, tuple)):
             for c in cmd:
-                self.add_history(c)  # 递归调用添加每条
+                self.add_history(c)
             return
 
         cmd = (cmd or "").strip()
         if not cmd:
             return
 
-        # 去重并把最新放前（保留原始历史列表的语义）
         if cmd in self._history:
             self._history.remove(cmd)
         self._history.insert(0, cmd)
 
-        # 刷新显示模型（保留当前输入的匹配上下文）
         self._refresh_history_model(self.toPlainText())
 
     def remove_history(self, cmd: str):
@@ -129,18 +227,12 @@ class CommandInput(TextEdit):
         self._refresh_history_model(self.toPlainText())
         self.hide_history()
         self.clear_history_.emit()
-    # ----------------- 实时匹配与刷新模型 -----------------
 
     def _on_text_changed(self):
-        # 实时取当前输入并刷新 model 排序
         current = self.toPlainText()
         self._refresh_history_model(current)
 
     def _refresh_history_model(self, filter_text: str):
-        """
-        根据 filter_text 对 self._history 进行临时排序并写入 model。
-        排序规则：startswith -> contains -> others（保持原始相对顺序）
-        """
         if not self._history:
             self._history_model.setStringList([])
             return
@@ -148,7 +240,6 @@ class CommandInput(TextEdit):
         ft = (filter_text or "").strip().lower()
 
         if ft == "":
-            # 空输入：恢复原始顺序
             display_list = list(self._history)
         else:
             starts = []
@@ -162,21 +253,17 @@ class CommandInput(TextEdit):
                     contains.append((idx, h))
                 else:
                     others.append((idx, h))
-            # 保持原始历史内的相对顺序（已通过 idx 保证）
             display_list = [h for _, h in starts] + \
                 [h for _, h in contains] + [h for _, h in others]
 
-        # 更新 model（不会改变 self._history）
         self._history_model.setStringList(display_list)
 
-        # 如果 popup 可见，默认选中第一条（如果存在）
         if self._history_popup.isVisible():
             if self._history_model.rowCount() > 0:
                 idx0 = self._history_model.index(0, 0)
                 if idx0.isValid():
                     self._history_view.setCurrentIndex(idx0)
 
-    # ----------------- 显示 / 隐藏 -----------------
     def show_history(self):
         if self._history_model.rowCount() == 0:
             return
@@ -203,7 +290,6 @@ class CommandInput(TextEdit):
         else:
             self.show_history()
 
-    # ----------------- 弹窗位置计算 -----------------
     def _adjust_history_popup_position(self):
         global_pos = self.mapToGlobal(QPoint(0, 0))
         input_rect = QRect(global_pos, self.size())
@@ -234,9 +320,9 @@ class CommandInput(TextEdit):
         self._history_popup.setGeometry(x, y, popup_w, popup_h)
 
     def keyPressEvent(self, event):
-        # Esc 隐藏弹窗
         if event.key() == Qt.Key_Escape:
             self.hide_history()
+            self.suggestionpopup.hide()
             return
 
         # 如果 popup 可见，把方向键 / 回车 转发给 listview（即使输入框仍然聚焦）
@@ -253,7 +339,24 @@ class CommandInput(TextEdit):
             self.toggle_history()
             return
 
-        # 在输入的最开头按上箭头弹出历史（保留原行为）
+        if event.key() == Qt.Key_O and event.modifiers() == Qt.ControlModifier:
+
+            print("pressed Alt+O")
+            if self.use_ai:
+                self._generate()
+                return
+
+        if event.key() == Qt.Key_Tab and self.suggestionpopup.isVisible():
+            # accept suggestion
+            suggested = self.suggestionpopup.cmd_label.text()
+            if suggested:
+                self.setText(suggested)
+                self.setFocus()
+                # self.setCursorPosition(len(suggested))
+            self.suggestionpopup.hide()
+
+            return
+
         if event.key() == Qt.Key_Up:
             cursor = self.textCursor()
             at_start = cursor.position() == 0 and cursor.blockNumber() == 0
@@ -285,6 +388,7 @@ class CommandInput(TextEdit):
             or self.isAncestorOf(new_focus)
         ):
             self.hide_history()
+            self.suggestionpopup.hide()
         super().focusOutEvent(event)
 
     def eventFilter(self, obj, event):
@@ -321,6 +425,66 @@ class CommandInput(TextEdit):
         cursor.movePosition(cursor.End)
         self.setTextCursor(cursor)
         self.setFocus()
+
+    def find_parent_with_llm(self):
+        parent = self.parent()
+        while parent is not None:
+            if hasattr(parent, "llm"):
+                return parent
+            parent = parent.parent()
+        return None
+
+    def _on_partial_result(self, msg: str):
+
+        self.partial_output += msg
+
+        cmd_match = re.search(
+            r'"command"\s*:\s*(\[[^\]]*\])', self.partial_output, re.S)
+        if cmd_match:
+            try:
+                commands = json.loads(cmd_match.group(1))
+                self.timer.stop()
+
+                command, lines = commands
+                if command:
+                    self.suggestionpopup.show_suggestion(
+                        command=command, input_widget=self)
+                else:
+                    self.suggestionpopup.hide()
+
+            except Exception:
+                pass
+
+        exp_match = re.search(
+            r'"explanation"\s*:\s*"([^"]*)', self.partial_output, re.S)
+        if exp_match:
+            print(exp_match.group(1))
+            self.suggestionpopup.show_suggestion(
+                explanation=exp_match.group(1), input_widget=self)
+
+    def clear_out(self):
+        self.partial_output = ""
+
+    def suggestion_error(self, msg):
+        if self.suggestionpopup.isVisible():
+            self.suggestionpopup.show_suggestion(
+                explanation=f"❌ {msg}", input_widget=self)
+
+    def update_frame(self):
+        self.suggestionpopup.show_suggestion(
+            explanation=self.frames[self.frame_index], input_widget=self)
+        self.frame_index = (self.frame_index + 1) % len(self.frames)
+
+    def get_terminal(self):
+        pass
+
+    def _generate(self):
+        text = self.toPlainText()
+        parent_widget = self.find_parent_with_llm()
+        self.timer.start(300)
+        if parent_widget:
+            parent_widget.llm.send_request(
+                parent_widget.ssh_widget.terminal_texts, text)
 
     def cleanup_history(self):
         try:

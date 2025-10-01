@@ -36,6 +36,7 @@ from PyQt5.QtGui import QKeySequence
 print("QT_VERSION:", qc.QT_VERSION_STR, "PYQT:", qc.PYQT_VERSION_STR)
 
 configer = SCM()
+config = configer.read_config()
 _ansi_csi_re = re.compile(r'\x1b\[[0-9;?]*[ -/]*[@-~]')
 _ansi_esc_re = re.compile(r'\x1b.[@-~]?')
 
@@ -331,6 +332,14 @@ class WebTerminal(QWidget):
 
         self.view.page().loadFinished.connect(self._on_page_loaded)
 
+        self.terminal_texts = ""
+        self._terminal_texts_max = 1500
+        if config["aigc_open"]:
+            try:
+                self.bridge.output.connect(self._on_bridge_output)
+            except Exception:
+                pass
+
     def _open_dev_mode(self):
         self.devtools = QWebEngineView()
         self.devtools.setWindowTitle("DevTools")
@@ -349,11 +358,8 @@ class WebTerminal(QWidget):
             self.devtools.activateWindow()
 
     def _on_directory_changed(self, new_dir):
-        """处理目录变更"""
-        config = configer.read_config()
         if config["follow_cd"]:
             self.directoryChanged.emit(new_dir)
-            print(f"目录已变更: {new_dir}")
 
     def _set_font(self, font_name):
         """
@@ -551,7 +557,10 @@ class WebTerminal(QWidget):
             self.bridge.directoryChanged.disconnect()
         except Exception:
             pass
-
+        try:
+            self.terminal_texts = ""
+        except Exception:
+            pass
         # 2️⃣ 注销 worker
         if self.bridge.worker:
             try:
@@ -590,3 +599,25 @@ class WebTerminal(QWidget):
         if parent_layout:
             parent_layout.removeWidget(self)
         self.setParent(None)
+
+    def _on_bridge_output(self, b64: str):
+        """
+        Slot connected to TerminalBridge.output (base64-encoded bytes).
+        Decode -> strip ANSI -> append to self.terminal_texts, trimming from head if needed.
+        """
+        try:
+            # decode base64 -> bytes -> text
+            chunk_bytes = base64.b64decode(b64)
+            text = chunk_bytes.decode('utf-8', errors='ignore')
+            # strip ANSI sequences to keep plain terminal text (optional but usually desired)
+            plain = _strip_ansi_sequences(text)
+
+            # append and trim to max length (keep newest chars)
+            self.terminal_texts += plain
+            if len(self.terminal_texts) > self._terminal_texts_max:
+                # keep the last _terminal_texts_max characters
+                self.terminal_texts = self.terminal_texts[-self._terminal_texts_max:]
+
+        except Exception as e:
+            # Don't crash the app for logging reasons; print for debug
+            print(f"_on_bridge_output error: {e}")

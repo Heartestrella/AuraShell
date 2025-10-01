@@ -8,8 +8,8 @@
 
 from qfluentwidgets import FluentIcon as FIF, IconWidget, ToolButton
 from PyQt5.QtWidgets import QFrame, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QSizePolicy
-from PyQt5.QtGui import QColor
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QColor, QFontMetrics
+from PyQt5.QtCore import Qt, pyqtSignal
 from qfluentwidgets import FluentIcon as FIF, IconWidget, ToolButton, ScrollArea as QS_SCROLL
 import sys
 import random
@@ -41,121 +41,143 @@ class GradientFillBackgroundMixin:
         return "#FFFFFF"
 
 
-# 只贴关键类： FillDiskCard 和 DiskMonitor
-
-
 class FillDiskCard(QFrame):
+
     def __init__(self, disk_id: str, data: dict, parent=None, open_callback=None):
         super().__init__(parent)
         self.disk_id = disk_id
         self.open_callback = open_callback
-        self.setFixedHeight(90)
+
+        self.setFixedHeight(64)
+        self.setMinimumHeight(56)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setMinimumHeight(72)
         self.setAttribute(Qt.WA_StyledBackground, True)
 
         self._percent = 0
 
-        # 基础样式（文字透明背景）
         self.setStyleSheet("""
-            QFrame { border-radius: 10px; margin:0px; padding:0px; }
+            QFrame { border-radius: 8px; margin:0px; padding:0px; }
             QLabel, QPushButton { background: transparent; }
         """)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(12)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(8)
 
-        # --- 左侧（设备 + 挂载点）
         left_v = QVBoxLayout()
+        left_v.setContentsMargins(0, 0, 0, 0)
+        left_v.setSpacing(2)
+
         top_row = QHBoxLayout()
+        top_row.setContentsMargins(0, 0, 0, 0)
+        top_row.setSpacing(6)
+
         self.icon = IconWidget(FIF.DEVELOPER_TOOLS, self)
-        self.icon.setFixedSize(16, 16)
+        self.icon.setFixedSize(14, 14)
 
         self.device_label = QLabel(data.get("device", "unknown"))
-        self.device_label.setStyleSheet("font-weight:700; color: #FFFFFF;")
+        dev_font = QFont()
+        dev_font.setPointSize(9)
+        dev_font.setBold(True)
+        self.device_label.setFont(dev_font)
+        self.device_label.setStyleSheet("color: #FFFFFF;")
 
         top_row.addWidget(self.icon, 0, Qt.AlignVCenter)
         top_row.addWidget(self.device_label, 0, Qt.AlignVCenter)
         top_row.addStretch(1)
 
         self.mount_label = QLabel(data.get("mount", ""))
-        self.mount_label.setWordWrap(True)
-        self.mount_label.setStyleSheet(
-            "color: rgba(255,255,255,200); font-size:11px;")
+        mount_font = QFont()
+        mount_font.setPointSize(8)
+        self.mount_label.setFont(mount_font)
+        self.mount_label.setWordWrap(False)
+        self.mount_label.setStyleSheet("color: rgba(255,255,255,200);")
+        self.mount_label.setToolTip(data.get("mount", ""))
 
         left_v.addLayout(top_row)
         left_v.addWidget(self.mount_label)
 
-        # --- 中间（容量 + 百分比）
-        center = QVBoxLayout()
-        self.percent_label = QLabel("0%")
-        self.percent_label.setStyleSheet("font-weight:700; color: #FFFFFF;")
+        center = QHBoxLayout()
+        center.setContentsMargins(0, 0, 0, 0)
+        center.setSpacing(8)
+
         self.size_info = QLabel("")
-        self.size_info.setStyleSheet(
-            "color: rgba(255,255,255,200); font-size:11px;")
+        size_font = QFont()
+        size_font.setPointSize(9)
+        self.size_info.setFont(size_font)
+        self.size_info.setStyleSheet("color: rgba(255,255,255,200);")
 
-        info_row = QHBoxLayout()
-        info_row.addWidget(self.size_info)
-        info_row.addStretch(1)
-        info_row.addWidget(self.percent_label)
+        self.percent_label = QLabel("0%")
+        pct_font = QFont()
+        pct_font.setPointSize(10)
+        pct_font.setBold(True)
+        self.percent_label.setFont(pct_font)
+        self.percent_label.setStyleSheet("color: #FFFFFF;")
 
+        center.addWidget(self.size_info, 0, Qt.AlignVCenter | Qt.AlignLeft)
         center.addStretch(1)
-        center.addLayout(info_row)
-        center.addStretch(1)
+        center.addWidget(self.percent_label, 0,
+                         Qt.AlignVCenter | Qt.AlignRight)
 
-        # --- 右侧（读写速率 + 打开按钮）
         right = QVBoxLayout()
+        right.setContentsMargins(0, 0, 0, 0)
+        right.setSpacing(2)
+
         self.read_label = QLabel("R: 0 KB/s", self)
         self.write_label = QLabel("W: 0 KB/s", self)
-        self.read_label.setStyleSheet(
-            "color: rgba(255,255,255,240); font-weight:700; font-size:12px;")
-        self.write_label.setStyleSheet(
-            "color: rgba(255,255,255,220); font-weight:600; font-size:11px;")
+        r_font = QFont()
+        r_font.setPointSize(9)
+        r_font.setBold(True)
+        self.read_label.setFont(r_font)
+        w_font = QFont()
+        w_font.setPointSize(8)
+        w_font.setBold(False)
+        self.write_label.setFont(w_font)
+        self.read_label.setStyleSheet("color: rgba(255,255,255,240);")
+        self.write_label.setStyleSheet("color: rgba(255,255,255,220);")
+
         right.addWidget(self.read_label, 0, Qt.AlignRight)
         right.addWidget(self.write_label, 0, Qt.AlignRight)
 
         self.open_btn = ToolButton(FIF.FOLDER, self)
-        self.open_btn.setFixedSize(20, 20)
+        self.open_btn.setFixedSize(16, 16)
         self.open_btn.setStyleSheet(
             "background: transparent; color: rgba(255,255,255,200);")
         self.open_btn.clicked.connect(self._open_mount)
 
         right_wrap = QHBoxLayout()
+        right_wrap.setContentsMargins(0, 0, 0, 0)
+        right_wrap.setSpacing(4)
         right_wrap.addLayout(right)
         right_wrap.addWidget(self.open_btn, 0, Qt.AlignRight)
 
+        # 布局权重（左中右），权重分配使中间尽可能紧凑
         layout.addLayout(left_v, 4)
-        layout.addLayout(center, 5)
+        layout.addLayout(center, 4)
         layout.addLayout(right_wrap, 2)
 
-        # 初始化数据
         self.setData(data)
 
-    # ----------- 新增：绘制渐变背景 -----------
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
         rect = self.rect()
-
-        # 根据使用率选择颜色
         main_col, mid_col = self._choose_colors(self._percent)
         stop = max(0.0, min(1.0, self._percent / 100.0))
 
         grad = QLinearGradient(rect.topLeft(), rect.topRight())
         grad.setColorAt(0, QColor(main_col))
         grad.setColorAt(stop, QColor(mid_col))
+        grad.setColorAt(min(stop + 0.001, 1.0), QColor(0, 0, 0, 40))
         grad.setColorAt(1, QColor(0, 0, 0, 40))
 
         painter.setBrush(QBrush(grad))
-        painter.setPen(QPen(QColor(255, 255, 255, 20), 1))
-        painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 10, 10)
+        painter.setPen(QPen(QColor(255, 255, 255, 18), 1))
+        painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 8, 8)
 
-        painter.end()
         super().paintEvent(event)
 
-    # ----------- 配色函数 -----------
     def _choose_colors(self, percent: int):
         if percent < 60:
             return "#27ae60", "#2ecc71"
@@ -181,12 +203,18 @@ class FillDiskCard(QFrame):
         w = data.get("write_kbps", 0)
 
         self.device_label.setText(device)
+
         if mount is None:
             mount = ""
-        self.mount_label.setText(mount)
+        try:
+            avail_width = max(120, int(self.width() * 0.35))
+        except Exception:
+            avail_width = 140
+        fm = QFontMetrics(self.mount_label.font())
+        elided = fm.elidedText(mount, Qt.ElideMiddle, avail_width)
+        self.mount_label.setText(elided)
         self.mount_label.setToolTip(mount)
 
-        # normalize percent
         p = 0
         if used_percent is not None:
             try:
@@ -200,14 +228,13 @@ class FillDiskCard(QFrame):
         self._percent = p
         self.percent_label.setText(f"{p}%")
 
-        # size info (human readable) if present
         if all(v is not None for v in (size_kb, used_kb, avail_kb)):
             try:
                 def hr(kb):
-                    if kb >= 1024*1024:
-                        return f"{kb/1024/1024:.1f}G"
+                    if kb >= 1024 * 1024:
+                        return f"{kb / 1024 / 1024:.1f}G"
                     if kb >= 1024:
-                        return f"{kb/1024:.1f}M"
+                        return f"{kb / 1024:.1f}M"
                     return f"{kb}K"
                 self.size_info.setText(f"{hr(used_kb)}/{hr(size_kb)} used")
             except Exception:
@@ -215,7 +242,6 @@ class FillDiskCard(QFrame):
         else:
             self.size_info.setText("")
 
-        # R/W text
         try:
             self.read_label.setText(f"R: {float(r):.1f} KB/s")
             self.write_label.setText(f"W: {float(w):.1f} KB/s")
@@ -223,31 +249,13 @@ class FillDiskCard(QFrame):
             self.read_label.setText(f"R: {r} KB/s")
             self.write_label.setText(f"W: {w} KB/s")
 
-        # update card background (full-card fill)
         self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-
-        rect = self.rect()
-        main_col, mid_col = self._choose_colors(self._percent)
-        stop = max(0.0, min(1.0, self._percent / 100.0))
-
-        grad = QLinearGradient(rect.topLeft(), rect.topRight())
-        grad.setColorAt(0, QColor(main_col))
-        grad.setColorAt(stop, QColor(mid_col))
-        grad.setColorAt(min(stop + 0.001, 1.0), QColor(0, 0, 0, 40))
-        grad.setColorAt(1, QColor(0, 0, 0, 40))
-
-        painter.setBrush(QBrush(grad))
-        painter.setPen(QPen(QColor(255, 255, 255, 20), 1))
-        painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 10, 10)
-
-        super().paintEvent(event)
 
 
 class DiskMonitor(QWidget):
+
+    into_driver_path = pyqtSignal(str)  # signal to open mount path
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.disk_items = {}
@@ -302,4 +310,4 @@ class DiskMonitor(QWidget):
             card.deleteLater()
 
     def _on_open(self, mount: str):
-        print("open mount:", mount)
+        self.into_driver_path.emit(mount)

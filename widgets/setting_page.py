@@ -5,13 +5,13 @@ from PyQt5.QtGui import QFontDatabase, QFont, QColor, QPalette, QKeySequence, QI
 from PyQt5.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout,
     QListWidget, QListWidgetItem, QLabel, QPushButton, QShortcut,
-    QSizePolicy, QFrame, QFileDialog, QSpinBox, QSlider
+    QSizePolicy, QFrame, QFileDialog
 )
 
 from qfluentwidgets import (
     FluentIcon, ComboBoxSettingCard, OptionsConfigItem, SearchLineEdit, ScrollArea,
     SwitchSettingCard, PushSettingCard, QConfig, InfoBar, InfoBarPosition,
-    LineEdit, RangeConfigItem, RangeValidator, RangeSettingCard,
+    LineEdit, RangeConfigItem, RangeValidator, RangeSettingCard, ExpandGroupSettingCard, BodyLabel, ComboBox, SwitchButton, IndicatorPosition,
     OptionsValidator, ColorDialog, SettingCard
 )
 
@@ -22,6 +22,12 @@ from tools.setting_config import SCM
 logger = logging.getLogger(__name__)
 
 configer = SCM()
+
+llm_models = {
+    "ChatGPT": 0,
+    "DeepSeek": 1,
+    "Local ollama": 2
+}
 
 
 class Config(QConfig):
@@ -59,6 +65,59 @@ class Config(QConfig):
     default_view = OptionsConfigItem(
         "Files", "DefaultView", "Icon", OptionsValidator(["Icon", "Info"]), restart=False
     )
+
+
+class aigc_config(ExpandGroupSettingCard):
+
+    def __init__(self, parent=None):
+        super().__init__(
+            FluentIcon.EDIT,
+            "AI Model API Settings",
+        )
+
+        self.open_switch = BodyLabel(self.tr("Enable AI Model"))
+        self.open_switchButton = SwitchButton(
+            "Close", self, IndicatorPosition.RIGHT)
+        self.open_switchButton.setOnText("Open")
+
+        self.ModelLabel = BodyLabel(self.tr("AI Model API selection"))
+        self.ModelComboBox = ComboBox()
+        self.ModelComboBox.addItems(["ChatGPT", "DeepSeek", "Local ollama"])
+        self.ModelComboBox.setCurrentIndex(1)
+
+        self.ApiLabel = BodyLabel(self.tr("API Key"))
+        self.ApiEdit = LineEdit()
+        self.ApiEdit.setPlaceholderText(
+            self.tr("Please enter your API key here"))
+        self.ApiEdit.setClearButtonEnabled(True)
+
+        self.Max_length = BodyLabel(self.tr("Max length of history messages"))
+        self.Max_lengthEdit = LineEdit()
+        self.Max_lengthEdit.setPlaceholderText(
+            self.tr("1-100,the larger the number, the more tokens are consumed"))
+        self.Max_lengthEdit.setValidator(QIntValidator(1, 2147483647))
+
+        self.viewLayout.setContentsMargins(0, 0, 0, 0)
+        self.viewLayout.setSpacing(0)
+
+        self.add_row(self.open_switch, self.open_switchButton)
+        self.add_row(self.ModelLabel, self.ModelComboBox)
+        self.add_row(self.ApiLabel, self.ApiEdit)
+        self.add_row(self.Max_length, self.Max_lengthEdit)
+
+    def add_row(self, label, widget):
+        w = QWidget()
+        w.setFixedHeight(60)
+
+        layout = QHBoxLayout(w)
+        layout.setContentsMargins(48, 12, 48, 12)
+        layout.setSpacing(10)
+
+        layout.addWidget(label)
+        layout.addStretch(1)
+        layout.addWidget(widget)
+
+        self.addGroupWidget(w)
 
 
 class FontSelectorDialog(QDialog):
@@ -412,8 +471,27 @@ class SettingPage(ScrollArea):
         self.language_card.comboBox.currentIndexChanged.connect(
             self._change_language)
         layout.addWidget(self.language_card)
+
         self._register_searchable(self.language_card, self.tr("Language"),
                                   ["language", "语言", "lang", "system default", "english", "中文", "简体中文", "日本語", "русский"])
+
+        self.aigc = aigc_config()
+        self.aigc.open_switchButton.checkedChanged.connect(
+            lambda checked: configer.revise_config("aigc_open", checked))
+        self.aigc.ModelComboBox.currentIndexChanged.connect(lambda index: configer.revise_config(
+            "aigc_model", self.aigc.ModelComboBox.currentText()))
+        self.aigc.ApiEdit.editingFinished.connect(
+            lambda text: configer.revise_config("aigc_api_key", text.strip()))
+
+        self.aigc.Max_lengthEdit.editingFinished.connect(
+            lambda: print("Max length changed"))
+        self.aigc.Max_lengthEdit.editingFinished.connect(
+            self.check_max_length_and_save)
+        layout.addWidget(self.aigc)
+        _register_searchable = self._register_searchable
+        _register_searchable(self.aigc, "AI Model API Settings", [
+            "AI", "Model", "API", "Settings", "ChatGPT", "DeepSeek", "Ollama", "Local"
+        ])
 
         self.Color_card = ComboBoxSettingCard(
             configItem=self.cfg.background_color,
@@ -567,8 +645,9 @@ class SettingPage(ScrollArea):
         self.transfer_card.hBoxLayout.addWidget(
             self.transfer_edit, 0, Qt.AlignRight)
         layout.addWidget(self.transfer_card)
+
         self._register_searchable(self.transfer_card, self.tr("Max Concurrent Transfers"), [
-                                  "transfer", "concurrent", "uploads", "downloads", "并发"])
+                                  "transfer", "concurrent", "uploads", "downloads", "concurrency"])
 
         self._restore_saved_settings()
 
@@ -704,6 +783,23 @@ class SettingPage(ScrollArea):
         else:
             return 0
 
+    def check_max_length_and_save(self):
+        text = self.aigc.Max_lengthEdit.text()
+        # print("editingFinished text:", text)
+        if text.isdigit():
+            value = int(text)
+            if value > 100:
+                self.aigc.Max_lengthEdit.setText("100")
+            elif value < 1:
+                self.aigc.Max_lengthEdit.setText("1")
+        else:
+            self.aigc.Max_lengthEdit.setText("10")
+
+        configer.revise_config(
+            "aigc_history_max_length",
+            int(self.aigc.Max_lengthEdit.text())
+        )
+
     def _restore_saved_settings(self):
 
         # Change interface value
@@ -724,6 +820,15 @@ class SettingPage(ScrollArea):
         self._restore_background_opacity(self.config["background_opacity"])
         self._set_window_size(
             (self.config["window_last_width"], self.config["window_last_height"]))
+        self.aigc.open_switchButton.setChecked(
+            self.config.get("aigc_open", False))
+        self.aigc.ModelComboBox.setCurrentIndex(
+            llm_models[self.config.get("aigc_model", "DeepSeek")])
+        self.aigc.ApiEdit.setText(self.config.get("aigc_api_key", ""))
+
+        self.aigc.Max_lengthEdit.setText(
+            str(self.config.get("aigc_max_length", 10)))
+        # self._set_color
         # self.themeChanged.emit(color)
 
     def _restore_background_opacity(self, value):

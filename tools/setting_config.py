@@ -27,6 +27,10 @@ class SCM:
             "splitter_lr_ratio": [0.2, 0.8],  # proportion
             "splitter_tb_ratio": [0.6, 0.4],  # proportion
             "maximized": False,  # bool Restore the last maximized state
+            "aigc_api_key": "",  # str Your API key for the AI model
+            "aigc_open": False,  # bool Whether to enable the AI model feature
+            "aigc_model": "deepseek",  # str The AI model to use
+            "aigc_history_max_length": 10,  # int The max length of history messages
 
         }
         self.config_path = Path.home() / ".config" / "setting-config.json"
