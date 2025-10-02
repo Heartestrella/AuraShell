@@ -51,11 +51,27 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0
+    
+    - name: 安装系统依赖 (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install qt@5
         
-    - name: 安装 Python 依赖
+    - name: 安装 Python 依赖 (Windows/Linux)
+      if: runner.os != 'macOS'
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install pyinstaller
+        
+    - name: 安装 Python 依赖 (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        python -m pip install --upgrade pip
+        # macOS 上使用预编译的 PyQt5 wheel
+        pip install PyQt5-sip PyQt5
+        # 安装其他依赖，跳过 PyQt5
+        grep -v "PyQt5==" requirements.txt | pip install -r /dev/stdin || true
         pip install pyinstaller
         
     - name: 编译打包 (Windows)
