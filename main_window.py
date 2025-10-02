@@ -206,10 +206,10 @@ class Window(FramelessWindow):
                             f"{processes_cpu_percent:.1f}",
                             processes_name
                         )
-                    if connections and widget.now_ui == "net":
+                    if connections:
                         widget.net_monitor.updateProcessData(connections)
                         # print(processes_cpu_percent, processes_name, processes_mem)
-                    if all_processes and widget.now_ui == "task":
+                    if all_processes:
                         widget.task_detaile.updateProcessData(all_processes)
                     if disk_usage:
                         for disk in disk_usage:
