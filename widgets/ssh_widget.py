@@ -237,8 +237,7 @@ class SSHWidget(QWidget):
 
         self.transfer_progress = TransferProgressWidget(leftContainer)
         self.transfer_progress.setObjectName("transfer_progress")
-        self.transfer_progress.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.transfer_progress.setSizePolicy( QSizePolicy.Expanding, QSizePolicy.Preferred)
         leftLayout.addWidget(self.transfer_progress, 0)
         
         self.transfer_progress.expansionChanged.connect(
@@ -489,13 +488,11 @@ class SSHWidget(QWidget):
 
         splitter_lr_ratio = config.get("splitter_lr_ratio", [0.2, 0.8])
         if len(splitter_lr_ratio) == 2:
-            sizes = [int(r * 1000) for r in splitter_lr_ratio]
-            splitter_lr.setSizes(sizes)
+            QTimer.singleShot(100, lambda: self._restore_splitter_sizes(splitter_lr, splitter_lr_ratio))
 
         splitter_tb_ratio = config.get("splitter_tb_ratio", [0.7, 0.3])
         if len(splitter_tb_ratio) == 2:
-            sizes = [int(r * 1000) for r in splitter_tb_ratio]
-            rsplitter.setSizes(sizes)
+            QTimer.singleShot(100, lambda: self._restore_splitter_sizes(rsplitter, splitter_tb_ratio))
 
         if use_ai:
             self.handle_concent()
@@ -780,6 +777,16 @@ class SSHWidget(QWidget):
             parent_layout.removeWidget(self)
         self.setParent(None)
         self.deleteLater()
+
+    def _restore_splitter_sizes(self, splitter, ratios):
+        if splitter.orientation() == Qt.Horizontal:
+            total_size = splitter.width()
+        else:
+            total_size = splitter.height()
+        
+        if total_size > 0:
+            sizes = [int(r * total_size) for r in ratios]
+            splitter.setSizes(sizes)
 
     def handle_concent(self):
         self.llm = LLMHelper()
