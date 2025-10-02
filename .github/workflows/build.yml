@@ -31,7 +31,7 @@ jobs:
             separator: ":"
           - os: macos-latest
             platform_name: macOS
-            artifact_name: AuraShell
+            artifact_name: AuraShell.app
             build_name: main_window
             separator: ":"
     
@@ -78,9 +78,9 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         # macOS 上使用预编译的 PyQt5 wheel
-        pip install PyQt5-sip PyQt5
-        # 安装其他依赖，跳过 PyQt5
-        grep -v "PyQt5==" requirements.txt | pip install -r /dev/stdin || true
+        pip install PyQt5-sip PyQt5 Pillow
+        # 安装其他依赖，跳过 PyQt5 和 pywin32
+        grep -v -e "PyQt5==" -e "pywin32" requirements.txt | pip install -r /dev/stdin || true
         pip install pyinstaller
         
     - name: 编译打包 (Windows)
@@ -89,25 +89,55 @@ jobs:
         python -m PyInstaller --icon "resource\icons\icon.ico" -w -F --add-data "resource;resource" .\main_window.py
         Move-Item -Path "dist\${{ matrix.build_name }}" -Destination "dist\${{ matrix.artifact_name }}"
         
-    - name: 编译打包 (Linux/macOS)
-      if: runner.os != 'Windows'
+    - name: 编译打包 (Linux)
+      if: runner.os == 'Linux'
       run: |
         python -m PyInstaller --icon "resource/icons/icon.ico" -w -F --add-data "resource:resource" ./main_window.py
         mv "dist/${{ matrix.build_name }}" "dist/${{ matrix.artifact_name }}"
         chmod +x "dist/${{ matrix.artifact_name }}"
         
-    - name: 上传构建产物
+    - name: 编译打包 (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        # macOS 使用 onedir 模式而不是 onefile，避免与 .app bundle 冲突
+        python -m PyInstaller --icon "resource/icons/icon.ico" -w --add-data "resource:resource" ./main_window.py
+        # 打包 .app 目录为 .zip
+        cd dist
+        zip -r ${{ matrix.artifact_name }}.zip main_window.app
+        cd ..
+        
+    - name: 上传构建产物 (Windows/Linux)
+      if: runner.os != 'macOS'
       uses: actions/upload-artifact@v4
       with:
         name: AuraShell-${{ matrix.platform_name }}-${{ github.sha }}
         path: dist/${{ matrix.artifact_name }}
         retention-days: 30
         
-    - name: 创建发布
-      if: startsWith(github.ref, 'refs/tags/')
+    - name: 上传构建产物 (macOS)
+      if: runner.os == 'macOS'
+      uses: actions/upload-artifact@v4
+      with:
+        name: AuraShell-${{ matrix.platform_name }}-${{ github.sha }}
+        path: dist/${{ matrix.artifact_name }}.zip
+        retention-days: 30
+        
+    - name: 创建发布 (Windows/Linux)
+      if: startsWith(github.ref, 'refs/tags/') && runner.os != 'macOS'
       uses: softprops/action-gh-release@v1
       with:
         files: dist/${{ matrix.artifact_name }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: 创建发布 (macOS)
+      if: startsWith(github.ref, 'refs/tags/') && runner.os == 'macOS'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/${{ matrix.artifact_name }}.zip
         draft: false
         prerelease: false
         generate_release_notes: true
