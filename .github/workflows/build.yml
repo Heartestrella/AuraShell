@@ -31,7 +31,7 @@ jobs:
             separator: ':'
           - os: macos-latest
             platform_name: macOS
-            artifact_name: AuraShell.app
+            artifact_name: AuraShell
             build_name: main_window
             separator: ':'
 
@@ -50,25 +50,24 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0
+          sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libmagic1
 
       - name: 安装系统依赖 (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install qt@5
+          brew install qt@5 libmagic
 
       - name: 安装 Python 依赖 (Windows)
         if: runner.os == 'Windows'
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-windows.txt
           pip install pyinstaller
 
       - name: 安装 Python 依赖 (Linux)
         if: runner.os == 'Linux'
         run: |
           python -m pip install --upgrade pip
-          grep -v "pywin32" requirements.txt > requirements-linux.txt
           pip install -r requirements-linux.txt
           pip install pyinstaller
 
@@ -76,63 +75,49 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           python -m pip install --upgrade pip
-          pip install PyQt5-sip PyQt5 Pillow
-          grep -v -e "PyQt5==" -e "pywin32" requirements.txt | pip install -r /dev/stdin || true
+          pip install -r requirements-macos.txt
           pip install pyinstaller
 
       - name: 编译打包 (Windows)
         if: runner.os == 'Windows'
         run: |
-          python -m PyInstaller --icon "resource\icons\icon.ico" -w -F --add-data "resource;resource" .\main_window.py
-          Move-Item -Path "dist\${{ matrix.build_name }}" -Destination "dist\${{ matrix.artifact_name }}"
+          python -m PyInstaller --icon "resource\icons\icon.ico" -w -F --add-data "resource;resource" --name "AuraShell" .\main_window.py
 
       - name: 编译打包 (Linux)
         if: runner.os == 'Linux'
         run: |
-          python -m PyInstaller --icon "resource/icons/icon.ico" -w -F --add-data "resource:resource" ./main_window.py
-          mv "dist/${{ matrix.build_name }}" "dist/${{ matrix.artifact_name }}"
-          chmod +x "dist/${{ matrix.artifact_name }}"
+          python -m PyInstaller --icon "resource/icons/icon.ico" -w -F --add-data "resource:resource" --name "AuraShell" ./main_window.py
+          chmod +x "dist/AuraShell"
 
       - name: 编译打包 (macOS)
         if: runner.os == 'macOS'
         run: |
-          python -m PyInstaller --icon "resource/icons/icon.ico" -w --add-data "resource:resource" ./main_window.py
-          cd dist
-          zip -r ${{ matrix.artifact_name }}.zip main_window.app
-          cd ..
+          python -m PyInstaller --icon "resource/icons/icon.ico" -w -F --add-data "resource:resource" --name "AuraShell" ./main_window.py
+          chmod +x "dist/AuraShell"
 
-      - name: 上传构建产物 (Windows/Linux)
-        if: runner.os != 'macOS'
+      - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: AuraShell-${{ matrix.platform_name }}-${{ github.sha }}
           path: dist/${{ matrix.artifact_name }}
           retention-days: 30
 
-      - name: 上传构建产物 (macOS)
-        if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
         with:
-          name: AuraShell-${{ matrix.platform_name }}-${{ github.sha }}
-          path: dist/${{ matrix.artifact_name }}.zip
-          retention-days: 30
+          path: artifacts
 
-      - name: 创建发布 (Windows/Linux)
-        if: startsWith(github.ref, 'refs/tags/') && runner.os != 'macOS'
+      - name: 创建发布
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/${{ matrix.artifact_name }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 创建发布 (macOS)
-        if: startsWith(github.ref, 'refs/tags/') && runner.os == 'macOS'
-        uses: softprops/action-gh-release@v1
-        with:
-          files: dist/${{ matrix.artifact_name }}.zip
+          files: |
+            artifacts/**/AuraShell*
           draft: false
           prerelease: false
           generate_release_notes: true
