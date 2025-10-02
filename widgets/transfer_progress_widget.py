@@ -92,9 +92,9 @@ class TransferProgressWidget(QWidget):
 
         self.scroll_content = QWidget()
         self.content_layout = QVBoxLayout(self.scroll_content)
-        self.content_layout.setContentsMargins(10, 5, 10, 10)
-        self.content_layout.setSpacing(5)
-        # self.content_layout.addStretch(1)
+        self.content_layout.setContentsMargins(10, 5, 10, 5)
+        self.content_layout.setSpacing(3)
+        self.content_layout.addStretch(1)
         self.scroll_area.setWidget(self.scroll_content)
         self.content_area_layout.addWidget(self.scroll_area)
 
@@ -129,11 +129,11 @@ class TransferProgressWidget(QWidget):
 
         item_widget = QFrame()
         item_widget.setObjectName("itemWidget")
-        item_widget.setFixedHeight(40)
+        item_widget.setFixedHeight(35)
         item_widget.setCursor(Qt.PointingHandCursor)
         item_widget.installEventFilter(self)
         item_layout = QHBoxLayout(item_widget)
-        item_layout.setContentsMargins(8, 5, 8, 5)
+        item_layout.setContentsMargins(8, 2, 8, 2)
 
         # --- Icon ---
         if transfer_type == "upload":
