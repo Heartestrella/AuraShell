@@ -55,7 +55,8 @@ jobs:
       - name: 安装系统依赖 (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install qt@5 libmagic
+          brew install qt@5 pkg-config
+          brew install make cmake
 
       - name: 安装 Python 依赖 (Windows)
         if: runner.os == 'Windows'
@@ -75,6 +76,8 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           python -m pip install --upgrade pip
+          pip install setuptools wheel sip pyqt5-sip
+          pip install pyqt5 --config-settings --confirm-license-install
           pip install -r requirements-macos.txt
           pip install pyinstaller
 
