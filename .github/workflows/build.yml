@@ -57,11 +57,20 @@ jobs:
       run: |
         brew install qt@5
         
-    - name: 安装 Python 依赖 (Windows/Linux)
-      if: runner.os != 'macOS'
+    - name: 安装 Python 依赖 (Windows)
+      if: runner.os == 'Windows'
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install pyinstaller
+        
+    - name: 安装 Python 依赖 (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        python -m pip install --upgrade pip
+        # Linux 上跳过 Windows 特有的包
+        grep -v "pywin32" requirements.txt > requirements-linux.txt
+        pip install -r requirements-linux.txt
         pip install pyinstaller
         
     - name: 安装 Python 依赖 (macOS)
