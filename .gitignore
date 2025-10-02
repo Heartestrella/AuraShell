@@ -6,3 +6,4 @@ _ssh_download/
 /tmp
 /debug
 __pycache__
+build/

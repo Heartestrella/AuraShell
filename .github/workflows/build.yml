@@ -1,0 +1,90 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: windows-latest
+            platform_name: Windows
+            artifact_name: AuraShell.exe
+            build_name: main_window.exe
+            separator: ";"
+          - os: ubuntu-latest
+            platform_name: Linux
+            artifact_name: AuraShell
+            build_name: main_window
+            separator: ":"
+          - os: macos-latest
+            platform_name: macOS
+            artifact_name: AuraShell
+            build_name: main_window
+            separator: ":"
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      
+    - name: 设置 Python 环境
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
+    - name: 安装系统依赖 (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0
+        
+    - name: 安装 Python 依赖
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+        
+    - name: 编译打包 (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        python -m PyInstaller --icon "resource\icons\icon.ico" -w -F --add-data "resource;resource" .\main_window.py
+        Move-Item -Path "dist\${{ matrix.build_name }}" -Destination "dist\${{ matrix.artifact_name }}"
+        
+    - name: 编译打包 (Linux/macOS)
+      if: runner.os != 'Windows'
+      run: |
+        python -m PyInstaller --icon "resource/icons/icon.ico" -w -F --add-data "resource:resource" ./main_window.py
+        mv "dist/${{ matrix.build_name }}" "dist/${{ matrix.artifact_name }}"
+        chmod +x "dist/${{ matrix.artifact_name }}"
+        
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: AuraShell-${{ matrix.platform_name }}-${{ github.sha }}
+        path: dist/${{ matrix.artifact_name }}
+        retention-days: 30
+        
+    - name: 创建发布
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/${{ matrix.artifact_name }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
