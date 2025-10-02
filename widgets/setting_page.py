@@ -480,7 +480,7 @@ class SettingPage(ScrollArea):
             lambda checked: configer.revise_config("aigc_open", checked))
         self.aigc.ModelComboBox.currentIndexChanged.connect(lambda index: configer.revise_config(
             "aigc_model", self.aigc.ModelComboBox.currentText()))
-        self.aigc.ApiEdit.editingFinished.connect(
+        self.aigc.ApiEdit.textEdited.connect(
             lambda text: configer.revise_config("aigc_api_key", text.strip()))
 
         self.aigc.Max_lengthEdit.editingFinished.connect(

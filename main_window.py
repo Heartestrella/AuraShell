@@ -38,6 +38,10 @@ mime_types = [
     "application/xml",
     "application/x-empty"
 ]
+text_extensions = {'.txt', '.py', '.js', '.html', '.css', '.xml', '.json',
+                   '.md', '.log', '.conf', '.ini', '.sh', '.bat', '.ps1',
+                   '.c', '.cpp', '.h', '.java', '.php', '.rb', '.pl', '.sql',
+                   '.yaml', '.yml', '.csv', '.tsv', '.rst', '.tex'}
 
 
 class Window(FramelessWindow):
@@ -325,11 +329,14 @@ class Window(FramelessWindow):
                             if sys.platform.startswith('darwin'):
                                 subprocess.call(('open', open_path))
                             elif os.name == 'nt':
-                                os.startfile(open_path)
                                 with open(open_path, "rb") as f:
                                     mime = magic.from_buffer(
                                         f.read(2048), mime=True)
-                                if mime in mime_types or mime.startswith("text/"):
+                                file_ext = os.path.splitext(open_path)[
+                                    1].lower()
+                                is_likely_text = file_ext in text_extensions
+                                os.startfile(open_path)
+                                if mime in mime_types or mime.startswith("text/") or is_likely_text:
                                     print("Text file starting watching")
                                     file_thread = FileWatchThread(open_path)
                                     file_thread.file_saved.connect(
@@ -455,7 +462,7 @@ class Window(FramelessWindow):
 
             if session_file_md5 != file_md5:
                 msg += self.tr(
-                    f"The MD5 file fingerprint of the Processes file does not match the record.\nMD5:{file_md5}\n")
+                    f"The MD5 file fingerprint of the Processes file does not match the record.\nMD5:{file_md5}\nDo you want to update it?\n")
             if session_host_key != host_key:
                 msg += self.tr(
                     f"The host key does not match the recorded one.\n{host_key}\n")
@@ -464,6 +471,7 @@ class Window(FramelessWindow):
                 msg += self.tr("Are you sure to continue?")
                 w = Dialog(self.tr("Warning!!!!!"), msg, self)
                 if w.exec():
+                    processes.update_script()
                     self.sessionmanager.update_session_processes_md5(
                         parent_key, file_md5)
                     self.sessionmanager.update_session_host_key(

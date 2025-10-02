@@ -80,6 +80,8 @@ It is undeniable that part of the code has been generated with the help of AI to
 
 ## ⚠️ Known Issues & Usage Notes
 
+- AI Assistant Feature: After correctly configuring the KEY and MODEL, enter natural language in the command input box, then press Ctrl + O to start generating. Press Tab to accept the AI suggestions and fill them into the input box.
+- If you need the functions of the left sidebar, please manually install the packages "ss" "lsblk" "iostat" (using package managers like apt or yum). Although the script has built-in installation, it may not always work. If the left sidebar information is not displayed, it is most likely an issue with these packages.
 - Some pages may not display the custom font correctly.  
 - Certain UI elements may not fully match the main window's style.  
 - Regarding font selection, the font that has been installed in the system is called instead of the character path.

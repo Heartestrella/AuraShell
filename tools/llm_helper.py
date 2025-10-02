@@ -7,8 +7,6 @@ import json
 configer = SCM()
 config = configer.read_config()
 
-API_KEY = config.get("aigc_api_key", "")
-MODEL = config.get("aigc_model", "DeepSeek")
 MODEL_URL = {
     "DeepSeek": "https://api.deepseek.com",
     "ChatGPT": "https://api.openai.com",
@@ -26,10 +24,10 @@ class LLMHelper(QThread):
 
     def __init__(self):
         super().__init__()
+        self.loading_settings()
         self.client = None
         self.is_running = False
         self.current_messages = []
-
         self.system_prompt = self.tr('''
 You are a professional SSH assistant. Generate corresponding SSH commands based on terminal output and user requirements.
 
@@ -78,7 +76,7 @@ Please note that there may be multi-turn Q&A information. Pay attention to wheth
             print(messages)
             # print("Model Name:", MODEL_NAME.get(MODEL))
             response = self.client.chat.completions.create(
-                model=MODEL_NAME.get(MODEL),
+                model=MODEL_NAME.get(self.MODEL),
                 messages=messages,
                 stream=True
             )
@@ -161,17 +159,17 @@ Please note that there may be multi-turn Q&A information. Pay attention to wheth
             self.recent_commands = [self.recent_commands[0]] + \
                 self.recent_commands[-(self.history_messages_max_length-1):]
 
-    def init_client(self, model=MODEL, api_key=API_KEY):
+    def init_client(self, ):
         try:
-            if not api_key:
+            if not self.API_KEY:
                 self.error_signal.emit(self.tr("API key is empty"))
                 return False
 
             self.client = OpenAI(
-                api_key=api_key,
-                base_url=MODEL_URL.get(model, None)
+                api_key=self.API_KEY,
+                base_url=MODEL_URL.get(self.MODEL, None)
             )
-            print("Model : ", MODEL_URL.get(model, None))
+            print("Model : ", MODEL_URL.get(self.MODEL, None))
             return True
 
         except Exception as e:
@@ -250,3 +248,11 @@ Please note that there may be multi-turn Q&A information. Pay attention to wheth
             current_user_obj, ensure_ascii=False)})
 
         return messages
+
+    def loading_settings(self):
+        config = configer.read_config()
+        self.API_KEY = config.get("aigc_api_key", "")
+        self.MODEL = config.get("aigc_model", "DeepSeek")
+        self.history_messages_max_length = config.get(
+            "aigc_history_max_length", 10)
+        self.init_client()
