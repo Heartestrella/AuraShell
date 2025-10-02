@@ -11,6 +11,9 @@ class OneSuggestionPopup(QFrame):
         super().__init__(parent, Qt.Tool | Qt.FramelessWindowHint)
         self.suggestion_accepted = False
         self.max_width = max_width
+        self.is_error_state = False  # 新增错误状态标记
+        self.is_loading_state = False  # 新增加载状态标记
+
         self.setMinimumSize(150, 50)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
@@ -25,12 +28,15 @@ class OneSuggestionPopup(QFrame):
             }
             QLabel { color: #FFFFFF; padding: 4px 8px; }
             QLabel#cmd_label { font-family: "Courier New", monospace; }
+            QLabel#error_label { color: #FF6B6B; }  /* 错误样式 */
+            QLabel#loading_label { color: #4ECDC4; }  /* 加载样式 */
         """)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
 
+        # 解释标签 - 支持不同状态
         self.expl_label = QLabel("", self)
         self.expl_label.setWordWrap(True)
         self.expl_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
@@ -40,27 +46,74 @@ class OneSuggestionPopup(QFrame):
         font.setStyleStrategy(QFont.PreferAntialias)
         self.expl_label.setFont(font)
 
+        # 命令标签
         self.cmd_label = QLabel("", self)
         self.cmd_label.setWordWrap(True)
         self.cmd_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.cmd_label.setFont(QFont("Courier New", 10))
         self.cmd_label.setObjectName("cmd_label")
         self.cmd_label.setStyleSheet("color: #00FF00; padding: 4px;")
+
         layout.addWidget(self.expl_label)
         layout.addWidget(self.cmd_label)
 
         self.hide()
 
-    def show_suggestion(self, explanation: str = None, command: str = None, input_widget=None):
-        if explanation is None and command is None:
-            self.hide()
-            return
+    def show_suggestion(self, explanation: str = None, command: str = None,
+                        input_widget=None, is_error=False, is_loading=False):
+        """显示建议弹窗
 
+        Args:
+            explanation: 解释文本
+            command: 命令文本
+            input_widget: 关联的输入控件
+            is_error: 是否为错误状态
+            is_loading: 是否为加载状态
+        """
+        # 重置状态
+        self.is_error_state = is_error
+        self.is_loading_state = is_loading
+
+        # 根据状态设置样式
+        if is_error:
+            self.expl_label.setObjectName("error_label")
+            self.setStyleSheet(self.styleSheet() + """
+                QFrame#one_sugg_popup { border: 1px solid #FF6B6B; }
+            """)
+        elif is_loading:
+            self.expl_label.setObjectName("loading_label")
+            self.setStyleSheet(self.styleSheet() + """
+                QFrame#one_sugg_popup { border: 1px solid #4ECDC4; }
+            """)
+        else:
+            self.expl_label.setObjectName("")
+            self.setStyleSheet(self.styleSheet() + """
+                QFrame#one_sugg_popup { border: 1px solid rgba(255,255,255,10); }
+            """)
+
+        # 更新内容
         if explanation is not None:
             self.expl_label.setText(explanation)
         if command is not None:
             self.cmd_label.setText(command)
 
+        # 错误状态下隐藏命令显示
+        if is_error:
+            self.cmd_label.hide()
+        else:
+            self.cmd_label.show()
+
+        # 计算和调整大小
+        self._adjust_size()
+
+        # 定位到输入控件
+        if input_widget:
+            self._position_relative_to_widget(input_widget)
+
+        self.show()
+
+    def _adjust_size(self):
+        """调整弹窗大小"""
         fm_expl = QFontMetrics(self.expl_label.font())
         fm_cmd = QFontMetrics(self.cmd_label.font())
 
@@ -74,34 +127,50 @@ class OneSuggestionPopup(QFrame):
         desired_w = max(min_width, min(self.max_width, raw_width))
 
         self.expl_label.setFixedWidth(desired_w - 8)
-        self.cmd_label.setFixedWidth(desired_w - 8)
+        if not self.is_error_state:  # 错误状态下不调整命令标签
+            self.cmd_label.setFixedWidth(desired_w - 8)
 
         self.expl_label.adjustSize()
-        self.cmd_label.adjustSize()
+        if not self.is_error_state:
+            self.cmd_label.adjustSize()
         self.adjustSize()
 
-        if input_widget:
-            rect = input_widget.rect()
-            top_left = input_widget.mapToGlobal(rect.topLeft())
+    def _position_relative_to_widget(self, input_widget):
+        """相对于输入控件定位"""
+        rect = input_widget.rect()
+        top_left = input_widget.mapToGlobal(rect.topLeft())
 
-            x = top_left.x()
-            y = top_left.y() - self.height() - 6
+        x = top_left.x()
+        y = top_left.y() - self.height() - 6
 
-            screen_geo = QApplication.desktop().availableGeometry(input_widget)
-            if y < screen_geo.top():
-                y = input_widget.mapToGlobal(rect.bottomLeft()).y() + 6
-            if x + self.width() > screen_geo.right():
-                x = max(screen_geo.left(), screen_geo.right() - self.width() - 6)
+        screen_geo = QApplication.desktop().availableGeometry(input_widget)
+        if y < screen_geo.top():
+            y = input_widget.mapToGlobal(rect.bottomLeft()).y() + 6
+        if x + self.width() > screen_geo.right():
+            x = max(screen_geo.left(), screen_geo.right() - self.width() - 6)
 
-            self.move(QPoint(x, y))
-
-        self.show()
+        self.move(QPoint(x, y))
 
     def hide_suggestion(self):
+        """隐藏建议并重置状态"""
+        self.is_error_state = False
+        self.is_loading_state = False
         self.hide()
 
-    def set_font(self, font):
+    def start_loading_animation(self, parent_widget):
+        """开始加载动画"""
+        self.is_loading_state = True
+        if hasattr(parent_widget, 'timer') and not parent_widget.timer.isActive():
+            parent_widget.frame_index = 0
+            parent_widget.timer.start(500)  # 500ms 间隔
 
+    def stop_loading_animation(self, parent_widget):
+        """停止加载动画"""
+        self.is_loading_state = False
+        if hasattr(parent_widget, 'timer') and parent_widget.timer.isActive():
+            parent_widget.timer.stop()
+
+    def set_font(self, font):
         self.expl_label.setFont(font)
         self.cmd_label.setFont(font)
 
@@ -466,17 +535,28 @@ class CommandInput(TextEdit):
         self.partial_output = ""
 
     def suggestion_error(self, msg):
+        if hasattr(self, 'timer') and self.timer.isActive():
+            self.timer.stop()
+
         if self.suggestionpopup.isVisible():
-            self.suggestionpopup.show_suggestion(
-                explanation=f"❌ {msg}", input_widget=self)
+            self.suggestionpopup.hide()
+
+        self.suggestionpopup.show_suggestion(
+            explanation=f"❌ {msg}",
+            command="",
+            input_widget=self,
+            is_error=True
+        )
 
     def update_frame(self):
-        self.suggestionpopup.show_suggestion(
-            explanation=self.frames[self.frame_index], input_widget=self)
-        self.frame_index = (self.frame_index + 1) % len(self.frames)
-
-    def get_terminal(self):
-        pass
+        if not getattr(self.suggestionpopup, 'is_error_state', False):
+            self.suggestionpopup.show_suggestion(
+                explanation=self.frames[self.frame_index],
+                command="",
+                input_widget=self,
+                is_loading=True
+            )
+            self.frame_index = (self.frame_index + 1) % len(self.frames)
 
     def _generate(self):
         text = self.toPlainText()

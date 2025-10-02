@@ -512,7 +512,7 @@ class SSHWidget(QWidget):
         total = sum(sizes)
         if total > 0:
             ratios = [s/total for s in sizes]
-            print(f"移动: {obj_name}, 比例: {ratios}")
+            # print(f"移动: {obj_name}, 比例: {ratios}")
             CONFIGER.revise_config(f"{obj_name}", ratios)
 
     def _change_file_or_net(self, router):

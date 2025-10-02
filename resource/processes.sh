@@ -65,6 +65,20 @@ declare -A proc_tx_old proc_rx_old
 # 初始化磁盘读写
 declare -A disk_read_old disk_write_old
 
+# 改进的 JSON 转义函数
+escape_json() {
+    local str="$1"
+    # 使用参数替换进行转义，避免 awk 正则警告
+    str="${str//\\/\\\\}"    # 转义反斜杠
+    str="${str//\"/\\\"}"    # 转义双引号
+    str="${str//$'\t'/\\t}"  # 转义制表符
+    str="${str//$'\r'/\\r}"  # 转义回车符
+    str="${str//$'\n'/\\n}"  # 转义换行符
+    # 移除控制字符
+    str=$(echo "$str" | tr -d '\000-\037')
+    echo "$str"
+}
+
 while true; do
     # --- CPU 使用率 ---
     cpu_percent=$(LC_ALL=C top -bn2 -d0.2 | grep "Cpu(s)" | tail -n1 | awk '{print 100 - $8}')
@@ -74,38 +88,39 @@ while true; do
 
     # --- 前 N 个进程 ---
     processes=$(ps -eo pid,comm,%cpu,%mem --sort=-%cpu \
-        | awk 'NR>1 && $2 !~ /^kworker/ && $2 !~ /^rcu_/ {print $1, $2, $3, $4}' \
-        | head -n $TOP_N \
-        | awk '{printf "{\"pid\":%s,\"name\":\"%s\",\"cpu\":%s,\"mem\":%s},",$1,$2,$3,$4}' \
+        | awk -v top_n="$TOP_N" '
+        NR>1 && $2 !~ /^kworker/ && $2 !~ /^rcu_/ {
+            count++
+            if (count <= top_n) {
+                printf "{\"pid\":%s,\"name\":\"%s\",\"cpu\":%s,\"mem\":%s},",$1,$2,$3,$4
+            }
+        }' \
         | sed 's/,$//')
     processes="[$processes]"
 
-    # --- 全部进程 ---
-    all_processes=$(ps -eo user,pid,comm,%cpu,%mem,cmd --no-headers \
-    | awk '
-        function escape_json(str) {
-            gsub(/\\/,"\\\\\\\\",str);      # 先转义反斜杠
-            gsub(/\"/,"\\\"",str);          # 转义双引号
-            gsub(/\t/,"\\t",str);           # 转义制表符
-            gsub(/\r/,"\\r",str);           # 转义回车符
-            gsub(/\n/,"\\n",str);           # 转义换行符
-            # 移除或替换控制字符
-            gsub(/[[:cntrl:]]/, "", str);
-            return str;
-        }
-        BEGIN{print "["; first=1}
-        {
-            user=$1; pid=$2; name=$3; cpu=$4; mem=$5;
-            $1=$2=$3=$4=$5="";
-            sub(/^ +/,"",$0);       
-            cmd=escape_json($0);    
-            if (!first) printf ",";
-            printf "{\"user\":\"%s\",\"pid\":%s,\"name\":\"%s\",\"cpu\":%s,\"mem\":%s,\"command\":\"%s\"}", user,pid,name,cpu,mem,cmd;
-            first=0
-        }
-        END{print "]"}
-    ')
-
+    # --- 全部进程 --- (使用改进的方法)
+    all_processes="["
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        
+        user=$(echo "$line" | awk '{print $1}')
+        pid=$(echo "$line" | awk '{print $2}')
+        name=$(echo "$line" | awk '{print $3}')
+        cpu=$(echo "$line" | awk '{print $4}')
+        mem=$(echo "$line" | awk '{print $5}')
+        
+        # 获取完整命令（从第6列开始）
+        cmd=$(echo "$line" | awk '{$1=$2=$3=$4=$5=""; print $0}' | sed 's/^ *//')
+        
+        # 转义 JSON 特殊字符
+        cmd_escaped=$(escape_json "$cmd")
+        name_escaped=$(escape_json "$name")
+        user_escaped=$(escape_json "$user")
+        
+        all_processes+="{\"user\":\"$user_escaped\",\"pid\":$pid,\"name\":\"$name_escaped\",\"cpu\":$cpu,\"mem\":$mem,\"command\":\"$cmd_escaped\"},"
+    done < <(ps -eo user,pid,comm,%cpu,%mem,cmd --no-headers | head -50)  # 限制进程数量避免过大
+    
+    all_processes=$(echo "$all_processes" | sed 's/,$//')"]"
 
     # --- 磁盘使用情况 + 读写速率 ---
     disks="["
@@ -132,10 +147,9 @@ while true; do
         disk_write_old[$dev]=$write_sectors
 
         disks+="{\"device\":\"$filesystem\",\"mount\":\"$mount\",\"size_kb\":$size,\"used_kb\":$used,\"avail_kb\":$avail,\"used_percent\":\"$usep\",\"read_kbps\":$read_kbps,\"write_kbps\":$write_kbps},"
-    done < <(df -k --output=source,size,used,avail,pcent,target | tail -n +2)
+    done < <(df -k --output=source,size,used,avail,pcent,target | tail -n +2 | head -10)  # 限制磁盘数量
 
     disks=$(echo "$disks" | sed 's/,$//')"]"
-
 
     # --- 网卡流量（KB/s） ---
     net_devs="["
@@ -154,7 +168,7 @@ while true; do
         net_devs+="{\"iface\":\"$iface\",\"rx_kbps\":$rx_rate,\"tx_kbps\":$tx_rate},"
         rx_old[$iface]=$rx_cur
         tx_old[$iface]=$tx_cur
-    done < /proc/net/dev
+    done < <(grep -v lo /proc/net/dev)  # 排除回环接口
     net_devs=$(echo "$net_devs" | sed 's/,$//')"]"
 
     # --- 网络进程信息 ---
@@ -198,7 +212,7 @@ while true; do
         proc_tx_old[$pid]=$proc_tx
 
         connections+="{\"pid\":$pid,\"name\":\"$pname\",\"local_ip\":\"$local_ip\",\"local_port\":\"$local_port\",\"remote_ip\":\"$remote_ip\",\"remote_port\":\"$remote_port\",\"connections\":$conn_count,\"upload_kbps\":$tx_rate,\"download_kbps\":$rx_rate},"
-    done < <(ss -tunp -H)
+    done < <(ss -tunp -H | head -20)  # 限制连接数量
 
     connections=$(echo "$connections" | sed 's/,$//')"]"
 

@@ -29,7 +29,7 @@ class SCM:
             "maximized": False,  # bool Restore the last maximized state
             "aigc_api_key": "",  # str Your API key for the AI model
             "aigc_open": False,  # bool Whether to enable the AI model feature
-            "aigc_model": "deepseek",  # str The AI model to use
+            "aigc_model": "DeepSeek",  # str The AI model to use
             "aigc_history_max_length": 10,  # int The max length of history messages
             "splitter_left_components": [0.18, 0.47, 0.35],
             "external_editor": "",

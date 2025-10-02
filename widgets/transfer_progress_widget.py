@@ -3,9 +3,6 @@ from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QScrollArea, QToolTip
 from qfluentwidgets import FluentIcon as FIF, IconWidget, ToolButton
 from tools.font_config import font_config
-import sys
-import subprocess
-import os
 
 
 class TransferProgressWidget(QWidget):

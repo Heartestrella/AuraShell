@@ -5,6 +5,7 @@
 一个基于 **[PyQt](https://riverbankcomputing.com/software/pyqt/intro)** 与 **[QFluentWidgets](https://qfluentwidgets.com/)** 开发的跨平台 SSH 客户端，界面风格贴近 **Windows 11 Fluent Design**  
 内置 **远程文件管理器** 与 **集成终端**，提供现代化、优雅且高效的远程管理体验  
 
+请看完MD文件 大部分问题都可以解决
 ---
 
 ## ✨ 功能特点
@@ -92,7 +93,8 @@ PSSH 的源代码仍在开发中
 
 ## ⚠️ 已知问题与使用须知
 
-
+- AI辅助功能 在正确配置KEY和MODEL后 在命令输入框输入自然语言 然后按Ctrl + O 即可开始生成 按Tab接纳AI建议填充到输入框
+- 若需要左侧栏的功能 请手动安装 ss lsblk iostat 这几个包(apt yum等包管理器) 脚本虽然内置安装 但不一定管用 若不显示左侧边栏信息 多半是这几个包的问题
 - 部分页面可能未正确显示自定义字体
 - 部分界面元素可能与主窗口风格不完全一致
 - 关于选择字体调用的是已经安装到系统中的字体 而非选择字符路径

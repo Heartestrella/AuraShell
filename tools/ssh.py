@@ -90,7 +90,9 @@ class SSHWorker(QThread):
                 try:
                     sftp = self.conn.open_sftp()
                     remote_dir = "./.ssh"
-                    remote_proc = "./.ssh/processes.sh"
+                    self.remote_proc = "./.ssh/processes.sh"
+                    self.local_proc = resource_path(os.path.join(
+                        "resource", "processes.sh"))
                     # ensure remote .ssh dir exists
                     try:
                         sftp.stat(remote_dir)
@@ -103,37 +105,36 @@ class SSHWorker(QThread):
 
                     exists_remote_proc = True
                     try:
-                        st = sftp.stat(remote_proc)
-                        print(f"远端 processes 存在: {remote_proc}")
+                        st = sftp.stat(self.remote_proc)
+                        print(f"远端 processes 存在: {self.remote_proc}")
                     except IOError:
                         exists_remote_proc = False
-                        print(f"远端 processes 不存在: {remote_proc}")
+                        print(f"远端 processes 不存在: {self.remote_proc}")
 
                     if exists_remote_proc:
                         try:
                             try:
                                 current_mode = st.st_mode
                                 new_mode = current_mode | 0o111
-                                sftp.chmod(remote_proc, new_mode)
+                                sftp.chmod(self.remote_proc, new_mode)
                             except Exception:
-                                sftp.chmod(remote_proc, 0o755)
-                            print(f"已将远端文件 {remote_proc} 设为可执行")
+                                sftp.chmod(self.remote_proc, 0o755)
+                            print(f"已将远端文件 {self.remote_proc} 设为可执行")
                         except Exception as e:
                             print(f"设为可执行失败: {e}")
                     else:
-                        local_proc = resource_path(os.path.join(
-                            "resource", "processes.sh"))
-                        if not os.path.exists(local_proc):
-                            err = f"本地 processes 文件不存在: {local_proc}"
+
+                        if not os.path.exists(self.local_proc):
+                            err = f"本地 processes 文件不存在: {self.local_proc}"
                             print(err)
                             self.error_occurred.emit(err)
                         else:
                             try:
                                 print(
-                                    f"上传本地 {local_proc} 到远端 {remote_proc} ...")
-                                sftp.put(local_proc, remote_proc)
+                                    f"上传本地 {self.local_proc} 到远端 {self.remote_proc} ...")
+                                sftp.put(self.local_proc, self.remote_proc)
                                 try:
-                                    sftp.chmod(remote_proc, 0o755)
+                                    sftp.chmod(self.remote_proc, 0o755)
                                 except Exception:
                                     pass
                                 print("上传并设置可执行成功")
@@ -157,7 +158,7 @@ class SSHWorker(QThread):
             self.timer.timeout.connect(self._check_output)
             self.timer.start(100)
             if self.for_resources:
-                md5 = self.get_remote_md5(remote_proc)
+                md5 = self.get_remote_md5(self.remote_proc)
                 host_key = self.get_hostkey_fp_hex()
                 self.key_verification.emit(md5, host_key)
                 # print(md5, host_key)
@@ -179,6 +180,23 @@ class SSHWorker(QThread):
         except Exception as e:
             tb = traceback.format_exc()
             self.error_occurred.emit(f"{e}\n{tb}")
+
+    def update_script(self):
+        sftp = self.conn.open_sftp()
+        try:
+            print(
+                f"上传本地 {self.local_proc} 到远端 {self.remote_proc} ...")
+            sftp.put(self.local_proc, self.remote_proc)
+            try:
+                sftp.chmod(self.remote_proc, 0o755)
+            except Exception:
+                pass
+            print("上传并设置可执行成功")
+        except Exception as e:
+            tb = traceback.format_exc()
+            err = f"上传 processes 失败: {e}\n{tb}"
+            print(err)
+            self.error_occurred.emit(err)
 
     def disconnect_all_signals(self):
         signals = [
