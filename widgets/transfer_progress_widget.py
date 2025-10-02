@@ -14,7 +14,6 @@ class TransferProgressWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setObjectName("transferProgressWidget")
-        self.setMaximumHeight(300)
         self.is_expanded = False
         self._animations = []
         self.transfer_items = {}
@@ -364,31 +363,17 @@ class TransferProgressWidget(QWidget):
         #     self.setVisible(False)
 
     def toggle_view(self):
-        """Toggle the expanded/collapsed state with smooth animation."""
+        """Toggle the expanded/collapsed state - notify parent to handle layout."""
         self.is_expanded = not self.is_expanded
-        self.expansionChanged.emit(self.is_expanded)
-
-        # 计算内容高度（ScrollArea的内容高度 + padding）
-        content_height = self.scroll_content.sizeHint().height() + 10
-
-        # 创建动画
-        animation = QPropertyAnimation(self.content_area, b"maximumHeight")
-        animation.setDuration(200)  # 动画持续时间，单位毫秒
-
+        
         if self.is_expanded:
             self.content_area.setVisible(True)
-            animation.setStartValue(0)
-            animation.setEndValue(content_height)
+            self.content_area.setMaximumHeight(16777215)
         else:
-            animation.setStartValue(self.content_area.maximumHeight())
-            animation.setEndValue(0)
-            # 动画结束后隐藏content_area
-            animation.finished.connect(
-                lambda: self.content_area.setVisible(False))
-
-        animation.start()
-        # 防止动画被垃圾回收
-        self._animations.append(animation)
+            self.content_area.setVisible(False)
+            self.content_area.setMaximumHeight(0)
+        
+        self.expansionChanged.emit(self.is_expanded)
 
     def eventFilter(self, obj, event):
         if obj is self.header and event.type() == QEvent.MouseButtonPress:
@@ -442,6 +427,7 @@ class TransferProgressWidget(QWidget):
             }
             #header {
                 background-color: transparent;
+                border-bottom: 1px solid #444444;
             }
             #titleLabel, #countLabel {
                 font-size: 14px;

@@ -78,7 +78,6 @@ class SSHPage(QWidget):
         if routeKey not in self.pivot.items:
             return
 
-        # 1. 如果删除的是当前选中的 tab，先切换到其他 tab
         if self.pivot.currentItem() == self.pivot.items[routeKey]:
             remaining_keys = [k for k in self.pivot.items if k != routeKey]
             if remaining_keys:
@@ -87,15 +86,12 @@ class SSHPage(QWidget):
                     self.findChild(QWidget, remaining_keys[0])
                 )
             else:
-                # 没有剩余 tab，清空当前 routeKey
                 self.pivot._currentRouteKey = None
 
-        # 2. 从 pivot 上移除 tab
         item = self.pivot.items.pop(routeKey)
         item.setParent(None)
         item.deleteLater()
 
-        # 3. 从 stacked widget 中移除对应页面
         widget_to_remove = self.findChild(QWidget, routeKey)
         if widget_to_remove:
             self.sshStack.removeWidget(widget_to_remove)
@@ -104,7 +100,6 @@ class SSHPage(QWidget):
 
     def show_context_menu(self, pos: QPoint):
         """在 pivot 上显示右键菜单，同时切换到鼠标所在的 tab"""
-        # 找到鼠标点击的子控件
         child = self.pivot.childAt(pos)
         if not child:
             return
@@ -167,8 +162,23 @@ class SSHWidget(QWidget):
         leftLayout.setContentsMargins(0, 0, 0, 0)
         leftLayout.setSpacing(0)
 
+        leftSplitter = QSplitter(Qt.Vertical, leftContainer)
+        leftSplitter.setObjectName("splitter_left_components")
+        leftSplitter.setChildrenCollapsible(False)
+        leftSplitter.setHandleWidth(2)
+        leftSplitter.setStyleSheet("""
+            QSplitter::handle:vertical {
+                background-color: #cccccc;
+                height: 1px;
+                margin: 0px;
+            }
+            QSplitter::handle:vertical:hover {
+                background-color: #999999;
+            }
+        """)
+
         # sys_resources
-        self.sys_resources = ProcessTable(leftContainer)
+        self.sys_resources = ProcessTable(leftSplitter)
         self.sys_resources.set_font_family(font_name)
         self.sys_resources.setObjectName("sys_resources")
         self.sys_resources.setMinimumHeight(80)
@@ -183,7 +193,7 @@ class SSHWidget(QWidget):
         """)
 
         # Task
-        self.task = Tasks(leftContainer)
+        self.task = Tasks(leftSplitter)
         self.task.sysinfo_button.clicked.connect(self._sys_info_dialog)
         self.task.set_text_color(config["ssh_widget_text_color"])
         self.task.setObjectName("task")
@@ -198,7 +208,7 @@ class SSHWidget(QWidget):
             }
         """)
 
-        self.disk_usage = DiskMonitor(leftContainer)
+        self.disk_usage = DiskMonitor(leftSplitter)
         self.disk_usage.into_driver_path.connect(self._set_file_bar)
         self.disk_usage.setObjectName("disk_usage")
         self.disk_usage.setMinimumHeight(80)
@@ -213,18 +223,31 @@ class SSHWidget(QWidget):
 """)
         self.disk_usage.setAttribute(Qt.WA_StyledBackground, True)
 
-        # Transfer Progress Widget
+        leftSplitter.addWidget(self.sys_resources)
+        leftSplitter.addWidget(self.task)
+        leftSplitter.addWidget(self.disk_usage)
+
+        leftSplitter.setStretchFactor(0, 15)  # sys_resources
+        leftSplitter.setStretchFactor(1, 40)  # task
+        leftSplitter.setStretchFactor(2, 30)  # disk_usage
+
+        leftSplitter.splitterMoved.connect(self.on_splitter_moved)
+
+        leftLayout.addWidget(leftSplitter, 1)
+
         self.transfer_progress = TransferProgressWidget(leftContainer)
         self.transfer_progress.setObjectName("transfer_progress")
-        self.transfer_progress.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Preferred)
-
-        leftLayout.addWidget(self.sys_resources, 15)
-        leftLayout.addWidget(self.task, 40)
-        # leftLayout.addWidget(self.disk_storage, 45)
-        leftLayout.addWidget(self.disk_usage, 30)
-        # Initially, no stretch
+        self.transfer_progress.setSizePolicy( QSizePolicy.Expanding, QSizePolicy.Preferred)
         leftLayout.addWidget(self.transfer_progress, 0)
+        
+        self.transfer_progress.expansionChanged.connect(
+            lambda expanded: self._on_transfer_expansion_changed(expanded, leftLayout, leftSplitter)
+        )
+
+        splitter_left_ratio = config.get("splitter_left_components", [0.18, 0.47, 0.35])
+        if len(splitter_left_ratio) == 3:
+            sizes = [int(r * 1000) for r in splitter_left_ratio]
+            leftSplitter.setSizes(sizes)
 
         # --- Right Widgets
         rightContainer = QFrame(self)
@@ -465,16 +488,22 @@ class SSHWidget(QWidget):
 
         splitter_lr_ratio = config.get("splitter_lr_ratio", [0.2, 0.8])
         if len(splitter_lr_ratio) == 2:
-            sizes = [int(r * 1000) for r in splitter_lr_ratio]
-            splitter_lr.setSizes(sizes)
+            QTimer.singleShot(100, lambda: self._restore_splitter_sizes(splitter_lr, splitter_lr_ratio))
 
         splitter_tb_ratio = config.get("splitter_tb_ratio", [0.7, 0.3])
         if len(splitter_tb_ratio) == 2:
-            sizes = [int(r * 1000) for r in splitter_tb_ratio]
-            rsplitter.setSizes(sizes)
+            QTimer.singleShot(100, lambda: self._restore_splitter_sizes(rsplitter, splitter_tb_ratio))
 
         if use_ai:
             self.handle_concent()
+
+    def _on_transfer_expansion_changed(self, expanded, left_layout, left_splitter):
+        if expanded:
+            left_layout.setStretch(0, 2)
+            left_layout.setStretch(1, 1) 
+        else:
+            left_layout.setStretch(0, 1) 
+            left_layout.setStretch(1, 0)
 
     def on_splitter_moved(self, pos, index):
         splitter = self.sender()
@@ -748,6 +777,16 @@ class SSHWidget(QWidget):
             parent_layout.removeWidget(self)
         self.setParent(None)
         self.deleteLater()
+
+    def _restore_splitter_sizes(self, splitter, ratios):
+        if splitter.orientation() == Qt.Horizontal:
+            total_size = splitter.width()
+        else:
+            total_size = splitter.height()
+        
+        if total_size > 0:
+            sizes = [int(r * total_size) for r in ratios]
+            splitter.setSizes(sizes)
 
     def handle_concent(self):
         self.llm = LLMHelper()

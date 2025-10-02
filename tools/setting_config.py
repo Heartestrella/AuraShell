@@ -31,7 +31,7 @@ class SCM:
             "aigc_open": False,  # bool Whether to enable the AI model feature
             "aigc_model": "DeepSeek",  # str The AI model to use
             "aigc_history_max_length": 10,  # int The max length of history messages
-
+            "splitter_left_components": [0.18, 0.47, 0.35],
         }
         self.config_path = Path.home() / ".config" / "setting-config.json"
         if not os.path.exists(self.config_path):
