@@ -1,5 +1,6 @@
 # setting_page.py
 import logging
+import os
 from PyQt5.QtCore import Qt, pyqtSignal, QCoreApplication, QTimer
 from PyQt5.QtGui import QFontDatabase, QFont, QColor, QPalette, QKeySequence, QIntValidator
 from PyQt5.QtWidgets import (
@@ -649,6 +650,25 @@ class SettingPage(ScrollArea):
         self._register_searchable(self.transfer_card, self.tr("Max Concurrent Transfers"), [
                                   "transfer", "concurrent", "uploads", "downloads", "concurrency"])
 
+        # External Editor Setting Card
+        self.external_editor_card = SettingCard(
+            FluentIcon.EDIT,
+            self.tr("External Editor"),
+            self.tr("Set the path to external editor executable (e.g., C:\\Program Files\\Notepad++\\notepad++.exe)"),
+        )
+        self.external_editor_edit = LineEdit(self.external_editor_card)
+        self.external_editor_edit.setPlaceholderText(
+            self.tr("Enter the full path to external editor executable"))
+        self.external_editor_edit.setClearButtonEnabled(True)
+        self.external_editor_edit.setMinimumWidth(300)
+        self.external_editor_edit.editingFinished.connect(
+            self._save_external_editor)
+        self.external_editor_card.hBoxLayout.addWidget(
+            self.external_editor_edit, 0, Qt.AlignRight)
+        layout.addWidget(self.external_editor_card)
+        self._register_searchable(self.external_editor_card, self.tr("External Editor"), [
+                                  "external", "editor", "外置编辑器", "编辑器", "vscode", "notepad"])
+
         self._restore_saved_settings()
 
     # ----------------- Search helpers -----------------
@@ -815,6 +835,8 @@ class SettingPage(ScrollArea):
             "default_view", "icon") == "icon" else "Info"
         self.transfer_edit.setText(
             str(self.config.get("max_concurrent_transfers", 4)))
+        self.external_editor_edit.setText(
+            self.config.get("external_editor", ""))
         # Achieve results
         self._lock_ratio = self.config["locked_ratio"]
         self._restore_background_opacity(self.config["background_opacity"])
@@ -888,6 +910,22 @@ class SettingPage(ScrollArea):
         else:
             configer.revise_config("bg_pic", path)
             self.parent_class.set_global_background(path)
+
+    def _save_external_editor(self):
+        path = self.external_editor_edit.text().strip()
+        if path:
+            if not os.path.isfile(path):
+                InfoBar.error(
+                    title=self.tr('Invalid file path'),
+                    content=self.tr('The specified file does not exist or is not a valid file'),
+                    orient=Qt.Horizontal,
+                    isClosable=True,
+                    position=InfoBarPosition.TOP_RIGHT,
+                    duration=3000,
+                    parent=self
+                )
+                return
+        configer.revise_config("external_editor", path)
 
     def _select_font(self):
         font_dialog = FontSelectorDialog(self)

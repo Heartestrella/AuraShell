@@ -317,35 +317,8 @@ class Window(FramelessWindow):
 
                     if open_it and local_path:
                         try:
-                            print(
-                                f"From Remote Path : {path}")
-                            # Open the directory containing the downloaded file/folder
-                            open_path = local_path if os.path.isfile(
-                                local_path) else os.path.dirname(local_path)
-                            if sys.platform.startswith('darwin'):
-                                subprocess.call(('open', open_path))
-                            elif os.name == 'nt':
-                                os.startfile(open_path)
-                                with open(open_path, "rb") as f:
-                                    mime = magic.from_buffer(
-                                        f.read(2048), mime=True)
-                                if mime in mime_types or mime.startswith("text/"):
-                                    print("Text file starting watching")
-                                    file_thread = FileWatchThread(open_path)
-                                    file_thread.file_saved.connect(
-                                        lambda local, : self.reupload_when_saved(widget_key, local, path))
-                                    file_thread.start()
-
-                                    if widget_key not in self.watching_dogs:
-                                        self.watching_dogs[widget_key] = []
-
-                                    self.watching_dogs[widget_key].append(
-                                        file_thread)
-                                else:
-                                    print(
-                                        f"File tpye {mime} is not text file won't watching")
-                            elif os.name == 'posix':
-                                subprocess.call(('xdg-open', open_path))
+                            print(f"From Remote Path : {path}")
+                            self._open_downloaded_file(local_path, widget_key, path)
                         except Exception as e:
                             print(f"Error opening file/folder: {e}")
                 else:
@@ -434,6 +407,83 @@ class Window(FramelessWindow):
                 data["type"] = "completed"
             session_widget.transfer_progress.update_transfer_item(
                 file_id, data)
+
+    def _open_downloaded_file(self, local_path: str, widget_key: str, remote_path: str):
+        """打开下载的文件，支持外置编辑器和系统默认程序"""
+        if not os.path.isfile(local_path):
+            # 如果是目录，直接打开目录
+            self._open_with_system_default(os.path.dirname(local_path))
+            return
+        
+        # 检查是否配置了外置编辑器
+        external_editor = setting_.read_config().get("external_editor", "")
+        
+        if external_editor and os.path.isfile(external_editor):
+            # 尝试使用外置编辑器打开
+            try:
+                subprocess.Popen([external_editor, local_path])
+                print(f"Opened {local_path} with external editor: {external_editor}")
+            except Exception as editor_error:
+                print(f"Error opening with external editor: {editor_error}, fallback to system default")
+                self._open_with_system_default(local_path)
+        else:
+            # 使用系统默认程序打开
+            self._open_with_system_default(local_path)
+        
+        # 检查是否需要监视文件变化（仅文本文件）
+        self._start_file_watching_if_text(local_path, widget_key, remote_path)
+    
+    def _open_with_system_default(self, file_path: str):
+        """使用系统默认程序打开文件或目录"""
+        if sys.platform.startswith('darwin'):
+            subprocess.call(('open', file_path))
+        elif os.name == 'nt':
+            os.startfile(file_path)
+        elif os.name == 'posix':
+            subprocess.call(('xdg-open', file_path))
+    
+    def _start_file_watching_if_text(self, local_path: str, widget_key: str, remote_path: str):
+        """如果是文本文件，启动文件监视以便自动重新上传"""
+        try:
+            with open(local_path, "rb") as f:
+                content = f.read(2048)
+                mime = magic.from_buffer(content, mime=True)
+            
+            # 检查是否为文本文件
+            is_text = False
+            
+            # 1. 检查 MIME 类型
+            if mime in mime_types or mime.startswith("text/"):
+                is_text = True
+            # 2. application/octet-stream 可能是文本文件，需要进一步检查内容
+            elif mime == "application/octet-stream":
+                # 尝试将内容解码为文本来判断
+                try:
+                    content.decode('utf-8')
+                    is_text = True
+                    print(f"File detected as text by content analysis (MIME: {mime})")
+                except UnicodeDecodeError:
+                    try:
+                        content.decode('gbk')
+                        is_text = True
+                        print(f"File detected as text (GBK encoding) by content analysis (MIME: {mime})")
+                    except UnicodeDecodeError:
+                        is_text = False
+            
+            if is_text:
+                print(f"Text file detected (MIME: {mime}), starting file watching: {local_path}")
+                file_thread = FileWatchThread(local_path)
+                file_thread.file_saved.connect(
+                    lambda local: self.reupload_when_saved(widget_key, local, remote_path))
+                file_thread.start()
+                
+                if widget_key not in self.watching_dogs:
+                    self.watching_dogs[widget_key] = []
+                self.watching_dogs[widget_key].append(file_thread)
+            else:
+                print(f"File type {mime} is not text file, won't start watching")
+        except Exception as e:
+            print(f"Error checking file type: {e}")
 
     def reupload_when_saved(self, widget_name, local_path, remote_path,):
         remote_path = os.path.dirname(remote_path)
@@ -545,9 +595,17 @@ class Window(FramelessWindow):
     def _open_server_files(self, path: str, type_: str, widget_key: str):
         file_manager: RemoteFileManager = self.file_tree_object[widget_key]
         duration = 2000
-        title = self.tr(f"File: {path} Type: {type_}\n")
-        msg = self.tr(
-            f"Start to download it and open with default program")
+        
+        # 检查是否配置了外置编辑器
+        external_editor = setting_.read_config().get("external_editor", "")
+        
+        if external_editor and os.path.isfile(external_editor):
+            title = self.tr(f"File: {path} Type: {type_}\n")
+            msg = self.tr(f"Start to download and open with external editor")
+        else:
+            title = self.tr(f"File: {path} Type: {type_}\n")
+            msg = self.tr(f"Start to download it and open with default program")
+        
         if type_ == "executable":
             title = self.tr(f"{path} is an executable won't start downloading")
             msg = ""
