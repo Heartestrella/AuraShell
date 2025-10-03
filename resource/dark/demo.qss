@@ -15,7 +15,7 @@ Window {
 }
 
 
-MinimizeButton {
+StandardTitleBar MinimizeButton {
     qproperty-normalColor: white;
     qproperty-normalBackgroundColor: transparent;
     qproperty-hoverColor: white;
@@ -25,7 +25,7 @@ MinimizeButton {
 }
 
 
-MaximizeButton {
+StandardTitleBar MaximizeButton {
     qproperty-normalColor: white;
     qproperty-normalBackgroundColor: transparent;
     qproperty-hoverColor: white;
@@ -34,7 +34,7 @@ MaximizeButton {
     qproperty-pressedBackgroundColor: rgba(255, 255, 255, 51)
 }
 
-CloseButton {
+StandardTitleBar CloseButton {
     qproperty-normalColor: white;
     qproperty-normalBackgroundColor: transparent;
 }
