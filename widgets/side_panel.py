@@ -142,6 +142,13 @@ class SidePanelWidget(QWidget):
         if tab_id in self.tabs:
             self.tabs[tab_id]['data'] = data
 
+    def find_tab_by_remote_path(self, remote_path: str):
+        """根据远程路径查找已打开的标签页"""
+        for tab_id, tab_info in self.tabs.items():
+            if tab_info.get('data', {}).get('remote_path') == remote_path:
+                return tab_id
+        return None
+
     def _show_tab_context_menu(self, pos, tab_id):
         if tab_id not in self.tabs:
             return

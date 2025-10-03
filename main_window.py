@@ -452,16 +452,16 @@ class Window(FramelessWindow):
     def _open_in_internal_editor(self, local_path: str, widget_key: str, remote_path: str):
         """在内置编辑器中打开文件"""
         try:
-            tab_title = os.path.basename(remote_path)
-            tab_id = self.sidePanel.add_new_tab(
-                EditorWidget(),
-                tab_title,
-                {
-                    "path": local_path,
-                    "remote_path": remote_path,
-                    "widget_key": widget_key
-                }
-            )
+            existing_tab_id = self.sidePanel.find_tab_by_remote_path(remote_path)
+            if existing_tab_id:
+                self.sidePanel.switch_to_tab(existing_tab_id)
+                tab_info = self.sidePanel.tabs[existing_tab_id]
+                editor_widget = tab_info['page']
+                if isinstance(editor_widget, EditorWidget):
+                    editor_widget.load_file(local_path)
+            else:
+                tab_title = os.path.basename(remote_path)
+                tab_id = self.sidePanel.add_new_tab( EditorWidget(), tab_title, { "path": local_path, "remote_path": remote_path, "widget_key": widget_key } )
         except Exception as e:
             print(f"Error opening in internal editor: {e}")
             import traceback
