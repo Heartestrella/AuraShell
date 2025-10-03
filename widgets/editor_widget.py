@@ -604,20 +604,24 @@ class EditorWidget(QWidget):
         
         # 查找按钮
         self.find_prev_btn = TransparentToolButton(FluentIcon.UP)
+        self.find_prev_btn.setToolTip("查找上一个 (Shift+F3)")
         self.find_prev_btn.setFixedSize(30, 30)
         self.find_prev_btn.clicked.connect(self.find_previous)
         
         self.find_next_btn = TransparentToolButton(FluentIcon.DOWN)
+        self.find_next_btn.setToolTip("查找下一个 (F3)")
         self.find_next_btn.setFixedSize(30, 30)
         self.find_next_btn.clicked.connect(self.find_next)
         
         # 替换按钮
         self.replace_btn = TransparentToolButton(FluentIcon.SYNC)
+        self.replace_btn.setToolTip("替换")
         self.replace_btn.setFixedSize(30, 30)
         self.replace_btn.clicked.connect(self.replace_current)
         self.replace_btn.setVisible(False)
         
         self.replace_all_btn = TransparentToolButton(FluentIcon.ACCEPT)
+        self.replace_all_btn.setToolTip("全部替换")
         self.replace_all_btn.setFixedSize(30, 30)
         self.replace_all_btn.clicked.connect(self.replace_all)
         self.replace_all_btn.setVisible(False)
