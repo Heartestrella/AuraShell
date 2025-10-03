@@ -1,11 +1,11 @@
 import os
 import sys
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QMessageBox, QFileDialog,
-                             QHBoxLayout, QLabel, QStatusBar, QPushButton)
+                             QHBoxLayout, QLabel, QStatusBar, QPushButton, QSizePolicy)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QColor, QFocusEvent, QTextCursor
 from tools.setting_config import SCM
-from qfluentwidgets import BodyLabel, LineEdit, PushButton, FluentIcon
+from qfluentwidgets import BodyLabel, LineEdit, PushButton, FluentIcon, TransparentToolButton
 
 # Import QSyntaxHighlighter first
 from PyQt5.QtGui import QSyntaxHighlighter, QTextCharFormat, QTextDocument
@@ -593,50 +593,43 @@ class EditorWidget(QWidget):
         # 搜索输入框
         self.search_input = LineEdit()
         self.search_input.setPlaceholderText("查找...")
-        self.search_input.setFixedWidth(200)
+        self.search_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.search_input.returnPressed.connect(self.find_next)
         
         # 替换输入框
         self.replace_input = LineEdit()
         self.replace_input.setPlaceholderText("替换为...")
-        self.replace_input.setFixedWidth(200)
+        self.replace_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.replace_input.setVisible(False)
         
         # 查找按钮
-        self.find_prev_btn = PushButton("上一个")
-        self.find_prev_btn.setIcon(FluentIcon.UP)
+        self.find_prev_btn = TransparentToolButton(FluentIcon.UP)
+        self.find_prev_btn.setFixedSize(30, 30)
         self.find_prev_btn.clicked.connect(self.find_previous)
         
-        self.find_next_btn = PushButton("下一个")
-        self.find_next_btn.setIcon(FluentIcon.DOWN)
+        self.find_next_btn = TransparentToolButton(FluentIcon.DOWN)
+        self.find_next_btn.setFixedSize(30, 30)
         self.find_next_btn.clicked.connect(self.find_next)
         
         # 替换按钮
-        self.replace_btn = PushButton("替换")
-        self.replace_btn.setIcon(FluentIcon.SYNC)
+        self.replace_btn = TransparentToolButton(FluentIcon.SYNC)
+        self.replace_btn.setFixedSize(30, 30)
         self.replace_btn.clicked.connect(self.replace_current)
         self.replace_btn.setVisible(False)
         
-        self.replace_all_btn = PushButton("全部替换")
-        self.replace_all_btn.setIcon(FluentIcon.ACCEPT)
+        self.replace_all_btn = TransparentToolButton(FluentIcon.ACCEPT)
+        self.replace_all_btn.setFixedSize(30, 30)
         self.replace_all_btn.clicked.connect(self.replace_all)
         self.replace_all_btn.setVisible(False)
-        
-        # 关闭按钮
-        self.close_search_btn = PushButton()
-        self.close_search_btn.setIcon(FluentIcon.CLOSE)
-        self.close_search_btn.setFixedSize(30, 30)
-        self.close_search_btn.clicked.connect(self.hide_search_bar)
         
         # 添加到布局
         search_layout.addWidget(self.search_input)
         search_layout.addWidget(self.replace_input)
+        search_layout.addStretch()
         search_layout.addWidget(self.find_prev_btn)
         search_layout.addWidget(self.find_next_btn)
         search_layout.addWidget(self.replace_btn)
         search_layout.addWidget(self.replace_all_btn)
-        search_layout.addStretch()
-        search_layout.addWidget(self.close_search_btn)
         
         self.layout.addWidget(self.search_widget)
     
@@ -731,11 +724,17 @@ class EditorWidget(QWidget):
                                                 False, False, last_line, last_index, False)
             else:
                 # 向前搜索
-                found = self.editor.findNext()
-                if not found:
-                    # 循环搜索：从文档开头开始
-                    found = self.editor.findFirst(text, False, False, False,
-                                                False, True, -1, -1, False)
+                # 获取光标位置作为搜索起点
+                line, index = self.editor.getCursorPosition()
+                
+                # 如果有选中文本，则从选区末尾开始搜索
+                if self.editor.hasSelectedText():
+                    _, _, line_to, index_to = self.editor.getSelection()
+                    line, index = line_to, index_to
+                
+                # 使用 findFirst 进行搜索，确保搜索词正确，并启用环绕搜索
+                # findFirst(text, is_regex, is_case_sensitive, is_whole_word, wrap, forward, line, index)
+                found = self.editor.findFirst(text, False, False, False, True, True, line, index)
         else:
             # QPlainTextEdit 搜索
             cursor = self.editor.textCursor()
@@ -1023,6 +1022,3 @@ class EditorWidget(QWidget):
         
         file_type = file_types.get(ext, '纯文本')
         self.file_type_label.setText(file_type)
-    
-    
-    
