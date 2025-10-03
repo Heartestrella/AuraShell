@@ -33,6 +33,7 @@ class SCM:
             "aigc_history_max_length": 10,  # int The max length of history messages
             "splitter_left_components": [0.18, 0.47, 0.35],
             "external_editor": "",
+            "editor_auto_save_on_focus_lost": False,  # bool Auto-save editor files when focus is lost
         }
         self.config_path = Path.home() / ".config" / "setting-config.json"
         if not os.path.exists(self.config_path):
