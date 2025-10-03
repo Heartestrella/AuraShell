@@ -121,6 +121,7 @@ class Window(FramelessWindow):
             self.apply_locked_ratio)
         self.settingInterface.opacityEdit.valueChanged.connect(
             self.set_background_opacity)
+        self.settingInterface.themeColorChanged.connect(self.on_theme_color_changed)
         # Connect transparency setting signal
         # self.settingInterface.bgOpacityChanged.connect(
         #     self.set_background_opacity)
@@ -1163,6 +1164,17 @@ class Window(FramelessWindow):
             painter.setOpacity(self._bg_opacity)
             painter.drawPixmap(self.rect(), self._bg_pixmap)
         super().paintEvent(event)
+
+    def on_theme_color_changed(self, color_hex: str):
+        """
+        Applies the new theme color to all relevant widgets.
+        """
+        for widget_key, session_widget in self.session_widgets.items():
+            try:
+                if hasattr(session_widget, 'update_splitter_color'):
+                    session_widget.update_splitter_color(color_hex)
+            except Exception as e:
+                print(f"Error updating splitter color for {widget_key}: {e}")
 
     def _set_language(self, lang_code: str):
         translator = QTranslator()

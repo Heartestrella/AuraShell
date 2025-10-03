@@ -1,7 +1,7 @@
 # setting_page.py
 import logging
 import os
-from PyQt5.QtCore import Qt, pyqtSignal, QCoreApplication, QTimer
+from PyQt5.QtCore import Qt, pyqtSignal, QCoreApplication, QTimer, QThread
 from PyQt5.QtGui import QFontDatabase, QFont, QColor, QPalette, QKeySequence, QIntValidator
 from PyQt5.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout,
@@ -18,6 +18,7 @@ from qfluentwidgets import (
 
 from tools.font_config import font_config
 from tools.setting_config import SCM
+from tools.image_color_extractor import ImageColorExtractor
 
 
 logger = logging.getLogger(__name__)
@@ -419,8 +420,33 @@ class FontSelectorDialog(QDialog):
         self.reject()
 
 
+class ColorExtractionWorker(QThread):
+    finished = pyqtSignal(dict)
+    error = pyqtSignal(str)
+    
+    def __init__(self, image_path: str, num_colors: int = 5):
+        super().__init__()
+        self.image_path = image_path
+        self.num_colors = num_colors
+    
+    def run(self):
+        try:
+            from tools.image_color_extractor import ImageColorExtractor
+            extractor = ImageColorExtractor()
+            color_info = extractor.get_color_info(self.image_path, self.num_colors)
+            if color_info:
+                self.finished.emit(color_info)
+            else:
+                self.error.emit("无法提取颜色信息")
+        except ImportError as e:
+            self.error.emit(f"缺少必要的库: {str(e)}")
+        except Exception as e:
+            self.error.emit(f"提取颜色时出错: {str(e)}")
+
+
 class SettingPage(ScrollArea):
     themeChanged = pyqtSignal(str)
+    themeColorChanged = pyqtSignal(str)  # Signal to emit the new theme color
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -783,6 +809,9 @@ class SettingPage(ScrollArea):
 
     def _clear_bg_pic_to_config(self):
         configer.revise_config("bg_pic", None)
+        configer.revise_config("bg_theme_color", None)
+        default_color = "#cccccc"
+        self.themeColorChanged.emit(default_color)
 
     def on_lock_ratio_changed(self):
         self._lock_ratio = self.lock_ratio_card.switchButton.isChecked()
@@ -910,6 +939,39 @@ class SettingPage(ScrollArea):
         else:
             configer.revise_config("bg_pic", path)
             self.parent_class.set_global_background(path)
+            self._extract_and_save_theme_colors(path)
+    
+    def _extract_and_save_theme_colors(self, image_path: str):
+        self._color_worker = ColorExtractionWorker(image_path, num_colors=5)
+        self._color_worker.finished.connect(self._on_color_extraction_finished)
+        self._color_worker.error.connect(self._on_color_extraction_error)
+        self._color_worker.start()
+    
+    def _on_color_extraction_finished(self, color_info: dict):
+        try:
+            dominant_hex = color_info['dominant_color']['hex']
+            configer.revise_config("bg_theme_color", dominant_hex)
+            self.themeColorChanged.emit(dominant_hex)
+        except Exception as e:
+            pass
+        finally:
+            self._color_worker.deleteLater()
+    
+    def _on_color_extraction_error(self, error_msg: str):
+        if "缺少必要的库" in error_msg or "ImportError" in error_msg:
+            content = self.tr('Please install required libraries:\npip install Pillow scikit-learn numpy')
+        else:
+            content = error_msg
+        InfoBar.warning(
+            title=self.tr('Color extraction failed'),
+            content=content,
+            orient=Qt.Vertical,
+            isClosable=True,
+            position=InfoBarPosition.TOP_RIGHT,
+            duration=5000,
+            parent=self
+        )
+        self._color_worker.deleteLater()
 
     def _save_external_editor(self):
         path = self.external_editor_edit.text().strip()
