@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QStackedWidget, QLabel,
                              QPushButton, QScrollArea, QHBoxLayout)
-from PyQt5.QtCore import Qt, QEvent
+from PyQt5.QtCore import Qt, QEvent, pyqtSignal
 from qfluentwidgets import RoundMenu, CheckableMenu, Action, FluentIcon as FIF
 from tools.atool import resource_path
 from tools.setting_config import SCM
@@ -37,6 +37,8 @@ class CustomTabBar(QScrollArea):
         event.accept()
 
 class SidePanelWidget(QWidget):
+    tabActivity = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setObjectName("SidePanelWidget")
@@ -78,6 +80,7 @@ class SidePanelWidget(QWidget):
         self.tab_order.append(tab_id)
         button.click()
         self._update_tab_bar_visibility()
+        self.tabActivity.emit()
         return tab_id
 
     def _on_tab_clicked(self, clicked_tab_id: str):
@@ -88,6 +91,7 @@ class SidePanelWidget(QWidget):
             is_checked = (tab_id == clicked_tab_id)
             tab_info['button'].setChecked(is_checked)
         self.page_stack.setCurrentWidget(page_to_show)
+        self.tabActivity.emit()
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.MouseButtonDblClick and isinstance(obj, TabButton):

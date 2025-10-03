@@ -83,6 +83,7 @@ class Window(FramelessWindow):
             self, showMenuButton=True)
         self.stackWidget = QStackedWidget(self)
         self.sidePanel = SidePanelWidget(self)
+        self.sidePanel.tabActivity.connect(self._ensure_side_panel_visible)
 
         # create sub interface
         self.MainInterface = MainInterface(self)
@@ -1281,15 +1282,29 @@ class Window(FramelessWindow):
         also forces the active SSH widget to update its internal layout to
         maintain the fixed width of its left panel.
         """
-        # Save the main splitter's new size configuration
         setting_.revise_config("splitter_sizes", self.mainSplitter.sizes())
-
-        # Force the active SSH widget to readjust its internal splitter
         current_widget = self.ssh_page.sshStack.currentWidget()
         if isinstance(current_widget, SSHWidget):
-            # Use a single shot timer to ensure the resize has propagated
-            # before we force the width.
-            QTimer.singleShot(0, current_widget.force_set_left_panel_width)
+            QTimer.singleShot(10, current_widget.force_set_left_panel_width)
+
+    def _ensure_side_panel_visible(self):
+        """
+        Ensures the side panel is visible and preserves the active SSH widget's
+        internal splitter position, avoiding race conditions by blocking signals.
+        """
+        sizes = self.mainSplitter.sizes()
+        if len(sizes) == 2 and sizes[1] == 0:
+            self.mainSplitter.blockSignals(True)
+            saved_sizes = setting_.read_config().get("splitter_sizes")
+            if saved_sizes and len(saved_sizes) == 2 and saved_sizes[1] != 0:
+                self.mainSplitter.setSizes([int(s) for s in saved_sizes])
+            else:
+                default_sizes = [self.width() * 0.7, self.width() * 0.3]
+                self.mainSplitter.setSizes([int(s) for s in default_sizes])
+            self.mainSplitter.blockSignals(False)
+            current_widget = self.ssh_page.sshStack.currentWidget()
+            if isinstance(current_widget, SSHWidget):
+                QTimer.singleShot(10, current_widget.force_set_left_panel_width)
 
     def _set_language(self, lang_code: str):
         translator = QTranslator()
