@@ -1,9 +1,11 @@
 import os
 import sys
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QFileDialog
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QMessageBox, QFileDialog,
+                             QHBoxLayout, QLabel, QStatusBar, QPushButton)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont, QColor, QFocusEvent
+from PyQt5.QtGui import QFont, QColor, QFocusEvent, QTextCursor
 from tools.setting_config import SCM
+from qfluentwidgets import BodyLabel, LineEdit, PushButton, FluentIcon
 
 # Import QSyntaxHighlighter first
 from PyQt5.QtGui import QSyntaxHighlighter, QTextCharFormat, QTextDocument
@@ -82,11 +84,17 @@ class EditorWidget(QWidget):
         self.original_content = ""
         self.is_modified = False
         self.scm = SCM()  # Setting config manager
+        self.last_search_text = ""  # 上次搜索的文本
+        self.search_bar_visible = False  # 搜索栏是否可见
         
         # Create layout
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(0)
         self.setLayout(self.layout)
+        
+        # 创建搜索栏（初始隐藏）
+        self._setup_search_bar()
         
         # Create editor
         if QSCINTILLA_AVAILABLE:
@@ -97,6 +105,9 @@ class EditorWidget(QWidget):
             self._setup_plain_text_edit()
         
         self.layout.addWidget(self.editor)
+        
+        # 添加状态栏
+        self._setup_status_bar()
         
         # Setup keyboard shortcuts
         self._setup_shortcuts()
@@ -114,6 +125,47 @@ class EditorWidget(QWidget):
 
         reload_shortcut = QShortcut(QKeySequence("F5"), self.editor)
         reload_shortcut.activated.connect(self.reload_file)
+        
+        # 搜索快捷键
+        find_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.editor)
+        find_shortcut.activated.connect(self.toggle_search_bar)
+        
+        # 替换快捷键
+        replace_shortcut = QShortcut(QKeySequence("Ctrl+H"), self.editor)
+        replace_shortcut.activated.connect(lambda: self.toggle_search_bar(show_replace=True))
+        
+        # ESC键隐藏搜索栏
+        esc_shortcut = QShortcut(QKeySequence("Escape"), self)
+        esc_shortcut.activated.connect(self.hide_search_bar)
+        
+        # 查找下一个
+        find_next_shortcut = QShortcut(QKeySequence("F3"), self.editor)
+        find_next_shortcut.activated.connect(self.find_next)
+        
+        # 查找上一个
+        find_prev_shortcut = QShortcut(QKeySequence("Shift+F3"), self.editor)
+        find_prev_shortcut.activated.connect(self.find_previous)
+        
+        # 撤销/重做快捷键（虽然编辑器自带，但确保它们工作）
+        undo_shortcut = QShortcut(QKeySequence("Ctrl+Z"), self.editor)
+        undo_shortcut.activated.connect(self.undo)
+        
+        redo_shortcut = QShortcut(QKeySequence("Ctrl+Y"), self.editor)
+        redo_shortcut.activated.connect(self.redo)
+        
+        # 选择全部
+        select_all_shortcut = QShortcut(QKeySequence("Ctrl+A"), self.editor)
+        select_all_shortcut.activated.connect(self.select_all)
+        
+        # 复制/剪切/粘贴（确保它们工作）
+        copy_shortcut = QShortcut(QKeySequence("Ctrl+C"), self.editor)
+        copy_shortcut.activated.connect(self.copy)
+        
+        cut_shortcut = QShortcut(QKeySequence("Ctrl+X"), self.editor)
+        cut_shortcut.activated.connect(self.cut)
+        
+        paste_shortcut = QShortcut(QKeySequence("Ctrl+V"), self.editor)
+        paste_shortcut.activated.connect(self.paste)
     
     def _setup_qscintilla(self):
         """Setup QsciScintilla editor with features"""
@@ -157,6 +209,8 @@ class EditorWidget(QWidget):
         # Connect signals
         self.editor.textChanged.connect(self._on_text_changed)
         self.editor.modificationChanged.connect(self._on_modification_changed)
+        self.editor.cursorPositionChanged.connect(self._update_cursor_position)
+        self.editor.selectionChanged.connect(self._update_cursor_position)
         
         # Override focusOutEvent
         self._setup_focus_handler()
@@ -181,6 +235,7 @@ class EditorWidget(QWidget):
         self.editor.setFont(font)
         self.editor.setTabStopWidth(40)
         self.editor.textChanged.connect(self._on_text_changed)
+        self.editor.cursorPositionChanged.connect(self._update_cursor_position)
         
         # Enable word wrap for plain text editor
         self.editor.setLineWrapMode(QPlainTextEdit.WidgetWidth)
@@ -324,6 +379,12 @@ class EditorWidget(QWidget):
             
             # Set syntax highlighter based on file extension
             self._set_syntax_highlighter(file_path)
+            
+            # Update file type in status bar
+            self._update_file_type(file_path)
+            
+            # Update cursor position
+            self._update_cursor_position()
             
             # Update tab title if possible
             self._update_tab_title()
@@ -517,6 +578,451 @@ class EditorWidget(QWidget):
             
             # Call original handler
             self._original_focus_out(event)
-        
         self.editor.focusOutEvent = focus_out_handler
+    
+    def _setup_search_bar(self):
+        """设置搜索栏"""
+        self.search_widget = QWidget()
+        self.search_widget.setMaximumHeight(40)
+        self.search_widget.setVisible(False)
+        
+        search_layout = QHBoxLayout(self.search_widget)
+        search_layout.setContentsMargins(10, 5, 10, 5)
+        search_layout.setSpacing(5)
+        
+        # 搜索输入框
+        self.search_input = LineEdit()
+        self.search_input.setPlaceholderText("查找...")
+        self.search_input.setFixedWidth(200)
+        self.search_input.returnPressed.connect(self.find_next)
+        
+        # 替换输入框
+        self.replace_input = LineEdit()
+        self.replace_input.setPlaceholderText("替换为...")
+        self.replace_input.setFixedWidth(200)
+        self.replace_input.setVisible(False)
+        
+        # 查找按钮
+        self.find_prev_btn = PushButton("上一个")
+        self.find_prev_btn.setIcon(FluentIcon.UP)
+        self.find_prev_btn.clicked.connect(self.find_previous)
+        
+        self.find_next_btn = PushButton("下一个")
+        self.find_next_btn.setIcon(FluentIcon.DOWN)
+        self.find_next_btn.clicked.connect(self.find_next)
+        
+        # 替换按钮
+        self.replace_btn = PushButton("替换")
+        self.replace_btn.setIcon(FluentIcon.SYNC)
+        self.replace_btn.clicked.connect(self.replace_current)
+        self.replace_btn.setVisible(False)
+        
+        self.replace_all_btn = PushButton("全部替换")
+        self.replace_all_btn.setIcon(FluentIcon.ACCEPT)
+        self.replace_all_btn.clicked.connect(self.replace_all)
+        self.replace_all_btn.setVisible(False)
+        
+        # 关闭按钮
+        self.close_search_btn = PushButton()
+        self.close_search_btn.setIcon(FluentIcon.CLOSE)
+        self.close_search_btn.setFixedSize(30, 30)
+        self.close_search_btn.clicked.connect(self.hide_search_bar)
+        
+        # 添加到布局
+        search_layout.addWidget(self.search_input)
+        search_layout.addWidget(self.replace_input)
+        search_layout.addWidget(self.find_prev_btn)
+        search_layout.addWidget(self.find_next_btn)
+        search_layout.addWidget(self.replace_btn)
+        search_layout.addWidget(self.replace_all_btn)
+        search_layout.addStretch()
+        search_layout.addWidget(self.close_search_btn)
+        
+        self.layout.addWidget(self.search_widget)
+    
+    def toggle_search_bar(self, show_replace=False):
+        """切换搜索栏显示"""
+        if not self.search_bar_visible:
+            self.show_search_bar(show_replace)
+        else:
+            if show_replace and not self.replace_input.isVisible():
+                # 如果搜索栏已显示但替换栏未显示，则显示替换栏
+                self.show_replace_options(True)
+            else:
+                self.hide_search_bar()
+    
+    def show_search_bar(self, show_replace=False):
+        """显示搜索栏"""
+        self.search_widget.setVisible(True)
+        self.search_bar_visible = True
+        
+        # 获取选中的文本作为搜索内容
+        if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
+            if self.editor.hasSelectedText():
+                self.search_input.setText(self.editor.selectedText())
+        else:
+            cursor = self.editor.textCursor()
+            if cursor.hasSelection():
+                self.search_input.setText(cursor.selectedText())
+        
+        self.show_replace_options(show_replace)
+        self.search_input.setFocus()
+        self.search_input.selectAll()
+    
+    def hide_search_bar(self):
+        """隐藏搜索栏"""
+        self.search_widget.setVisible(False)
+        self.search_bar_visible = False
+        self.editor.setFocus()
+    
+    def show_replace_options(self, show):
+        """显示/隐藏替换选项"""
+        self.replace_input.setVisible(show)
+        self.replace_btn.setVisible(show)
+        self.replace_all_btn.setVisible(show)
+    
+    def find_next(self):
+        """查找下一个"""
+        text = self.search_input.text()
+        if text:
+            self.last_search_text = text
+            self._do_find(text, False)
+    
+    def find_previous(self):
+        """查找上一个"""
+        text = self.search_input.text()
+        if text:
+            self.last_search_text = text
+            self._do_find(text, True)
+    
+    def replace_current(self):
+        """替换当前"""
+        find_text = self.search_input.text()
+        replace_text = self.replace_input.text()
+        if find_text:
+            self._do_replace_one(find_text, replace_text)
+    
+    def replace_all(self):
+        """替换全部"""
+        find_text = self.search_input.text()
+        replace_text = self.replace_input.text()
+        if find_text:
+            self._do_replace_all(find_text, replace_text)
+    
+    def _do_find(self, text, backward=False):
+        """执行查找"""
+        if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
+            # QsciScintilla 搜索
+            if backward:
+                # 向后搜索
+                line, index = self.editor.getCursorPosition()
+                if self.editor.hasSelectedText():
+                    line_from, index_from, line_to, index_to = self.editor.getSelection()
+                    line, index = line_from, index_from
+                
+                found = self.editor.findFirst(text, False, False, False,
+                                            False, False, line, index, False)
+                
+                if not found:
+                    # 循环搜索：从文档末尾开始
+                    last_line = self.editor.lines() - 1
+                    last_index = self.editor.lineLength(last_line)
+                    found = self.editor.findFirst(text, False, False, False,
+                                                False, False, last_line, last_index, False)
+            else:
+                # 向前搜索
+                found = self.editor.findNext()
+                if not found:
+                    # 循环搜索：从文档开头开始
+                    found = self.editor.findFirst(text, False, False, False,
+                                                False, True, -1, -1, False)
+        else:
+            # QPlainTextEdit 搜索
+            cursor = self.editor.textCursor()
+            
+            options = QTextDocument.FindFlags()
+            if backward:
+                options |= QTextDocument.FindBackward
+            
+            cursor = self.editor.document().find(text, cursor, options)
+            
+            # 如果没找到，循环搜索
+            if cursor.isNull():
+                if backward:
+                    cursor = self.editor.textCursor()
+                    cursor.movePosition(QTextCursor.End)
+                else:
+                    cursor = self.editor.textCursor()
+                    cursor.movePosition(QTextCursor.Start)
+                
+                cursor = self.editor.document().find(text, cursor, options)
+            
+            if not cursor.isNull():
+                self.editor.setTextCursor(cursor)
+    
+    def _do_replace_one(self, find_text, replace_text):
+        """替换当前选中的文本"""
+        if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
+            if self.editor.hasSelectedText():
+                selected = self.editor.selectedText()
+                if selected == find_text:
+                    self.editor.replaceSelectedText(replace_text)
+                    # 查找下一个
+                    self._do_find(find_text, False)
+                else:
+                    # 如果不匹配，先查找
+                    self._do_find(find_text, False)
+            else:
+                # 没有选中文本，先查找
+                self._do_find(find_text, False)
+        else:
+            cursor = self.editor.textCursor()
+            if cursor.hasSelection():
+                selected = cursor.selectedText()
+                if selected == find_text:
+                    cursor.insertText(replace_text)
+                    # 查找下一个
+                    self._do_find(find_text, False)
+                else:
+                    # 如果不匹配，先查找
+                    self._do_find(find_text, False)
+            else:
+                # 没有选中文本，先查找
+                self._do_find(find_text, False)
+    
+    def _do_replace_all(self, find_text, replace_text):
+        """替换所有匹配的文本"""
+        count = 0
+        
+        if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
+            # 从文档开头开始
+            self.editor.setCursorPosition(0, 0)
+            
+            # 查找并替换所有
+            while self.editor.findFirst(find_text, False, False, False,
+                                      False, True, -1, -1, False):
+                self.editor.replaceSelectedText(replace_text)
+                count += 1
+        else:
+            # QPlainTextEdit 实现
+            cursor = self.editor.textCursor()
+            cursor.movePosition(QTextCursor.Start)
+            
+            # 开始批量编辑
+            cursor.beginEditBlock()
+            
+            while True:
+                cursor = self.editor.document().find(find_text, cursor)
+                
+                if cursor.isNull():
+                    break
+                
+                cursor.insertText(replace_text)
+                count += 1
+            
+            cursor.endEditBlock()
+    
+    
+    def undo(self):
+        """撤销"""
+        if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
+            self.editor.undo()
+        else:
+            self.editor.undo()
+    
+    def redo(self):
+        """重做"""
+        if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
+            self.editor.redo()
+        else:
+            self.editor.redo()
+    
+    def select_all(self):
+        """选择全部"""
+        if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
+            self.editor.selectAll()
+        else:
+            self.editor.selectAll()
+    
+    def copy(self):
+        """复制"""
+        if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
+            self.editor.copy()
+        else:
+            self.editor.copy()
+    
+    def cut(self):
+        """剪切"""
+        if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
+            self.editor.cut()
+        else:
+            self.editor.cut()
+    
+    def paste(self):
+        """粘贴"""
+        if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
+            self.editor.paste()
+        else:
+            self.editor.paste()
+    
+    def _setup_status_bar(self):
+        """设置状态栏"""
+        status_layout = QHBoxLayout()
+        status_layout.setContentsMargins(5, 2, 5, 2)
+        
+        # 文件编码
+        self.encoding_label = BodyLabel("UTF-8")
+        self.encoding_label.setStyleSheet("QLabel { color: #888; }")
+        
+        # 分隔符
+        sep1 = BodyLabel("|")
+        sep1.setStyleSheet("QLabel { color: #888; }")
+        
+        # 行列位置
+        self.position_label = BodyLabel("行 1, 列 1")
+        self.position_label.setStyleSheet("QLabel { color: #888; }")
+        
+        # 分隔符
+        sep2 = BodyLabel("|")
+        sep2.setStyleSheet("QLabel { color: #888; }")
+        
+        # 文件类型
+        self.file_type_label = BodyLabel("纯文本")
+        self.file_type_label.setStyleSheet("QLabel { color: #888; }")
+        
+        # 添加到布局
+        status_layout.addWidget(self.encoding_label)
+        status_layout.addWidget(sep1)
+        status_layout.addWidget(self.position_label)
+        status_layout.addWidget(sep2)
+        status_layout.addWidget(self.file_type_label)
+        status_layout.addStretch()
+        
+        # 选择信息
+        sep3 = BodyLabel("|")
+        sep3.setStyleSheet("QLabel { color: #888; }")
+        self.selection_label = BodyLabel("")
+        self.selection_label.setStyleSheet("QLabel { color: #888; }")
+        
+        status_layout.addWidget(sep3)
+        status_layout.addWidget(self.selection_label)
+        
+        # 创建状态栏容器
+        status_widget = QWidget()
+        status_widget.setLayout(status_layout)
+        status_widget.setMaximumHeight(25)
+        status_widget.setStyleSheet("""
+            QWidget {
+                background-color: rgba(0, 0, 0, 0.05);
+                border-top: 1px solid rgba(0, 0, 0, 0.1);
+            }
+        """)
+        
+        self.layout.addWidget(status_widget)
+        
+    def _update_cursor_position(self):
+        """更新光标位置显示"""
+        if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
+            line, col = self.editor.getCursorPosition()
+            self.position_label.setText(f"行 {line + 1}, 列 {col + 1}")
+            
+            # 更新选择信息
+            if self.editor.hasSelectedText():
+                selected_text = self.editor.selectedText()
+                lines = selected_text.count('\n') + 1
+                chars = len(selected_text)
+                self.selection_label.setText(f"已选择 {chars} 个字符")
+                if lines > 1:
+                    self.selection_label.setText(f"已选择 {lines} 行, {chars} 个字符")
+            else:
+                self.selection_label.setText("")
+        else:
+            cursor = self.editor.textCursor()
+            line = cursor.blockNumber() + 1
+            col = cursor.columnNumber() + 1
+            self.position_label.setText(f"行 {line}, 列 {col}")
+            
+            # 更新选择信息
+            if cursor.hasSelection():
+                selected_text = cursor.selectedText()
+                chars = len(selected_text)
+                self.selection_label.setText(f"已选择 {chars} 个字符")
+            else:
+                self.selection_label.setText("")
+    
+    def _update_file_type(self, file_path):
+        """更新文件类型显示"""
+        if not file_path:
+            self.file_type_label.setText("纯文本")
+            return
+            
+        ext = os.path.splitext(file_path)[1].lower()
+        file_types = {
+            '.py': 'Python',
+            '.pyw': 'Python',
+            '.js': 'JavaScript',
+            '.jsx': 'JavaScript React',
+            '.ts': 'TypeScript',
+            '.tsx': 'TypeScript React',
+            '.java': 'Java',
+            '.c': 'C',
+            '.cpp': 'C++',
+            '.cc': 'C++',
+            '.cxx': 'C++',
+            '.h': 'C/C++ Header',
+            '.hpp': 'C++ Header',
+            '.cs': 'C#',
+            '.html': 'HTML',
+            '.htm': 'HTML',
+            '.css': 'CSS',
+            '.scss': 'SCSS',
+            '.sass': 'Sass',
+            '.less': 'Less',
+            '.xml': 'XML',
+            '.json': 'JSON',
+            '.yaml': 'YAML',
+            '.yml': 'YAML',
+            '.md': 'Markdown',
+            '.markdown': 'Markdown',
+            '.sql': 'SQL',
+            '.sh': 'Shell Script',
+            '.bash': 'Bash Script',
+            '.bat': 'Batch',
+            '.cmd': 'Command',
+            '.ps1': 'PowerShell',
+            '.rb': 'Ruby',
+            '.pl': 'Perl',
+            '.lua': 'Lua',
+            '.go': 'Go',
+            '.rs': 'Rust',
+            '.php': 'PHP',
+            '.swift': 'Swift',
+            '.kt': 'Kotlin',
+            '.r': 'R',
+            '.m': 'MATLAB/Objective-C',
+            '.vb': 'Visual Basic',
+            '.pas': 'Pascal',
+            '.f': 'Fortran',
+            '.f90': 'Fortran 90',
+            '.asm': 'Assembly',
+            '.s': 'Assembly',
+            '.makefile': 'Makefile',
+            '.mk': 'Makefile',
+            '.cmake': 'CMake',
+            '.dockerfile': 'Dockerfile',
+            '.gitignore': 'Git Ignore',
+            '.env': 'Environment',
+            '.ini': 'INI',
+            '.cfg': 'Configuration',
+            '.conf': 'Configuration',
+            '.toml': 'TOML',
+            '.properties': 'Properties',
+            '.diff': 'Diff',
+            '.patch': 'Patch',
+        }
+        
+        file_type = file_types.get(ext, '纯文本')
+        self.file_type_label.setText(file_type)
+    
+    
     
