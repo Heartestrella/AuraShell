@@ -14,45 +14,47 @@ class SidePanelWidget(QWidget):
         self.layout.setSpacing(0)
 
         self.tabWidget = QTabWidget(self)
+        # self.tabWidget.setDocumentMode(True)
         self.tabWidget.setTabPosition(QTabWidget.North)
         self.tabWidget.setMovable(True)
-        self.tabWidget.setTabsClosable(True)
+        self.tabWidget.setTabsClosable(False)
+        self.tabWidget.tabBar().tabBarDoubleClicked.connect(self._close_tab)
 
-        # Add example tabs
-        self.tabWidget.addTab(QLabel("AI Chat (Placeholder)"), "AI Chat")
-        self.tabWidget.addTab(QLabel("Web Browser (Placeholder)"), "Browser")
-        self.tabWidget.addTab(QLabel("Code Editor (Placeholder)"), "Editor")
+        self.tabWidget.addTab(QLabel("正在开发"), "AI Chat")
+        self.tabWidget.addTab(QLabel("正在开发"), "Editor")
 
         self.layout.addWidget(self.tabWidget)
 
-        close_icon_path = resource_path("resource/icons/close.svg").replace("\\", "/")
         self.setStyleSheet(f"""
+            QTabWidget::tab-bar {{
+                alignment: left;
+                border-bottom: 1px solid #3c3c3c;
+            }}
             QTabWidget::pane {{
-                border-top: 1px solid #3c3c3c;
+                border: none;
                 background: #252526;
             }}
-            QTabWidget QTabBar::tab {{
+            QTabBar::tab {{
                 background: #2d2d2d;
                 color: #f0f0f0;
-                border: none;
-                padding: 8px 24px 8px 12px;
-                margin-left: 1px;
+                border: 1px solid #3c3c3c;
+                border-bottom: none;
+                padding: 6px 10px;
+                margin-right: 2px;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
             }}
-            QTabWidget QTabBar::tab:selected {{
+            QTabBar::tab:selected {{
                 background: #252526;
                 color: #ffffff;
+                margin-bottom: -1px;
             }}
-            QTabWidget QTabBar::tab:!selected:hover {{
+            QTabBar::tab:!selected:hover {{
                 background: #3c3c3c;
             }}
-            QTabBar::close-button {{
-                image: url("{close_icon_path}");
-                subcontrol-position: right;
-                subcontrol-origin: padding;
-                right: 4px;
-            }}
-            QTabBar::close-button:hover {{
-                background: #555555;
-                border-radius: 2px;
-            }}
         """)
+
+    def _close_tab(self, index):
+        if index == 0:
+            return
+        self.tabWidget.removeTab(index)
