@@ -44,6 +44,7 @@ PyQtWebEngine==5.15.7
 pyte==0.8.2
 python-dotenv==1.1.1
 python-magic==0.4.27
+QScintilla==2.14.1
 requests==2.32.5
 scipy==1.15.3
 setuptools==80.9.0
