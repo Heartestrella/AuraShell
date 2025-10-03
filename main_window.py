@@ -474,6 +474,13 @@ class Window(FramelessWindow):
                         is_text = False
             
             if is_text:
+                # 为安全起见，检查此确切路径的观察者是否已存在
+                if widget_key in self.watching_dogs:
+                    for watcher in self.watching_dogs[widget_key]:
+                        if os.path.abspath(watcher.file_path) == os.path.abspath(local_path):
+                            print(f"Watcher for {local_path} already exists. Skipping.")
+                            return
+
                 print(f"Text file detected (MIME: {mime}), starting file watching: {local_path}")
                 file_thread = FileWatchThread(local_path)
                 file_thread.file_saved.connect(
@@ -597,6 +604,20 @@ class Window(FramelessWindow):
 
     def _open_server_files(self, path: str, type_: str, widget_key: str):
         file_manager: RemoteFileManager = self.file_tree_object[widget_key]
+
+        # 停止此文件的现有观察者，以防止在重新下载时触发
+        session_id = file_manager.session_info.id
+        # 构建预期的本地路径以查找观察者
+        expected_local_path = os.path.abspath(os.path.join("tmp", "edit", session_id, path.lstrip('/')))
+
+        if widget_key in self.watching_dogs:
+            # 遍历列表的副本以安全地删除项目
+            for watcher in self.watching_dogs[widget_key][:]:
+                if os.path.abspath(watcher.file_path) == expected_local_path:
+                    print(f"Stopping existing watcher for {expected_local_path}")
+                    watcher.stop()
+                    self.watching_dogs[widget_key].remove(watcher)
+        
         duration = 2000
         
         # 检查是否配置了外置编辑器
