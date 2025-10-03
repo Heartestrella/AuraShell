@@ -866,7 +866,7 @@ class Window(FramelessWindow):
         self.mainSplitter.setSizes([int(s) for s in splitter_sizes])
 
         # Connect signal to save sizes
-        self.mainSplitter.splitterMoved.connect(self._save_splitter_sizes)
+        self.mainSplitter.splitterMoved.connect(self._on_main_splitter_moved)
 
         # Style the splitter handle to be thin and subtle
         self.mainSplitter.setStyleSheet("""
@@ -1211,8 +1211,21 @@ class Window(FramelessWindow):
             except Exception as e:
                 print(f"Error updating splitter color for {widget_key}: {e}")
 
-    def _save_splitter_sizes(self):
+    def _on_main_splitter_moved(self):
+        """
+        When the main splitter is moved, this function saves the new sizes and
+        also forces the active SSH widget to update its internal layout to
+        maintain the fixed width of its left panel.
+        """
+        # Save the main splitter's new size configuration
         setting_.revise_config("splitter_sizes", self.mainSplitter.sizes())
+
+        # Force the active SSH widget to readjust its internal splitter
+        current_widget = self.ssh_page.sshStack.currentWidget()
+        if isinstance(current_widget, SSHWidget):
+            # Use a single shot timer to ensure the resize has propagated
+            # before we force the width.
+            QTimer.singleShot(0, current_widget.force_set_left_panel_width)
 
     def _set_language(self, lang_code: str):
         translator = QTranslator()

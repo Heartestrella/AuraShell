@@ -468,9 +468,7 @@ class SSHWidget(QWidget):
         self.rsplitter.splitterMoved.connect(self.on_splitter_moved)
         self.rsplitter.splitterMoved.connect(self.resize_timer.start)
 
-        splitter_lr_ratio = config.get("splitter_lr_ratio", [0.2, 0.8])
-        if len(splitter_lr_ratio) == 2:
-            QTimer.singleShot(100, lambda: self._restore_splitter_sizes(self.splitter_lr, splitter_lr_ratio))
+        QTimer.singleShot(50, self.force_set_left_panel_width)
 
         splitter_tb_ratio = config.get("splitter_tb_ratio", [0.7, 0.3])
         if len(splitter_tb_ratio) == 2:
@@ -545,11 +543,18 @@ class SSHWidget(QWidget):
         splitter = self.sender()
         obj_name = splitter.objectName()
         sizes = splitter.sizes()
-        total = sum(sizes)
-        if total > 0:
-            ratios = [s/total for s in sizes]
-            # print(f"移动: {obj_name}, 比例: {ratios}")
-            CONFIGER.revise_config(f"{obj_name}", ratios)
+
+        # For the left-right splitter, save fixed width of the left panel
+        if obj_name == "splitter_lr_ratio":
+            if sizes and len(sizes) > 1 and sizes[0] > 10:  # Ensure width is valid
+                CONFIGER.revise_config("splitter_lr_left_width", sizes[0])
+        # For other splitters, save ratios as before
+        else:
+            total = sum(sizes)
+            if total > 0:
+                ratios = [s/total for s in sizes]
+                # print(f"移动: {obj_name}, 比例: {ratios}")
+                CONFIGER.revise_config(f"{obj_name}", ratios)
 
     def _change_file_or_net(self, router):
         self.net_monitor.hide()
@@ -823,6 +828,25 @@ class SSHWidget(QWidget):
         if total_size > 0:
             sizes = [int(r * total_size) for r in ratios]
             splitter.setSizes(sizes)
+
+    def force_set_left_panel_width(self):
+        """
+        Reads the absolute width for the left panel from config and applies it.
+        This ensures the left panel width is maintained during parent resizes.
+        """
+        config = CONFIGER.read_config()
+        # Use a reasonable default width if not set
+        left_width = config.get("splitter_lr_left_width", 280)
+
+        total_width = self.splitter_lr.width()
+
+        # Only apply if the total width is larger than the desired fixed width
+        if total_width > left_width:
+            right_width = total_width - left_width
+            # Temporarily block signals to avoid a feedback loop with on_splitter_moved
+            self.splitter_lr.blockSignals(True)
+            self.splitter_lr.setSizes([left_width, right_width])
+            self.splitter_lr.blockSignals(False)
 
     def handle_concent(self):
         self.llm = LLMHelper()
