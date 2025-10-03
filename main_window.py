@@ -5,7 +5,7 @@ import time
 from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter
-
+from widgets.editor_widget import EditorWidget
 from qfluentwidgets import (NavigationInterface, NavigationItemPosition, InfoBar,
                             isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget, Dialog)
 from qframelesswindow import FramelessWindow, StandardTitleBar
@@ -413,38 +413,59 @@ class Window(FramelessWindow):
                 file_id, data)
 
     def _open_downloaded_file(self, local_path: str, widget_key: str, remote_path: str):
-        """打开下载的文件，支持外置编辑器和系统默认程序"""
-        if not os.path.isfile(local_path):
-            # 如果是目录，直接打开目录
-            self._open_with_system_default(os.path.dirname(local_path))
-            return
-        
-        # 检查是否配置了外置编辑器
+        """打开下载的文件"""
         external_editor = setting_.read_config().get("external_editor", "")
-        
+        is_text = False
+        mime = None
+        try:
+            with open(local_path, "rb") as f:
+                content = f.read(2048)
+                mime = magic.from_buffer(content, mime=True)
+            if mime in mime_types or mime.startswith("text/"):
+                is_text = True
+            elif mime == "application/octet-stream":
+                try:
+                    content.decode('utf-8')
+                    is_text = True
+                except UnicodeDecodeError:
+                    try:
+                        content.decode('gbk')
+                        is_text = True
+                    except UnicodeDecodeError:
+                        is_text = False
+        except Exception as e:
+            print(f"Error checking file type: {e}")
         if external_editor and os.path.isfile(external_editor):
-            # 尝试使用外置编辑器打开
             try:
                 subprocess.Popen([external_editor, local_path])
-                print(f"Opened {local_path} with external editor: {external_editor}")
             except Exception as editor_error:
-                print(f"Error opening with external editor: {editor_error}, fallback to system default")
-                self._open_with_system_default(local_path)
+                print(f"Error opening with external editor: {editor_error}, fallback to internal editor")
+                if is_text:
+                    self._open_in_internal_editor(local_path, widget_key, remote_path)
         else:
-            # 使用系统默认程序打开
-            self._open_with_system_default(local_path)
-        
-        # 检查是否需要监视文件变化（仅文本文件）
+            if is_text:
+                self._open_in_internal_editor(local_path, widget_key, remote_path)
+            else:
+                print(f"File {local_path} is not a text file (MIME: {mime}), cannot open in editor")
         self._start_file_watching_if_text(local_path, widget_key, remote_path)
     
-    def _open_with_system_default(self, file_path: str):
-        """使用系统默认程序打开文件或目录"""
-        if sys.platform.startswith('darwin'):
-            subprocess.call(('open', file_path))
-        elif os.name == 'nt':
-            os.startfile(file_path)
-        elif os.name == 'posix':
-            subprocess.call(('xdg-open', file_path))
+    def _open_in_internal_editor(self, local_path: str, widget_key: str, remote_path: str):
+        """在内置编辑器中打开文件"""
+        try:
+            tab_title = os.path.basename(remote_path)
+            tab_id = self.sidePanel.add_new_tab(
+                EditorWidget(),
+                tab_title,
+                {
+                    "path": local_path,
+                    "remote_path": remote_path,
+                    "widget_key": widget_key
+                }
+            )
+        except Exception as e:
+            print(f"Error opening in internal editor: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _start_file_watching_if_text(self, local_path: str, widget_key: str, remote_path: str):
         """如果是文本文件，启动文件监视以便自动重新上传"""
@@ -452,16 +473,10 @@ class Window(FramelessWindow):
             with open(local_path, "rb") as f:
                 content = f.read(2048)
                 mime = magic.from_buffer(content, mime=True)
-            
-            # 检查是否为文本文件
             is_text = False
-            
-            # 1. 检查 MIME 类型
             if mime in mime_types or mime.startswith("text/"):
                 is_text = True
-            # 2. application/octet-stream 可能是文本文件，需要进一步检查内容
             elif mime == "application/octet-stream":
-                # 尝试将内容解码为文本来判断
                 try:
                     content.decode('utf-8')
                     is_text = True
@@ -475,13 +490,11 @@ class Window(FramelessWindow):
                         is_text = False
             
             if is_text:
-                # 为安全起见，检查此确切路径的观察者是否已存在
                 if widget_key in self.watching_dogs:
                     for watcher in self.watching_dogs[widget_key]:
                         if os.path.abspath(watcher.file_path) == os.path.abspath(local_path):
                             print(f"Watcher for {local_path} already exists. Skipping.")
                             return
-
                 print(f"Text file detected (MIME: {mime}), starting file watching: {local_path}")
                 file_thread = FileWatchThread(local_path)
                 file_thread.file_saved.connect(
@@ -629,7 +642,7 @@ class Window(FramelessWindow):
             msg = self.tr(f"Start to download and open with external editor")
         else:
             title = self.tr(f"File: {path} Type: {type_}\n")
-            msg = self.tr(f"Start to download it and open with default program")
+            msg = self.tr(f"Start to download and open with internal editor")
         
         if type_ == "executable":
             title = self.tr(f"{path} is an executable won't start downloading")
