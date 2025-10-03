@@ -10,16 +10,13 @@ import uuid
 
 
 class TabButton(QPushButton):
-    """ Custom Tab Button """
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
         self.setCheckable(True)
         self.setMinimumHeight(30)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
 
-
 class CustomTabBar(QScrollArea):
-    """ Custom Scrollable Tab Bar """
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWidgetResizable(True)
@@ -39,7 +36,6 @@ class CustomTabBar(QScrollArea):
             self.horizontalScrollBar().value() - delta)
         event.accept()
 
-
 class SidePanelWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -47,7 +43,7 @@ class SidePanelWidget(QWidget):
         self.setMinimumWidth(150)
         self.tabs = {}
         self.tab_order = []
-        self.scm = SCM()  # Setting config manager
+        self.scm = SCM()
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
@@ -62,7 +58,6 @@ class SidePanelWidget(QWidget):
         self.page_stack = QStackedWidget(self)
         self.main_layout.addWidget(self.page_stack)
         self.add_new_tab(AiChatWidget(), "AI Chat", {"test": "test"})
-        # self.add_new_tab(EditorWidget(), "Editor", {"path": r"C:\Users\Administrator\Desktop\editor_widget1.py"})
         self._update_tab_bar_visibility()
         self.setStyleSheet(self._get_style_sheet())
 
@@ -118,7 +113,6 @@ class SidePanelWidget(QWidget):
         self.tab_order.pop(index)
         tab_info = self.tabs.pop(tab_id_to_close)
         page = tab_info['page']
-        
         self.tab_bar.layout.removeWidget(button_to_close)
         button_to_close.deleteLater()
         self.page_stack.removeWidget(page)
@@ -149,50 +143,31 @@ class SidePanelWidget(QWidget):
             self.tabs[tab_id]['data'] = data
 
     def _show_tab_context_menu(self, pos, tab_id):
-        """Show context menu for tab"""
         if tab_id not in self.tabs:
             return
-            
         widget = self.tabs[tab_id]['page']
         button = self.tabs[tab_id]['button']
-        
-        # Check widget type and create appropriate menu
         if isinstance(widget, EditorWidget):
-            # Create checkable menu for editor
             menu = CheckableMenu(parent=self)
-            
-            # Auto-save toggle action (global setting)
             auto_save_action = Action(FIF.SAVE, self.tr("Auto-save on focus lost (Global)"))
             auto_save_action.setCheckable(True)
             auto_save_action.setChecked(self.scm.read_config().get("editor_auto_save_on_focus_lost", False))
             auto_save_action.triggered.connect(self._toggle_global_auto_save)
             menu.addAction(auto_save_action)
-            
-            # Add separator
             menu.addSeparator()
-            
-            # Close tab action
             close_action = Action(FIF.CLOSE, self.tr("Close Tab"))
             close_action.triggered.connect(lambda: self._close_tab(button))
             menu.addAction(close_action)
-            
         elif isinstance(widget, AiChatWidget):
-            # Create regular menu for AI chat
             menu = RoundMenu(parent=self)
-            
-            # For AiChatWidget, just add close action for now
             close_action = Action(FIF.CLOSE, self.tr("Close Tab"))
             close_action.triggered.connect(lambda: self._close_tab(button))
             menu.addAction(close_action)
         else:
             return
-        
-        # Show menu at cursor position
         menu.exec_(button.mapToGlobal(pos))
-    
+
     def _toggle_global_auto_save(self, enabled):
-        """Toggle global auto-save setting"""
-        # Save to config only
         self.scm.revise_config("editor_auto_save_on_focus_lost", enabled)
 
     def _get_style_sheet(self):

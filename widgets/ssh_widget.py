@@ -417,6 +417,8 @@ class SSHWidget(QWidget):
             self.file_bar.new_folder_clicked.connect(
                 self.file_explorer._handle_mkdir)
             self.file_bar.view_switch_clicked.connect(self._switch_view_mode)
+            self.file_bar.internal_editor_toggled.connect(
+                self._on_internal_editor_toggled)
 
             self.file_bar.upload_mode_toggled.connect(
                 self._on_upload_mode_toggled)
@@ -671,6 +673,11 @@ class SSHWidget(QWidget):
             new_mode = "icon"
         self.file_explorer.switch_view(new_mode)
         self.file_bar.update_view_switch_button(new_mode)
+
+    def _on_internal_editor_toggled(self, checked: bool):
+        # This is where the logic to enable/disable the internal editor will go.
+        # For now, we can just print a message.
+        print(f"Internal editor mode toggled: {'On' if checked else 'Off'}")
 
     def _process_selected_path(self, path_dict: dict):
         # print(f"选中了: {path_dict}")

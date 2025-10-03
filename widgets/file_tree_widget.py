@@ -5,6 +5,9 @@ from qfluentwidgets import isDarkTheme, SegmentedWidget
 from PyQt5.QtCore import Qt, pyqtSignal
 from qfluentwidgets import TreeWidget, RoundMenu, Action, FluentIcon as FIF
 from typing import Optional, Dict, Set
+from tools.setting_config import SCM
+
+configer = SCM()
 
 
 def _parse_linux_path(path: str):
@@ -27,6 +30,7 @@ class File_Navigation_Bar(QWidget):
     refresh_clicked = pyqtSignal()
     view_switch_clicked = pyqtSignal()
     upload_mode_toggled = pyqtSignal(bool)
+    internal_editor_toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -72,12 +76,17 @@ class File_Navigation_Bar(QWidget):
         self.path_edit.hide()
 
         self.hBoxLayout = QHBoxLayout(self)
-        self.hBoxLayout.setContentsMargins(10, 5, 10, 5)
+        self.hBoxLayout.setContentsMargins(5, 5, 5, 5)
+        self.hBoxLayout.setSpacing(2)
         self.hBoxLayout.addWidget(self.breadcrumb_container, 1)
         self.hBoxLayout.addWidget(self.path_edit)
 
         self.view_switch_button = TransparentToolButton(FIF.VIEW, self)
         self.hBoxLayout.addWidget(self.view_switch_button)
+
+        self.internal_editor_button = TransparentToolButton(FIF.EDIT, self)
+        self.internal_editor_button.setCheckable(True)
+        self.hBoxLayout.addWidget(self.internal_editor_button)
 
         self.upload_mode_button = TransparentToolButton(
             FIF.ZIP_FOLDER, self)
@@ -96,6 +105,8 @@ class File_Navigation_Bar(QWidget):
         """
         self.upload_mode_button.setStyleSheet(style)
         self.hBoxLayout.addWidget(self.upload_mode_button)
+        self.internal_editor_button.setProperty('isChecked', False)
+        self.internal_editor_button.setStyleSheet(style)
 
         self.new_folder_button = TransparentToolButton(FIF.FOLDER_ADD, self)
         self.new_folder_button.setToolTip(self.tr('New folder'))
@@ -113,10 +124,33 @@ class File_Navigation_Bar(QWidget):
         self.refresh_button.clicked.connect(self.refresh_clicked.emit)
         self.view_switch_button.clicked.connect(self.view_switch_clicked.emit)
         self.upload_mode_button.toggled.connect(self.upload_mode_toggled.emit)
+        self.internal_editor_button.toggled.connect(
+            self._on_editor_mode_toggled)
+
+        # Set initial state for new button
+        use_internal_editor = configer.read_config().get("use_internal_editor", True)
+        self.internal_editor_button.setChecked(use_internal_editor)
+        self.internal_editor_button.setProperty('isChecked', use_internal_editor)
+        self._update_editor_button_tooltip(use_internal_editor)
 
         self.breadcrumbBar.currentItemChanged.connect(self.updatePathLabel)
         self.path_edit.returnPressed.connect(self._submit_path_from_edit)
         self.path_edit.editingFinished.connect(self._submit_path_from_edit)
+
+    def _on_editor_mode_toggled(self, checked: bool):
+        configer.revise_config("use_internal_editor", checked)
+        self._update_editor_button_tooltip(checked)
+        self.internal_editor_button.setProperty('isChecked', checked)
+        self.internal_editor_button.setStyle(QApplication.style())
+        self.internal_editor_toggled.emit(checked)
+
+    def _update_editor_button_tooltip(self, is_enabled: bool):
+        if is_enabled:
+            self.internal_editor_button.setToolTip(
+                self.tr('Built-in editor is On'))
+        else:
+            self.internal_editor_button.setToolTip(
+                self.tr('Built-in editor is Off'))
 
     def update_view_switch_button(self, current_mode: str):
         if current_mode == "icon":
