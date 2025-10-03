@@ -2,6 +2,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QStackedWidget, QLabel,
                              QPushButton, QScrollArea, QHBoxLayout)
 from PyQt5.QtCore import Qt, QEvent
 from tools.atool import resource_path
+import uuid
 
 
 class TabButton(QPushButton):
@@ -43,8 +44,8 @@ class SidePanelWidget(QWidget):
         self.setObjectName("SidePanelWidget")
         self.setMinimumWidth(150)
 
-        self.buttons = []
-        self.pages = []
+        self.tabs = {}
+        self.tab_order = []
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -63,32 +64,46 @@ class SidePanelWidget(QWidget):
         self.page_stack = QStackedWidget(self)
         self.main_layout.addWidget(self.page_stack)
 
-        self.add_new_tab(QLabel("正在开发"), "AI Chat")
-        for i in range(13):
-            self.add_new_tab(QLabel("正在开发"), "AI Chat")
+        self.add_new_tab(QLabel("AI对话"), "AI Chat")
+        self.add_new_tab(QLabel("编辑器"), "Editor")
 
         self._update_tab_bar_visibility()
         self.setStyleSheet(self._get_style_sheet())
 
-    def add_new_tab(self, widget, title: str):
-        """Adds a new tab and its corresponding page."""
+    def add_new_tab(self, widget, title: str, extra_data=None):
+        """Adds a new tab and its corresponding page. Returns a unique tab ID."""
+        tab_id = str(uuid.uuid4())
         button = TabButton(title)
-        button.clicked.connect(lambda _, b=button: self._on_tab_clicked(b))
+
+        button.clicked.connect(lambda _, tid=tab_id: self._on_tab_clicked(tid))
         button.installEventFilter(self)
+
         self.tab_bar.layout.addWidget(button)
         self.page_stack.addWidget(widget)
-        self.buttons.append(button)
-        self.pages.append(widget)
+
+        self.tabs[tab_id] = {
+            "button": button,
+            "page": widget,
+            "data": extra_data
+        }
+        self.tab_order.append(tab_id)
+
         button.click()
         self._update_tab_bar_visibility()
+        return tab_id
 
-    def _on_tab_clicked(self, clicked_button: TabButton):
+    def _on_tab_clicked(self, clicked_tab_id: str):
         """Handles tab selection."""
-        for i, button in enumerate(self.buttons):
-            is_checked = (button == clicked_button)
-            button.setChecked(is_checked)
-            if is_checked:
-                self.page_stack.setCurrentIndex(i)
+        if clicked_tab_id not in self.tabs:
+            return
+
+        page_to_show = self.tabs[clicked_tab_id]['page']
+
+        for tab_id, tab_info in self.tabs.items():
+            is_checked = (tab_id == clicked_tab_id)
+            tab_info['button'].setChecked(is_checked)
+
+        self.page_stack.setCurrentWidget(page_to_show)
 
     def eventFilter(self, obj, event):
         """Event filter to catch double-clicks on tab buttons."""
@@ -99,32 +114,52 @@ class SidePanelWidget(QWidget):
 
     def _close_tab(self, button_to_close: TabButton):
         """Closes a tab."""
+        tab_id_to_close = None
+        for tab_id, tab_info in self.tabs.items():
+            if tab_info['button'] == button_to_close:
+                tab_id_to_close = tab_id
+                break
+
+        if not tab_id_to_close:
+            return
+
         try:
-            index = self.buttons.index(button_to_close)
+            index = self.tab_order.index(tab_id_to_close)
         except ValueError:
             return
 
         if index == 0:
             return
 
-        self.buttons.pop(index)
+        was_checked = button_to_close.isChecked()
+
+        self.tab_order.pop(index)
+        tab_info = self.tabs.pop(tab_id_to_close)
+        page = tab_info['page']
+
         self.tab_bar.layout.removeWidget(button_to_close)
         button_to_close.deleteLater()
-
-        page = self.pages.pop(index)
         self.page_stack.removeWidget(page)
         page.deleteLater()
 
-        if not any(b.isChecked() for b in self.buttons) and self.buttons:
+        if was_checked and self.tab_order:
             new_index = max(0, index - 1)
-            self.buttons[new_index].click()
+            new_tab_id_to_select = self.tab_order[new_index]
+            self.tabs[new_tab_id_to_select]['button'].click()
 
         self._update_tab_bar_visibility()
 
     def _update_tab_bar_visibility(self):
         """Hides the tab bar if there's only one tab."""
-        is_visible = len(self.buttons) > 1
+        is_visible = len(self.tabs) > 1
         self.tab_bar_container.setVisible(is_visible)
+
+    def switch_to_tab(self, tab_id: str):
+        """Switches to the tab with the given ID."""
+        if tab_id in self.tabs:
+            self.tabs[tab_id]['button'].click()
+            return True
+        return False
 
     def _get_style_sheet(self):
         return """
