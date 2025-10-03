@@ -330,7 +330,7 @@ class Window(FramelessWindow):
                     del self.active_transfers[path]
             elif status:  # Finished signal for a small file that sent no progress
                 self._add_transfer_item_if_not_exists(
-                    widget_key, path, "download")
+                    widget_key, path, "download", open_it=open_it)
                 if path in self.active_transfers:
                     file_id = self.active_transfers[path]["id"]
                     self.active_transfers[path]['type'] = 'completed'
@@ -623,7 +623,9 @@ class Window(FramelessWindow):
             parent=self.window()
         )
         if type_ != "executable":
-            file_manager.download_path_async(path, True)
+            # 获取稳定的会话ID
+            session_id = file_manager.session_info.id
+            file_manager.download_path_async(path, open_it=True, session_id=session_id)
 
     def _handle_files(self, action_type, full_path, copy_to, cut, widget_key):
         file_manager: RemoteFileManager = self.file_tree_object[widget_key]
@@ -693,16 +695,16 @@ class Window(FramelessWindow):
                     p for p, t in path_types.items() if t == "file"]
                 for path in files_to_add_ui:
                     self._add_transfer_item_if_not_exists(
-                        widget_key, path, "download")
+                        widget_key, path, "download", open_it=False)
                 file_manager.download_path_async(
-                    paths_to_download, compression=compression)
+                    paths_to_download, open_it=False, compression=compression)
 
             else:  # Compressed download
                 print(f"{type(paths_to_download)} {paths_to_download}")
                 self._add_transfer_item_if_not_exists(
-                    widget_key, paths_to_download[0], "download")
+                    widget_key, paths_to_download[0], "download", open_it=False)
                 file_manager.download_path_async(
-                    paths_to_download[0], compression=compression)
+                    paths_to_download[0], open_it=False, compression=compression)
 
     def _refresh_paths(self, widget_key: str):
         print("Refresh the page")
@@ -1030,7 +1032,7 @@ class Window(FramelessWindow):
                     widget_key, p, 'upload')
             file_manager.upload_file(p, remote_path, compression)
 
-    def _add_transfer_item_if_not_exists(self, widget_key, path, transfer_type, task_id=None):
+    def _add_transfer_item_if_not_exists(self, widget_key, path, transfer_type, task_id=None, open_it=False):
         """Helper to add a transfer item to the UI if it doesn't exist."""
         print(f"{type(path)} {path}")
         session_widget = self.session_widgets[widget_key]
@@ -1047,13 +1049,40 @@ class Window(FramelessWindow):
 
         # Create a truly unique ID for the UI widget
         file_id = f"{widget_key}_{task_identifier}_{time.time()}"
-        if type(path) == list:
-            for i in path:
-                self.file_id_to_path[file_id] = os.path.join(
-                    "_ssh_download", os.path.basename(i))
+        
+        # 根据 transfer_type 和 open_it 决定本地路径
+        if transfer_type == 'download' and open_it:
+            # 双击编辑模式：使用会话隔离的编辑目录，并镜像远程路径
+            file_manager = self.file_tree_object.get(widget_key)
+            if file_manager:
+                session_id = file_manager.session_info.id
+                if type(path) == list:
+                    for i in path:
+                        remote_path_normalized = i.lstrip('/')
+                        self.file_id_to_path[file_id] = os.path.join(
+                            "tmp", "edit", session_id, remote_path_normalized)
+                else:
+                    remote_path_normalized = path.lstrip('/')
+                    self.file_id_to_path[file_id] = os.path.join(
+                        "tmp", "edit", session_id, remote_path_normalized)
+            else:
+                # 降级到常规下载路径
+                if type(path) == list:
+                    for i in path:
+                        self.file_id_to_path[file_id] = os.path.join(
+                            "_ssh_download", os.path.basename(i))
+                else:
+                    self.file_id_to_path[file_id] = os.path.join(
+                        "_ssh_download", os.path.basename(path))
         else:
-            self.file_id_to_path[file_id] = os.path.join(
-                "_ssh_download", os.path.basename(path))
+            # 常规下载或上传：使用原有逻辑
+            if type(path) == list:
+                for i in path:
+                    self.file_id_to_path[file_id] = os.path.join(
+                        "_ssh_download", os.path.basename(i))
+            else:
+                self.file_id_to_path[file_id] = os.path.join(
+                    "_ssh_download", os.path.basename(path))
         if isinstance(path, list) and transfer_type == 'upload':
             # Special handling for compressed list uploads
             file_name = "Compressing..."

@@ -155,7 +155,8 @@ class RemoteFileManager(QThread):
                                 None,  # local_path is not used for download tasks
                                 task['path'],
                                 task["compression"],
-                                open_it=task["open_it"]
+                                open_it=task["open_it"],
+                                session_id=task.get("session_id")
                             )
                         elif ttype == 'list_dir':
                             # print(f"Handle:{[task['path']]}")
@@ -257,14 +258,14 @@ class RemoteFileManager(QThread):
         except Exception:
             pass
 
-    def _dispatch_transfer_task(self, action, local_path, remote_path, compression, open_it=False, task_id=None):
+    def _dispatch_transfer_task(self, action, local_path, remote_path, compression, open_it=False, task_id=None, session_id=None):
         """Creates and starts TransferWorker(s) for uploads or downloads."""
         if action == 'upload':
             self._dispatch_upload_task(
                 local_path, remote_path, compression, open_it, task_id=task_id)
         elif action == 'download':
             self._dispatch_download_task(
-                remote_path, compression, open_it)
+                remote_path, compression, open_it, session_id=session_id)
 
     def _dispatch_upload_task(self, local_path, remote_path, compression, open_it, task_id=None):
         """Handles dispatching of upload tasks, expanding directories if necessary."""
@@ -293,7 +294,7 @@ class RemoteFileManager(QThread):
                 self._create_and_start_worker(
                     'upload', self.upload_conn, path_item, remote_path, compression, open_it)
 
-    def _dispatch_download_task(self, remote_path, compression, open_it):
+    def _dispatch_download_task(self, remote_path, compression, open_it, session_id=None):
         """Handles dispatching of download tasks, expanding directories if necessary."""
         paths_to_process = remote_path if isinstance(
             remote_path, list) else [remote_path]
@@ -301,7 +302,7 @@ class RemoteFileManager(QThread):
         if compression:
             # compression all files to a tar
             self._create_and_start_worker(
-                'download', self.download_conn, None, paths_to_process, compression, open_it)
+                'download', self.download_conn, None, paths_to_process, compression, open_it, session_id=session_id)
         else:
             for path_item in paths_to_process:
                 print(f"非压缩下载 {path_item}")
@@ -315,11 +316,11 @@ class RemoteFileManager(QThread):
                         # For each file, we pass the original directory as 'context'
                         print(f"添加 {file_path} 到任务")
                         self._create_and_start_worker(
-                            'download', self.download_conn, None, file_path, compression, open_it, download_context=path_item)
+                            'download', self.download_conn, None, file_path, compression, open_it, download_context=path_item, session_id=session_id)
                 else:
                     # It's a single file, a list of files, or a compressed directory
                     self._create_and_start_worker(
-                        'download', self.download_conn, None, path_item, compression, open_it)
+                        'download', self.download_conn, None, path_item, compression, open_it, session_id=session_id)
 
     def _list_remote_files_recursive(self, remote_path):
         """Recursively lists all files in a remote directory. Returns a tuple of (file_paths, dir_paths)."""
@@ -351,7 +352,7 @@ class RemoteFileManager(QThread):
                 file_paths.append(os.path.join(root, file))
         return file_paths
 
-    def _create_and_start_worker(self, action, connection, local_path, remote_path, compression, open_it=False, download_context=None, upload_context=None, task_id=None):
+    def _create_and_start_worker(self, action, connection, local_path, remote_path, compression, open_it=False, download_context=None, upload_context=None, task_id=None, session_id=None):
         """Helper to create, connect signals, and start a single TransferWorker."""
         worker = TransferWorker(
             connection,
@@ -361,7 +362,8 @@ class RemoteFileManager(QThread):
             compression,
             download_context,
             upload_context,
-            task_id
+            task_id,
+            session_id
         )
 
         # Store open_it parameter in worker for download callback
@@ -542,10 +544,10 @@ class RemoteFileManager(QThread):
         self.condition.wakeAll()
         self.mutex.unlock()
 
-    def download_path_async(self, path: str, open_it: bool = False, compression=False):
+    def download_path_async(self, path: str, open_it: bool = False, compression=False, session_id: str = None):
         self.mutex.lock()
         self._tasks.append(
-            {'type': 'download_files', 'path': path, "open_it": open_it, "compression": compression})
+            {'type': 'download_files', 'path': path, "open_it": open_it, "compression": compression, "session_id": session_id})
         self.condition.wakeAll()
         self.mutex.unlock()
 
