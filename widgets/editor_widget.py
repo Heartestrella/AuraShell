@@ -2,7 +2,8 @@ import os
 import sys
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QFileDialog
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont, QColor
+from PyQt5.QtGui import QFont, QColor, QFocusEvent
+from tools.setting_config import SCM
 
 # Import QSyntaxHighlighter first
 from PyQt5.QtGui import QSyntaxHighlighter, QTextCharFormat, QTextDocument
@@ -80,6 +81,7 @@ class EditorWidget(QWidget):
         self.file_path = None
         self.original_content = ""
         self.is_modified = False
+        self.scm = SCM()  # Setting config manager
         
         # Create layout
         self.layout = QVBoxLayout(self)
@@ -161,6 +163,9 @@ class EditorWidget(QWidget):
         self.editor.textChanged.connect(self._on_text_changed)
         self.editor.modificationChanged.connect(self._on_modification_changed)
         
+        # Override focusOutEvent
+        self._setup_focus_handler()
+        
     def _setup_plain_text_edit(self):
         """Setup fallback plain text editor"""
         font = QFont('Consolas' if sys.platform == 'win32' else 'Monaco' if sys.platform == 'darwin' else 'Monospace')
@@ -171,6 +176,9 @@ class EditorWidget(QWidget):
         
         # Enable word wrap for plain text editor
         self.editor.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        
+        # Override focusOutEvent for plain text editor
+        self._setup_focus_handler()
         
     def _apply_theme(self):
         """Apply dark or light theme"""
@@ -457,6 +465,24 @@ class EditorWidget(QWidget):
             elif reply == QMessageBox.Cancel:
                 event.ignore()
                 return
-        
         event.accept()
+    
+    def _setup_focus_handler(self):
+        """Setup focus out event handler for auto-save"""
+        # Store original focusOutEvent
+        self._original_focus_out = self.editor.focusOutEvent
+        
+        # Override focusOutEvent
+        def focus_out_handler(event):
+            # Check if auto-save is enabled
+            if self.scm.read_config().get("editor_auto_save_on_focus_lost", False):
+                # Save file if modified and has path
+                if self.is_modified and self.file_path:
+                    self.save_file()
+                    print(f"Auto-saved on focus out: {self.file_path}")
+            
+            # Call original handler
+            self._original_focus_out(event)
+        
+        self.editor.focusOutEvent = focus_out_handler
     

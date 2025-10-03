@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QStackedWidget, QLabel,
                              QPushButton, QScrollArea, QHBoxLayout)
 from PyQt5.QtCore import Qt, QEvent
-from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF
+from qfluentwidgets import RoundMenu, CheckableMenu, Action, FluentIcon as FIF
 from tools.atool import resource_path
 from tools.setting_config import SCM
 from widgets.ai_chat_widget import AiChatWidget
@@ -156,11 +156,11 @@ class SidePanelWidget(QWidget):
         widget = self.tabs[tab_id]['page']
         button = self.tabs[tab_id]['button']
         
-        # Create menu
-        menu = RoundMenu(parent=self)
-        
-        # Check widget type and add appropriate menu items
+        # Check widget type and create appropriate menu
         if isinstance(widget, EditorWidget):
+            # Create checkable menu for editor
+            menu = CheckableMenu(parent=self)
+            
             # Auto-save toggle action (global setting)
             auto_save_action = Action(FIF.SAVE, self.tr("Auto-save on focus lost (Global)"))
             auto_save_action.setCheckable(True)
@@ -177,10 +177,15 @@ class SidePanelWidget(QWidget):
             menu.addAction(close_action)
             
         elif isinstance(widget, AiChatWidget):
+            # Create regular menu for AI chat
+            menu = RoundMenu(parent=self)
+            
             # For AiChatWidget, just add close action for now
             close_action = Action(FIF.CLOSE, self.tr("Close Tab"))
             close_action.triggered.connect(lambda: self._close_tab(button))
             menu.addAction(close_action)
+        else:
+            return
         
         # Show menu at cursor position
         menu.exec_(button.mapToGlobal(pos))
