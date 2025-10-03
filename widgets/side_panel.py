@@ -1,4 +1,3 @@
-# coding:utf-8
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QStackedWidget, QLabel,
                              QPushButton, QScrollArea, QHBoxLayout)
 from PyQt5.QtCore import Qt, QEvent
@@ -47,12 +46,10 @@ class SidePanelWidget(QWidget):
         self.buttons = []
         self.pages = []
 
-        # Main Layout
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
-        # --- Refactored Tab Bar Area ---
         self.tab_bar_container = QWidget()
         self.tab_bar_container.setObjectName("TabBarContainer")
         container_layout = QHBoxLayout(self.tab_bar_container)
@@ -62,13 +59,10 @@ class SidePanelWidget(QWidget):
         self.tab_bar = CustomTabBar(self)
         container_layout.addWidget(self.tab_bar)
         self.main_layout.addWidget(self.tab_bar_container)
-        # --- End Refactor ---
 
-        # Content Pages
         self.page_stack = QStackedWidget(self)
         self.main_layout.addWidget(self.page_stack)
 
-        # Add initial tab
         self.add_new_tab(QLabel("正在开发"), "AI Chat")
         for i in range(13):
             self.add_new_tab(QLabel("正在开发"), "AI Chat")
@@ -80,15 +74,11 @@ class SidePanelWidget(QWidget):
         """Adds a new tab and its corresponding page."""
         button = TabButton(title)
         button.clicked.connect(lambda _, b=button: self._on_tab_clicked(b))
-        button.installEventFilter(self) # For double-click
-
+        button.installEventFilter(self)
         self.tab_bar.layout.addWidget(button)
         self.page_stack.addWidget(widget)
-
         self.buttons.append(button)
         self.pages.append(widget)
-
-        # Auto-select the new tab
         button.click()
         self._update_tab_bar_visibility()
 
@@ -112,22 +102,19 @@ class SidePanelWidget(QWidget):
         try:
             index = self.buttons.index(button_to_close)
         except ValueError:
-            return # Button not found
-
-        if index == 0: # Don't close the first tab
             return
 
-        # Remove button
+        if index == 0:
+            return
+
         self.buttons.pop(index)
         self.tab_bar.layout.removeWidget(button_to_close)
         button_to_close.deleteLater()
 
-        # Remove page
         page = self.pages.pop(index)
         self.page_stack.removeWidget(page)
         page.deleteLater()
 
-        # If the closed tab was active, select a new one
         if not any(b.isChecked() for b in self.buttons) and self.buttons:
             new_index = max(0, index - 1)
             self.buttons[new_index].click()
@@ -166,7 +153,7 @@ class SidePanelWidget(QWidget):
                 color: #ffffff;
             }
             TabButton:checked {
-                background: #3c3c3c;
+                background-color: #252526;
                 color: #ffffff;
             }
         """
