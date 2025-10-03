@@ -124,10 +124,9 @@ class EditorWidget(QWidget):
         
         # Line numbers
         self.editor.setMarginType(0, QsciScintilla.NumberMargin)
-        self.editor.setMarginWidth(0, "0000")
+        self.editor.setMarginWidth(0, "0000")  # Initial width
         self.editor.setMarginLineNumbers(0, True)
-        self.editor.setMarginsBackgroundColor(QColor("#2b2b2b"))
-        self.editor.setMarginsForegroundColor(QColor("#888888"))
+        self.editor.linesChanged.connect(self._update_line_number_width)
         
         # Enable brace matching
         self.editor.setBraceMatching(QsciScintilla.SloppyBraceMatch)
@@ -162,6 +161,19 @@ class EditorWidget(QWidget):
         # Override focusOutEvent
         self._setup_focus_handler()
         
+    def _update_line_number_width(self):
+        """Dynamically adjust line number margin width"""
+        if not QSCINTILLA_AVAILABLE:
+            return
+        
+        lines = self.editor.lines()
+        if lines == 0:
+            lines = 1
+        
+        # Calculate width based on number of digits and font metrics
+        width = self.editor.fontMetrics().width(str(lines)) + 15
+        self.editor.setMarginWidth(0, width)
+        
     def _setup_plain_text_edit(self):
         """Setup fallback plain text editor"""
         font = QFont('Consolas' if sys.platform == 'win32' else 'Monaco' if sys.platform == 'darwin' else 'Monospace')
@@ -195,7 +207,7 @@ class EditorWidget(QWidget):
             else:
                 # Light theme
                 self.editor.setCaretForegroundColor(QColor("#000000"))
-                self.editor.setMarginsBackgroundColor(QColor("#f0f0f0"))
+                self.editor.setMarginsBackgroundColor(QColor("#ffffff"))
                 self.editor.setMarginsForegroundColor(QColor("#666666"))
                 self.editor.setFoldMarginColors(QColor("#f0f0f0"), QColor("#f0f0f0"))
                 
@@ -414,6 +426,7 @@ class EditorWidget(QWidget):
                 self._apply_light_theme_to_lexer(lexer)
             
             self.editor.setLexer(lexer)
+            self._apply_theme()
     
     def save_file(self):
         """Save the current file"""
