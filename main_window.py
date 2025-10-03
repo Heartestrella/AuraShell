@@ -18,6 +18,7 @@ from tools.ssh import SSHWorker
 from tools.remote_file_manage import RemoteFileManager, FileManagerHandler
 from widgets.sync_widget import SycnWidget
 import os
+import shutil
 import subprocess
 from tools.atool import resource_path
 from tools.setting_config import SCM
@@ -1391,5 +1392,16 @@ if __name__ == '__main__':
 
         main_logger.info("🎯 应用启动成功，进入事件循环")
         app.exec_()
+
+        # Clean up the edit directory on exit
+        main_logger.info(" cleaning up tmp/edit directory...")
+        edit_tmp_dir = "tmp/edit"
+        if os.path.exists(edit_tmp_dir):
+            try:
+                shutil.rmtree(edit_tmp_dir)
+                main_logger.info(f"Successfully cleaned up {edit_tmp_dir}.")
+            except Exception as e:
+                main_logger.error(f"Error cleaning up {edit_tmp_dir}: {e}")
+                
     except Exception as e:
         main_logger.critical("Application startup failure", exc_info=True)
