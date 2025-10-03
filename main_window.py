@@ -4,7 +4,7 @@ import ctypes
 import time
 from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
-from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox
+from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter
 
 from qfluentwidgets import (NavigationInterface, NavigationItemPosition, InfoBar,
                             isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget, Dialog)
@@ -25,6 +25,7 @@ from widgets.ssh_widget import SSHPage, SSHWidget
 from tools.icons import My_Icons
 from functools import partial
 from tools.watching_saved import FileWatchThread
+from widgets.side_panel import SidePanelWidget
 import magic
 import traceback
 font_ = font_config()
@@ -80,6 +81,7 @@ class Window(FramelessWindow):
         self.navigationInterface = NavigationInterface(
             self, showMenuButton=True)
         self.stackWidget = QStackedWidget(self)
+        self.sidePanel = SidePanelWidget(self)
 
         # create sub interface
         self.MainInterface = MainInterface(self)
@@ -853,8 +855,34 @@ class Window(FramelessWindow):
         self.hBoxLayout.setSpacing(0)
         self.hBoxLayout.setContentsMargins(0, self.titleBar.height(), 0, 0)
         self.hBoxLayout.addWidget(self.navigationInterface)
-        self.hBoxLayout.addWidget(self.stackWidget)
-        self.hBoxLayout.setStretchFactor(self.stackWidget, 1)
+
+        # Create a splitter to hold the main content and the side panel
+        self.mainSplitter = QSplitter(Qt.Horizontal, self)
+        self.mainSplitter.addWidget(self.stackWidget)
+        self.mainSplitter.addWidget(self.sidePanel)
+
+        # Restore splitter sizes
+        splitter_sizes = setting_.read_config().get("splitter_sizes", [self.width() * 0.7, self.width() * 0.3])
+        self.mainSplitter.setSizes([int(s) for s in splitter_sizes])
+
+        # Connect signal to save sizes
+        self.mainSplitter.splitterMoved.connect(self._save_splitter_sizes)
+
+        # Style the splitter handle to be thin and subtle
+        self.mainSplitter.setStyleSheet("""
+            QSplitter::handle {
+                background-color: transparent;
+                width: 1px;
+                margin: 0px;
+                padding: 0px;
+            }
+            QSplitter::handle:hover {
+                background-color: #555555;
+            }
+        """)
+
+        self.hBoxLayout.addWidget(self.mainSplitter)
+        self.hBoxLayout.setStretchFactor(self.mainSplitter, 1)
 
     def initNavigation(self):
         # self.navigationInterface.setAcrylicEnabled(True)
@@ -888,6 +916,7 @@ class Window(FramelessWindow):
                              self.tr("Setting"), NavigationItemPosition.BOTTOM)
         self.stackWidget.currentChanged.connect(self.onCurrentInterfaceChanged)
         self.stackWidget.setCurrentIndex(0)
+        self.onCurrentInterfaceChanged(0)  # Set initial visibility
 
     def _open_github(self):
         github_url = QUrl("https://github.com/Heartestrella/P-SSH")
@@ -972,6 +1001,12 @@ class Window(FramelessWindow):
     def onCurrentInterfaceChanged(self, index):
         widget = self.stackWidget.widget(index)
         self.navigationInterface.setCurrentItem(widget.objectName())
+
+        # Show side panel only for SSH page
+        if widget == self.ssh_page:
+            self.sidePanel.show()
+        else:
+            self.sidePanel.hide()
 
     def _handle_upload_request(self, widget_key, local_path, remote_path, compression, file_manager):
         """Pre-handles upload requests to determine if UI items should be pre-created."""
@@ -1175,6 +1210,9 @@ class Window(FramelessWindow):
                     session_widget.update_splitter_color(color_hex)
             except Exception as e:
                 print(f"Error updating splitter color for {widget_key}: {e}")
+
+    def _save_splitter_sizes(self):
+        setting_.revise_config("splitter_sizes", self.mainSplitter.sizes())
 
     def _set_language(self, lang_code: str):
         translator = QTranslator()
