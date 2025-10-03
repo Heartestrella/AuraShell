@@ -109,12 +109,11 @@ class EditorWidget(QWidget):
         from PyQt5.QtWidgets import QShortcut
         from PyQt5.QtGui import QKeySequence
         
-        # Create Ctrl+S shortcut
         save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self.editor)
         save_shortcut.activated.connect(self.save_file)
-        
-        # You can add more shortcuts here if needed
-        # Example: Ctrl+O for open, Ctrl+N for new, etc.
+
+        reload_shortcut = QShortcut(QKeySequence("F5"), self.editor)
+        reload_shortcut.activated.connect(self.reload_file)
     
     def _setup_qscintilla(self):
         """Setup QsciScintilla editor with features"""
@@ -141,9 +140,6 @@ class EditorWidget(QWidget):
         self.editor.setIndentationsUseTabs(False)
         self.editor.setIndentationWidth(4)
         self.editor.setAutoIndent(True)
-        
-        # Enable code folding
-        self.editor.setFolding(QsciScintilla.BoxedTreeFoldStyle)
         
         # Set selection colors
         self.editor.setSelectionBackgroundColor(QColor("#264f78"))
@@ -322,6 +318,31 @@ class EditorWidget(QWidget):
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load file: {str(e)}")
+
+    def reload_file(self):
+        if self.file_path:
+            # 保存当前滚动位置
+            if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
+                # QsciScintilla 使用 firstVisibleLine 来获取垂直滚动位置
+                vertical_pos = self.editor.firstVisibleLine()
+                horizontal_pos = self.editor.horizontalScrollBar().value()
+            else:
+                # QPlainTextEdit 使用 verticalScrollBar
+                vertical_pos = self.editor.verticalScrollBar().value()
+                horizontal_pos = self.editor.horizontalScrollBar().value()
+            
+            # 重新加载文件
+            self.load_file(self.file_path)
+            
+            # 恢复滚动位置
+            if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
+                # QsciScintilla 使用 setFirstVisibleLine
+                self.editor.setFirstVisibleLine(vertical_pos)
+                self.editor.horizontalScrollBar().setValue(horizontal_pos)
+            else:
+                # QPlainTextEdit 使用 verticalScrollBar
+                self.editor.verticalScrollBar().setValue(vertical_pos)
+                self.editor.horizontalScrollBar().setValue(horizontal_pos)
     
     def _set_syntax_highlighter(self, file_path):
         """Set appropriate syntax highlighter based on file extension"""
