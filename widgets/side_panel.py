@@ -1,60 +1,172 @@
 # coding:utf-8
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTabWidget, QLabel
-from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QStackedWidget, QLabel,
+                             QPushButton, QScrollArea, QHBoxLayout)
+from PyQt5.QtCore import Qt, QEvent
 from tools.atool import resource_path
+
+
+class TabButton(QPushButton):
+    """ Custom Tab Button """
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setCheckable(True)
+        self.setMinimumHeight(30)
+
+
+class CustomTabBar(QScrollArea):
+    """ Custom Scrollable Tab Bar """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setFrameShape(self.NoFrame)
+
+        self.scroll_widget = QWidget()
+        self.setWidget(self.scroll_widget)
+
+        self.layout = QHBoxLayout(self.scroll_widget)
+        self.layout.setContentsMargins(5, 0, 5, 0)
+        self.layout.setSpacing(5)
+        self.layout.setAlignment(Qt.AlignLeft)
+
+    def wheelEvent(self, event):
+        """ Scroll horizontally with the mouse wheel """
+        delta = event.angleDelta().y()
+        self.horizontalScrollBar().setValue(
+            self.horizontalScrollBar().value() - delta)
+        event.accept()
 
 
 class SidePanelWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setObjectName("SidePanelWidget")
+        self.setMinimumWidth(150)
 
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setSpacing(0)
+        self.buttons = []
+        self.pages = []
 
-        self.tabWidget = QTabWidget(self)
-        # self.tabWidget.setDocumentMode(True)
-        self.tabWidget.setTabPosition(QTabWidget.North)
-        self.tabWidget.setMovable(True)
-        self.tabWidget.setTabsClosable(False)
-        self.tabWidget.tabBar().tabBarDoubleClicked.connect(self._close_tab)
+        # Main Layout
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
 
-        self.tabWidget.addTab(QLabel("正在开发"), "AI Chat")
-        self.tabWidget.addTab(QLabel("正在开发"), "Editor")
+        # --- Refactored Tab Bar Area ---
+        self.tab_bar_container = QWidget()
+        self.tab_bar_container.setObjectName("TabBarContainer")
+        container_layout = QHBoxLayout(self.tab_bar_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
 
-        self.layout.addWidget(self.tabWidget)
+        self.tab_bar = CustomTabBar(self)
+        container_layout.addWidget(self.tab_bar)
+        self.main_layout.addWidget(self.tab_bar_container)
+        # --- End Refactor ---
 
-        self.setStyleSheet(f"""
-            QTabWidget::tab-bar {{
-                alignment: left;
+        # Content Pages
+        self.page_stack = QStackedWidget(self)
+        self.main_layout.addWidget(self.page_stack)
+
+        # Add initial tab
+        self.add_new_tab(QLabel("正在开发"), "AI Chat")
+        for i in range(13):
+            self.add_new_tab(QLabel("正在开发"), "AI Chat")
+
+        self._update_tab_bar_visibility()
+        self.setStyleSheet(self._get_style_sheet())
+
+    def add_new_tab(self, widget, title: str):
+        """Adds a new tab and its corresponding page."""
+        button = TabButton(title)
+        button.clicked.connect(lambda _, b=button: self._on_tab_clicked(b))
+        button.installEventFilter(self) # For double-click
+
+        self.tab_bar.layout.addWidget(button)
+        self.page_stack.addWidget(widget)
+
+        self.buttons.append(button)
+        self.pages.append(widget)
+
+        # Auto-select the new tab
+        button.click()
+        self._update_tab_bar_visibility()
+
+    def _on_tab_clicked(self, clicked_button: TabButton):
+        """Handles tab selection."""
+        for i, button in enumerate(self.buttons):
+            is_checked = (button == clicked_button)
+            button.setChecked(is_checked)
+            if is_checked:
+                self.page_stack.setCurrentIndex(i)
+
+    def eventFilter(self, obj, event):
+        """Event filter to catch double-clicks on tab buttons."""
+        if event.type() == QEvent.MouseButtonDblClick and isinstance(obj, TabButton):
+            self._close_tab(obj)
+            return True
+        return super().eventFilter(obj, event)
+
+    def _close_tab(self, button_to_close: TabButton):
+        """Closes a tab."""
+        try:
+            index = self.buttons.index(button_to_close)
+        except ValueError:
+            return # Button not found
+
+        if index == 0: # Don't close the first tab
+            return
+
+        # Remove button
+        self.buttons.pop(index)
+        self.tab_bar.layout.removeWidget(button_to_close)
+        button_to_close.deleteLater()
+
+        # Remove page
+        page = self.pages.pop(index)
+        self.page_stack.removeWidget(page)
+        page.deleteLater()
+
+        # If the closed tab was active, select a new one
+        if not any(b.isChecked() for b in self.buttons) and self.buttons:
+            new_index = max(0, index - 1)
+            self.buttons[new_index].click()
+
+        self._update_tab_bar_visibility()
+
+    def _update_tab_bar_visibility(self):
+        """Hides the tab bar if there's only one tab."""
+        is_visible = len(self.buttons) > 1
+        self.tab_bar_container.setVisible(is_visible)
+
+    def _get_style_sheet(self):
+        return """
+            #TabBarContainer {
+                background-color: #2d2d2d;
                 border-bottom: 1px solid #3c3c3c;
-            }}
-            QTabWidget::pane {{
+                max-height: 40px;
+            }
+            CustomTabBar, CustomTabBar QWidget {
+                background-color: transparent;
+                border: none;
+            }
+            QStackedWidget {
                 border: none;
                 background: #252526;
-            }}
-            QTabBar::tab {{
+            }
+            TabButton {
                 background: #2d2d2d;
-                color: #f0f0f0;
-                border: 1px solid #3c3c3c;
-                border-bottom: none;
+                color: #aaaaaa;
+                border: none;
                 padding: 6px 10px;
                 margin-right: 2px;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-            }}
-            QTabBar::tab:selected {{
-                background: #252526;
-                color: #ffffff;
-                margin-bottom: -1px;
-            }}
-            QTabBar::tab:!selected:hover {{
+            }
+            TabButton:hover {
                 background: #3c3c3c;
-            }}
-        """)
-
-    def _close_tab(self, index):
-        if index == 0:
-            return
-        self.tabWidget.removeTab(index)
+                color: #ffffff;
+            }
+            TabButton:checked {
+                background: #3c3c3c;
+                color: #ffffff;
+            }
+        """
