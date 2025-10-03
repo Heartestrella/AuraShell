@@ -162,23 +162,14 @@ class SSHWidget(QWidget):
         leftLayout.setContentsMargins(0, 0, 0, 0)
         leftLayout.setSpacing(0)
 
-        leftSplitter = QSplitter(Qt.Vertical, leftContainer)
-        leftSplitter.setObjectName("splitter_left_components")
-        leftSplitter.setChildrenCollapsible(False)
-        leftSplitter.setHandleWidth(2)
-        leftSplitter.setStyleSheet("""
-            QSplitter::handle:vertical {
-                background-color: #cccccc;
-                height: 1px;
-                margin: 0px;
-            }
-            QSplitter::handle:vertical:hover {
-                background-color: #999999;
-            }
-        """)
+        self.leftSplitter = QSplitter(Qt.Vertical, leftContainer)
+        self.leftSplitter.setObjectName("splitter_left_components")
+        self.leftSplitter.setChildrenCollapsible(False)
+        self.leftSplitter.setHandleWidth(2)
+        # The stylesheet will be set dynamically later
 
         # sys_resources
-        self.sys_resources = ProcessTable(leftSplitter)
+        self.sys_resources = ProcessTable(self.leftSplitter)
         self.sys_resources.set_font_family(font_name)
         self.sys_resources.setObjectName("sys_resources")
         self.sys_resources.setMinimumHeight(80)
@@ -193,7 +184,7 @@ class SSHWidget(QWidget):
         """)
 
         # Task
-        self.task = Tasks(leftSplitter)
+        self.task = Tasks(self.leftSplitter)
         self.task.sysinfo_button.clicked.connect(self._sys_info_dialog)
         self.task.set_text_color(config["ssh_widget_text_color"])
         self.task.setObjectName("task")
@@ -208,7 +199,7 @@ class SSHWidget(QWidget):
             }
         """)
 
-        self.disk_usage = DiskMonitor(leftSplitter)
+        self.disk_usage = DiskMonitor(self.leftSplitter)
         self.disk_usage.into_driver_path.connect(self._set_file_bar)
         self.disk_usage.setObjectName("disk_usage")
         self.disk_usage.setMinimumHeight(80)
@@ -223,17 +214,17 @@ class SSHWidget(QWidget):
 """)
         self.disk_usage.setAttribute(Qt.WA_StyledBackground, True)
 
-        leftSplitter.addWidget(self.sys_resources)
-        leftSplitter.addWidget(self.task)
-        leftSplitter.addWidget(self.disk_usage)
+        self.leftSplitter.addWidget(self.sys_resources)
+        self.leftSplitter.addWidget(self.task)
+        self.leftSplitter.addWidget(self.disk_usage)
 
-        leftSplitter.setStretchFactor(0, 15)  # sys_resources
-        leftSplitter.setStretchFactor(1, 40)  # task
-        leftSplitter.setStretchFactor(2, 30)  # disk_usage
+        self.leftSplitter.setStretchFactor(0, 15)  # sys_resources
+        self.leftSplitter.setStretchFactor(1, 40)  # task
+        self.leftSplitter.setStretchFactor(2, 30)  # disk_usage
 
-        leftSplitter.splitterMoved.connect(self.on_splitter_moved)
+        self.leftSplitter.splitterMoved.connect(self.on_splitter_moved)
 
-        leftLayout.addWidget(leftSplitter, 1)
+        leftLayout.addWidget(self.leftSplitter, 1)
 
         self.transfer_progress = TransferProgressWidget(leftContainer)
         self.transfer_progress.setObjectName("transfer_progress")
@@ -241,13 +232,13 @@ class SSHWidget(QWidget):
         leftLayout.addWidget(self.transfer_progress, 0)
         
         self.transfer_progress.expansionChanged.connect(
-            lambda expanded: self._on_transfer_expansion_changed(expanded, leftLayout, leftSplitter)
+            lambda expanded: self._on_transfer_expansion_changed(expanded, leftLayout, self.leftSplitter)
         )
 
         splitter_left_ratio = config.get("splitter_left_components", [0.18, 0.47, 0.35])
         if len(splitter_left_ratio) == 3:
             sizes = [int(r * 1000) for r in splitter_left_ratio]
-            leftSplitter.setSizes(sizes)
+            self.leftSplitter.setSizes(sizes)
 
         # --- Right Widgets
         rightContainer = QFrame(self)
@@ -258,22 +249,13 @@ class SSHWidget(QWidget):
         rightLayout = QVBoxLayout(rightContainer)
         rightLayout.setContentsMargins(0, 0, 0, 0)
         rightLayout.setSpacing(0)
-        rsplitter = QSplitter(Qt.Vertical, rightContainer)
-        rsplitter.setObjectName("splitter_tb_ratio")
-        rsplitter.setChildrenCollapsible(False)
-        rsplitter.setHandleWidth(2)
-        rsplitter.setStyleSheet("""
-                QSplitter::handle:vertical {
-                    background-color: #cccccc;
-                    height: 1px;
-                    margin: 0px;
-                }
-                QSplitter::handle:vertical:hover {
-                    background-color: #999999;
-                }
-            """)
+        self.rsplitter = QSplitter(Qt.Vertical, rightContainer)
+        self.rsplitter.setObjectName("splitter_tb_ratio")
+        self.rsplitter.setChildrenCollapsible(False)
+        self.rsplitter.setHandleWidth(1)
+        
         # Top container for ssh_widget and command_bar
-        top_container = QFrame(rsplitter)
+        top_container = QFrame(self.rsplitter)
         top_container_layout = QVBoxLayout(top_container)
         top_container_layout.setContentsMargins(0, 0, 0, 0)
         top_container_layout.setSpacing(0)
@@ -379,7 +361,7 @@ class SSHWidget(QWidget):
         self.adjust_input_height()
 
         # file_manage
-        self.file_manage = QWidget(rsplitter)
+        self.file_manage = QWidget(self.rsplitter)
         self.file_manage.setObjectName("file_manage")
         self.file_manage.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding
@@ -463,39 +445,91 @@ class SSHWidget(QWidget):
         self.now_ui = "file_explorer"
         file_manage_layout.addWidget(self.file_splitter, 1)
 
-        rightLayout.addWidget(rsplitter)
+        rightLayout.addWidget(self.rsplitter)
 
         # Left Right splitter
-        splitter_lr = QSplitter(Qt.Horizontal, self)
-        splitter_lr.setObjectName("splitter_lr_ratio")
-        splitter_lr.addWidget(leftContainer)
-        splitter_lr.addWidget(rightContainer)
-        self.mainLayout.addWidget(splitter_lr)
+        self.splitter_lr = QSplitter(Qt.Horizontal, self)
+        self.splitter_lr.setObjectName("splitter_lr_ratio")
+        self.splitter_lr.addWidget(leftContainer)
+        self.splitter_lr.addWidget(rightContainer)
+        self.mainLayout.addWidget(self.splitter_lr)
 
-        rsplitter.setStretchFactor(0, 3)   # top_container
-        rsplitter.setStretchFactor(1, 2)   # file_manage
+        self.rsplitter.setStretchFactor(0, 3)   # top_container
+        self.rsplitter.setStretchFactor(1, 2)   # file_manage
 
-        splitter_lr.setStretchFactor(0, 25)  # 左侧面板
-        splitter_lr.setStretchFactor(1, 75)  # 右侧主区
-        splitter_lr.splitterMoved.connect(self.on_splitter_moved)
+        self.splitter_lr.setStretchFactor(0, 25)  # 左侧面板
+        self.splitter_lr.setStretchFactor(1, 75)  # 右侧主区
+        self.splitter_lr.splitterMoved.connect(self.on_splitter_moved)
         # ---- Debounce terminal resize on splitter move ----
         self.resize_timer = QTimer(self)
         self.resize_timer.setSingleShot(True)
         self.resize_timer.setInterval(50)  # 150ms delay
         self.resize_timer.timeout.connect(self.ssh_widget.fit_terminal)
-        rsplitter.splitterMoved.connect(self.on_splitter_moved)
-        rsplitter.splitterMoved.connect(self.resize_timer.start)
+        self.rsplitter.splitterMoved.connect(self.on_splitter_moved)
+        self.rsplitter.splitterMoved.connect(self.resize_timer.start)
 
-        splitter_lr_ratio = config.get("splitter_lr_ratio", [0.2, 0.8])
-        if len(splitter_lr_ratio) == 2:
-            QTimer.singleShot(100, lambda: self._restore_splitter_sizes(splitter_lr, splitter_lr_ratio))
+        QTimer.singleShot(50, self.force_set_left_panel_width)
 
         splitter_tb_ratio = config.get("splitter_tb_ratio", [0.7, 0.3])
         if len(splitter_tb_ratio) == 2:
-            QTimer.singleShot(100, lambda: self._restore_splitter_sizes(rsplitter, splitter_tb_ratio))
+            QTimer.singleShot(100, lambda: self._restore_splitter_sizes(self.rsplitter, splitter_tb_ratio))
 
         if use_ai:
             self.handle_concent()
+
+        # Apply theme color to splitter on initialization
+        theme_color_info = config.get("bg_theme_color")
+        if theme_color_info:
+            initial_color = theme_color_info
+        else:
+            initial_color = '#cccccc'
+        self.update_splitter_color(initial_color)
+
+    def update_splitter_color(self, color_hex: str):
+        """Updates the color of all splitter handles."""
+        try:
+            # Create a slightly darker color for hover effect
+            base_color = QColor(color_hex)
+            hover_color = base_color.darker(120).name()
+
+            vertical_stylesheet = f"""
+                QSplitter::handle:vertical {{
+                    background-color: {color_hex};
+                    height: 1px;
+                    margin: 0px;
+                }}
+                QSplitter::handle:vertical:hover {{
+                    background-color: {hover_color};
+                }}
+            """
+            
+            horizontal_stylesheet = f"""
+                QSplitter::handle:horizontal {{
+                    background-color: {color_hex};
+                    width: 1px;
+                    margin: 0px;
+                }}
+                QSplitter::handle:horizontal:hover {{
+                    background-color: {hover_color};
+                }}
+            """
+            self.leftSplitter.setStyleSheet(vertical_stylesheet)
+            self.rsplitter.setStyleSheet(vertical_stylesheet)
+            self.file_splitter.setStyleSheet(horizontal_stylesheet)
+        except Exception as e:
+            print(f"Failed to update splitter color: {e}")
+            # Fallback to default if color is invalid
+            default_v_style = '''
+                QSplitter::handle:vertical { background-color: #cccccc; height: 1px; margin: 0px; }
+                QSplitter::handle:vertical:hover { background-color: #999999; }
+            '''
+            default_h_style = '''
+                QSplitter::handle:horizontal { background-color: #cccccc; width: 1px; margin: 0px; }
+                QSplitter::handle:horizontal:hover { background-color: #999999; }
+            '''
+            self.leftSplitter.setStyleSheet(default_v_style)
+            self.rsplitter.setStyleSheet(default_v_style)
+            self.file_splitter.setStyleSheet(default_h_style)
 
     def _on_transfer_expansion_changed(self, expanded, left_layout, left_splitter):
         if expanded:
@@ -509,11 +543,18 @@ class SSHWidget(QWidget):
         splitter = self.sender()
         obj_name = splitter.objectName()
         sizes = splitter.sizes()
-        total = sum(sizes)
-        if total > 0:
-            ratios = [s/total for s in sizes]
-            # print(f"移动: {obj_name}, 比例: {ratios}")
-            CONFIGER.revise_config(f"{obj_name}", ratios)
+
+        # For the left-right splitter, save fixed width of the left panel
+        if obj_name == "splitter_lr_ratio":
+            if sizes and len(sizes) > 1 and sizes[0] > 10:  # Ensure width is valid
+                CONFIGER.revise_config("splitter_lr_left_width", sizes[0])
+        # For other splitters, save ratios as before
+        else:
+            total = sum(sizes)
+            if total > 0:
+                ratios = [s/total for s in sizes]
+                # print(f"移动: {obj_name}, 比例: {ratios}")
+                CONFIGER.revise_config(f"{obj_name}", ratios)
 
     def _change_file_or_net(self, router):
         self.net_monitor.hide()
@@ -787,6 +828,25 @@ class SSHWidget(QWidget):
         if total_size > 0:
             sizes = [int(r * total_size) for r in ratios]
             splitter.setSizes(sizes)
+
+    def force_set_left_panel_width(self):
+        """
+        Reads the absolute width for the left panel from config and applies it.
+        This ensures the left panel width is maintained during parent resizes.
+        """
+        config = CONFIGER.read_config()
+        # Use a reasonable default width if not set
+        left_width = config.get("splitter_lr_left_width", 280)
+
+        total_width = self.splitter_lr.width()
+
+        # Only apply if the total width is larger than the desired fixed width
+        if total_width > left_width:
+            right_width = total_width - left_width
+            # Temporarily block signals to avoid a feedback loop with on_splitter_moved
+            self.splitter_lr.blockSignals(True)
+            self.splitter_lr.setSizes([left_width, right_width])
+            self.splitter_lr.blockSignals(False)
 
     def handle_concent(self):
         self.llm = LLMHelper()
