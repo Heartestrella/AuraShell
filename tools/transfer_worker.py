@@ -29,7 +29,7 @@ class TransferWorker(QRunnable):
     in a separate thread from the QThreadPool.
     """
 
-    def __init__(self, connection, action, local_path, remote_path, compression, download_context=None, upload_context=None, task_id=None):
+    def __init__(self, connection, action, local_path, remote_path, compression, download_context=None, upload_context=None, task_id=None, session_id=None):
         super().__init__()
         self.conn = connection  # Now receives an active connection
         self.action = action
@@ -39,6 +39,7 @@ class TransferWorker(QRunnable):
         self.download_context = download_context
         self.upload_context = upload_context
         self.task_id = task_id
+        self.session_id = session_id
         self.signals = TransferSignals()
         self.sftp = None
         self.is_stopped = False
@@ -325,7 +326,14 @@ class TransferWorker(QRunnable):
             self.signals.finished.emit(identifier, False, error_msg)
 
     def _download_files(self, identifier, remote_path, compression):
-        local_base = "_ssh_download"
+        # 根据 open_it 标志决定本地基础路径
+        if hasattr(self, '_open_it') and self._open_it and self.session_id:
+            # 双击编辑：使用会话隔离的编辑目录
+            local_base = os.path.join("tmp", "edit", self.session_id)
+        else:
+            # 常规下载：使用原有的下载目录
+            local_base = "_ssh_download"
+        
         os.makedirs(local_base, exist_ok=True)
         paths = [remote_path] if isinstance(remote_path, str) else remote_path
         print(f"download1 : {remote_path}")
@@ -374,22 +382,30 @@ class TransferWorker(QRunnable):
     def _download_item(self, identifier, remote_item_path, local_base_path):
         """Downloads a single item (file or directory) and emits a finished signal for it."""
         try:
-            # Determine local path, preserving directory structure if context is given
-            if self.download_context:
-                if remote_item_path.startswith(self.download_context):
-                    # The download root itself should be included in the local path
-                    download_root_name = os.path.basename(
-                        self.download_context.rstrip('/'))
-                    relative_path = os.path.relpath(
-                        remote_item_path, self.download_context)
-                    local_target = os.path.join(
-                        local_base_path, download_root_name, relative_path)
-                else:  # Fallback for safety
+            # 根据 open_it 标志决定本地路径构建方式
+            if hasattr(self, '_open_it') and self._open_it and self.session_id:
+                # 双击编辑模式：镜像远程路径结构
+                # 移除远程路径开头的斜杠，然后拼接到 local_base_path
+                remote_path_normalized = remote_item_path.lstrip('/')
+                local_target = os.path.join(local_base_path, remote_path_normalized)
+            else:
+                # 常规下载模式：保持原有逻辑
+                # Determine local path, preserving directory structure if context is given
+                if self.download_context:
+                    if remote_item_path.startswith(self.download_context):
+                        # The download root itself should be included in the local path
+                        download_root_name = os.path.basename(
+                            self.download_context.rstrip('/'))
+                        relative_path = os.path.relpath(
+                            remote_item_path, self.download_context)
+                        local_target = os.path.join(
+                            local_base_path, download_root_name, relative_path)
+                    else:  # Fallback for safety
+                        local_target = os.path.join(
+                            local_base_path, os.path.basename(remote_item_path.rstrip("/")))
+                else:
                     local_target = os.path.join(
                         local_base_path, os.path.basename(remote_item_path.rstrip("/")))
-            else:
-                local_target = os.path.join(
-                    local_base_path, os.path.basename(remote_item_path.rstrip("/")))
 
             # Ensure local directory exists
             os.makedirs(os.path.dirname(local_target), exist_ok=True)

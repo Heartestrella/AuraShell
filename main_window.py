@@ -5,7 +5,7 @@ import time
 from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter
-
+from widgets.editor_widget import EditorWidget
 from qfluentwidgets import (NavigationInterface, NavigationItemPosition, InfoBar,
                             isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget, Dialog)
 from qframelesswindow import FramelessWindow, StandardTitleBar
@@ -18,6 +18,7 @@ from tools.ssh import SSHWorker
 from tools.remote_file_manage import RemoteFileManager, FileManagerHandler
 from widgets.sync_widget import SycnWidget
 import os
+import shutil
 import subprocess
 from tools.atool import resource_path
 from tools.setting_config import SCM
@@ -82,6 +83,7 @@ class Window(FramelessWindow):
             self, showMenuButton=True)
         self.stackWidget = QStackedWidget(self)
         self.sidePanel = SidePanelWidget(self)
+        self.sidePanel.tabActivity.connect(self._ensure_side_panel_visible)
 
         # create sub interface
         self.MainInterface = MainInterface(self)
@@ -330,7 +332,7 @@ class Window(FramelessWindow):
                     del self.active_transfers[path]
             elif status:  # Finished signal for a small file that sent no progress
                 self._add_transfer_item_if_not_exists(
-                    widget_key, path, "download")
+                    widget_key, path, "download", open_it=open_it)
                 if path in self.active_transfers:
                     file_id = self.active_transfers[path]["id"]
                     self.active_transfers[path]['type'] = 'completed'
@@ -412,38 +414,59 @@ class Window(FramelessWindow):
                 file_id, data)
 
     def _open_downloaded_file(self, local_path: str, widget_key: str, remote_path: str):
-        """打开下载的文件，支持外置编辑器和系统默认程序"""
-        if not os.path.isfile(local_path):
-            # 如果是目录，直接打开目录
-            self._open_with_system_default(os.path.dirname(local_path))
-            return
-        
-        # 检查是否配置了外置编辑器
+        """打开下载的文件"""
         external_editor = setting_.read_config().get("external_editor", "")
-        
+        is_text = False
+        mime = None
+        try:
+            with open(local_path, "rb") as f:
+                content = f.read(2048)
+                mime = magic.from_buffer(content, mime=True)
+            if mime in mime_types or mime.startswith("text/"):
+                is_text = True
+            elif mime == "application/octet-stream":
+                try:
+                    content.decode('utf-8')
+                    is_text = True
+                except UnicodeDecodeError:
+                    try:
+                        content.decode('gbk')
+                        is_text = True
+                    except UnicodeDecodeError:
+                        is_text = False
+        except Exception as e:
+            print(f"Error checking file type: {e}")
         if external_editor and os.path.isfile(external_editor):
-            # 尝试使用外置编辑器打开
             try:
                 subprocess.Popen([external_editor, local_path])
-                print(f"Opened {local_path} with external editor: {external_editor}")
             except Exception as editor_error:
-                print(f"Error opening with external editor: {editor_error}, fallback to system default")
-                self._open_with_system_default(local_path)
+                print(f"Error opening with external editor: {editor_error}, fallback to internal editor")
+                if is_text:
+                    self._open_in_internal_editor(local_path, widget_key, remote_path)
         else:
-            # 使用系统默认程序打开
-            self._open_with_system_default(local_path)
-        
-        # 检查是否需要监视文件变化（仅文本文件）
+            if is_text:
+                self._open_in_internal_editor(local_path, widget_key, remote_path)
+            else:
+                print(f"File {local_path} is not a text file (MIME: {mime}), cannot open in editor")
         self._start_file_watching_if_text(local_path, widget_key, remote_path)
     
-    def _open_with_system_default(self, file_path: str):
-        """使用系统默认程序打开文件或目录"""
-        if sys.platform.startswith('darwin'):
-            subprocess.call(('open', file_path))
-        elif os.name == 'nt':
-            os.startfile(file_path)
-        elif os.name == 'posix':
-            subprocess.call(('xdg-open', file_path))
+    def _open_in_internal_editor(self, local_path: str, widget_key: str, remote_path: str):
+        """在内置编辑器中打开文件"""
+        try:
+            existing_tab_id = self.sidePanel.find_tab_by_remote_path(remote_path)
+            if existing_tab_id:
+                self.sidePanel.switch_to_tab(existing_tab_id)
+                tab_info = self.sidePanel.tabs[existing_tab_id]
+                editor_widget = tab_info['page']
+                if isinstance(editor_widget, EditorWidget):
+                    editor_widget.load_file(local_path)
+            else:
+                tab_title = os.path.basename(remote_path)
+                tab_id = self.sidePanel.add_new_tab( EditorWidget(), tab_title, { "path": local_path, "remote_path": remote_path, "widget_key": widget_key } )
+        except Exception as e:
+            print(f"Error opening in internal editor: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _start_file_watching_if_text(self, local_path: str, widget_key: str, remote_path: str):
         """如果是文本文件，启动文件监视以便自动重新上传"""
@@ -451,16 +474,10 @@ class Window(FramelessWindow):
             with open(local_path, "rb") as f:
                 content = f.read(2048)
                 mime = magic.from_buffer(content, mime=True)
-            
-            # 检查是否为文本文件
             is_text = False
-            
-            # 1. 检查 MIME 类型
             if mime in mime_types or mime.startswith("text/"):
                 is_text = True
-            # 2. application/octet-stream 可能是文本文件，需要进一步检查内容
             elif mime == "application/octet-stream":
-                # 尝试将内容解码为文本来判断
                 try:
                     content.decode('utf-8')
                     is_text = True
@@ -474,6 +491,11 @@ class Window(FramelessWindow):
                         is_text = False
             
             if is_text:
+                if widget_key in self.watching_dogs:
+                    for watcher in self.watching_dogs[widget_key]:
+                        if os.path.abspath(watcher.file_path) == os.path.abspath(local_path):
+                            print(f"Watcher for {local_path} already exists. Skipping.")
+                            return
                 print(f"Text file detected (MIME: {mime}), starting file watching: {local_path}")
                 file_thread = FileWatchThread(local_path)
                 file_thread.file_saved.connect(
@@ -597,6 +619,20 @@ class Window(FramelessWindow):
 
     def _open_server_files(self, path: str, type_: str, widget_key: str):
         file_manager: RemoteFileManager = self.file_tree_object[widget_key]
+
+        # 停止此文件的现有观察者，以防止在重新下载时触发
+        session_id = file_manager.session_info.id
+        # 构建预期的本地路径以查找观察者
+        expected_local_path = os.path.abspath(os.path.join("tmp", "edit", session_id, path.lstrip('/')))
+
+        if widget_key in self.watching_dogs:
+            # 遍历列表的副本以安全地删除项目
+            for watcher in self.watching_dogs[widget_key][:]:
+                if os.path.abspath(watcher.file_path) == expected_local_path:
+                    print(f"Stopping existing watcher for {expected_local_path}")
+                    watcher.stop()
+                    self.watching_dogs[widget_key].remove(watcher)
+        
         duration = 2000
         
         # 检查是否配置了外置编辑器
@@ -607,7 +643,7 @@ class Window(FramelessWindow):
             msg = self.tr(f"Start to download and open with external editor")
         else:
             title = self.tr(f"File: {path} Type: {type_}\n")
-            msg = self.tr(f"Start to download it and open with default program")
+            msg = self.tr(f"Start to download and open with internal editor")
         
         if type_ == "executable":
             title = self.tr(f"{path} is an executable won't start downloading")
@@ -623,7 +659,9 @@ class Window(FramelessWindow):
             parent=self.window()
         )
         if type_ != "executable":
-            file_manager.download_path_async(path, True)
+            # 获取稳定的会话ID
+            session_id = file_manager.session_info.id
+            file_manager.download_path_async(path, open_it=True, session_id=session_id)
 
     def _handle_files(self, action_type, full_path, copy_to, cut, widget_key):
         file_manager: RemoteFileManager = self.file_tree_object[widget_key]
@@ -693,16 +731,16 @@ class Window(FramelessWindow):
                     p for p, t in path_types.items() if t == "file"]
                 for path in files_to_add_ui:
                     self._add_transfer_item_if_not_exists(
-                        widget_key, path, "download")
+                        widget_key, path, "download", open_it=False)
                 file_manager.download_path_async(
-                    paths_to_download, compression=compression)
+                    paths_to_download, open_it=False, compression=compression)
 
             else:  # Compressed download
                 print(f"{type(paths_to_download)} {paths_to_download}")
                 self._add_transfer_item_if_not_exists(
-                    widget_key, paths_to_download[0], "download")
+                    widget_key, paths_to_download[0], "download", open_it=False)
                 file_manager.download_path_async(
-                    paths_to_download[0], compression=compression)
+                    paths_to_download[0], open_it=False, compression=compression)
 
     def _refresh_paths(self, widget_key: str):
         print("Refresh the page")
@@ -1030,7 +1068,7 @@ class Window(FramelessWindow):
                     widget_key, p, 'upload')
             file_manager.upload_file(p, remote_path, compression)
 
-    def _add_transfer_item_if_not_exists(self, widget_key, path, transfer_type, task_id=None):
+    def _add_transfer_item_if_not_exists(self, widget_key, path, transfer_type, task_id=None, open_it=False):
         """Helper to add a transfer item to the UI if it doesn't exist."""
         print(f"{type(path)} {path}")
         session_widget = self.session_widgets[widget_key]
@@ -1047,13 +1085,40 @@ class Window(FramelessWindow):
 
         # Create a truly unique ID for the UI widget
         file_id = f"{widget_key}_{task_identifier}_{time.time()}"
-        if type(path) == list:
-            for i in path:
-                self.file_id_to_path[file_id] = os.path.join(
-                    "_ssh_download", os.path.basename(i))
+        
+        # 根据 transfer_type 和 open_it 决定本地路径
+        if transfer_type == 'download' and open_it:
+            # 双击编辑模式：使用会话隔离的编辑目录，并镜像远程路径
+            file_manager = self.file_tree_object.get(widget_key)
+            if file_manager:
+                session_id = file_manager.session_info.id
+                if type(path) == list:
+                    for i in path:
+                        remote_path_normalized = i.lstrip('/')
+                        self.file_id_to_path[file_id] = os.path.join(
+                            "tmp", "edit", session_id, remote_path_normalized)
+                else:
+                    remote_path_normalized = path.lstrip('/')
+                    self.file_id_to_path[file_id] = os.path.join(
+                        "tmp", "edit", session_id, remote_path_normalized)
+            else:
+                # 降级到常规下载路径
+                if type(path) == list:
+                    for i in path:
+                        self.file_id_to_path[file_id] = os.path.join(
+                            "_ssh_download", os.path.basename(i))
+                else:
+                    self.file_id_to_path[file_id] = os.path.join(
+                        "_ssh_download", os.path.basename(path))
         else:
-            self.file_id_to_path[file_id] = os.path.join(
-                "_ssh_download", os.path.basename(path))
+            # 常规下载或上传：使用原有逻辑
+            if type(path) == list:
+                for i in path:
+                    self.file_id_to_path[file_id] = os.path.join(
+                        "_ssh_download", os.path.basename(i))
+            else:
+                self.file_id_to_path[file_id] = os.path.join(
+                    "_ssh_download", os.path.basename(path))
         if isinstance(path, list) and transfer_type == 'upload':
             # Special handling for compressed list uploads
             file_name = "Compressing..."
@@ -1217,15 +1282,29 @@ class Window(FramelessWindow):
         also forces the active SSH widget to update its internal layout to
         maintain the fixed width of its left panel.
         """
-        # Save the main splitter's new size configuration
         setting_.revise_config("splitter_sizes", self.mainSplitter.sizes())
-
-        # Force the active SSH widget to readjust its internal splitter
         current_widget = self.ssh_page.sshStack.currentWidget()
         if isinstance(current_widget, SSHWidget):
-            # Use a single shot timer to ensure the resize has propagated
-            # before we force the width.
-            QTimer.singleShot(0, current_widget.force_set_left_panel_width)
+            QTimer.singleShot(10, current_widget.force_set_left_panel_width)
+
+    def _ensure_side_panel_visible(self):
+        """
+        Ensures the side panel is visible and preserves the active SSH widget's
+        internal splitter position, avoiding race conditions by blocking signals.
+        """
+        sizes = self.mainSplitter.sizes()
+        if len(sizes) == 2 and sizes[1] == 0:
+            self.mainSplitter.blockSignals(True)
+            saved_sizes = setting_.read_config().get("splitter_sizes")
+            if saved_sizes and len(saved_sizes) == 2 and saved_sizes[1] != 0:
+                self.mainSplitter.setSizes([int(s) for s in saved_sizes])
+            else:
+                default_sizes = [self.width() * 0.7, self.width() * 0.3]
+                self.mainSplitter.setSizes([int(s) for s in default_sizes])
+            self.mainSplitter.blockSignals(False)
+            current_widget = self.ssh_page.sshStack.currentWidget()
+            if isinstance(current_widget, SSHWidget):
+                QTimer.singleShot(10, current_widget.force_set_left_panel_width)
 
     def _set_language(self, lang_code: str):
         translator = QTranslator()
@@ -1341,5 +1420,16 @@ if __name__ == '__main__':
 
         main_logger.info("🎯 应用启动成功，进入事件循环")
         app.exec_()
+
+        # Clean up the edit directory on exit
+        main_logger.info(" cleaning up tmp/edit directory...")
+        edit_tmp_dir = "tmp/edit"
+        if os.path.exists(edit_tmp_dir):
+            try:
+                shutil.rmtree(edit_tmp_dir)
+                main_logger.info(f"Successfully cleaned up {edit_tmp_dir}.")
+            except Exception as e:
+                main_logger.error(f"Error cleaning up {edit_tmp_dir}: {e}")
+                
     except Exception as e:
         main_logger.critical("Application startup failure", exc_info=True)

@@ -5,6 +5,9 @@ from qfluentwidgets import isDarkTheme, SegmentedWidget
 from PyQt5.QtCore import Qt, pyqtSignal
 from qfluentwidgets import TreeWidget, RoundMenu, Action, FluentIcon as FIF
 from typing import Optional, Dict, Set
+from tools.setting_config import SCM
+
+configer = SCM()
 
 
 def _parse_linux_path(path: str):
@@ -27,6 +30,7 @@ class File_Navigation_Bar(QWidget):
     refresh_clicked = pyqtSignal()
     view_switch_clicked = pyqtSignal()
     upload_mode_toggled = pyqtSignal(bool)
+    internal_editor_toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -72,7 +76,8 @@ class File_Navigation_Bar(QWidget):
         self.path_edit.hide()
 
         self.hBoxLayout = QHBoxLayout(self)
-        self.hBoxLayout.setContentsMargins(10, 5, 10, 5)
+        self.hBoxLayout.setContentsMargins(5, 5, 5, 5)
+        self.hBoxLayout.setSpacing(2)
         self.hBoxLayout.addWidget(self.breadcrumb_container, 1)
         self.hBoxLayout.addWidget(self.path_edit)
 
@@ -113,7 +118,6 @@ class File_Navigation_Bar(QWidget):
         self.refresh_button.clicked.connect(self.refresh_clicked.emit)
         self.view_switch_button.clicked.connect(self.view_switch_clicked.emit)
         self.upload_mode_button.toggled.connect(self.upload_mode_toggled.emit)
-
         self.breadcrumbBar.currentItemChanged.connect(self.updatePathLabel)
         self.path_edit.returnPressed.connect(self._submit_path_from_edit)
         self.path_edit.editingFinished.connect(self._submit_path_from_edit)

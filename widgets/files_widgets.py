@@ -13,12 +13,16 @@ configer = SCM()
 
 def _format_size(size_bytes):
     """Format size in bytes to a human-readable string."""
-    if not size_bytes:
-        return ""
     try:
-        size_bytes = int(size_bytes)
+        # Convert to int, treating None, empty string, etc. as 0
+        if size_bytes is None or size_bytes == '':
+            size_bytes = 0
+        else:
+            size_bytes = int(size_bytes)
+        
         if size_bytes == 0:
             return "0 B"
+        
         size_names = ("B", "KB", "MB", "GB", "TB")
         i = 0
         while size_bytes >= 1024 and i < len(size_names) - 1:
@@ -26,7 +30,7 @@ def _format_size(size_bytes):
             i += 1
         return f"{round(size_bytes, 2)} {size_names[i]}"
     except (ValueError, TypeError):
-        return str(size_bytes)
+        return "0 B"  # Return "0 B" for any conversion errors
 
 
 def _normalize_files_data(files):
@@ -541,7 +545,9 @@ class DetailItem(QWidget):
         entries.sort(key=lambda x: (not x[1], x[0].lower()))
 
         for name, is_dir, size, mod_time, perms, owner in entries:
-            size_str = _format_size(size) if not is_dir and size else ""
+            # For files, always format size (even if 0 or empty)
+            # For directories, show empty string
+            size_str = _format_size(size) if not is_dir else ""
             item_name = QStandardItem(name)
             # Store is_dir flag in the item itself for later retrieval
             item_name.setData(is_dir, Qt.UserRole)

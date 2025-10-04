@@ -1,22 +1,22 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QStackedWidget, QLabel,
                              QPushButton, QScrollArea, QHBoxLayout)
-from PyQt5.QtCore import Qt, QEvent
+from PyQt5.QtCore import Qt, QEvent, pyqtSignal
+from qfluentwidgets import RoundMenu, CheckableMenu, Action, FluentIcon as FIF
 from tools.atool import resource_path
+from tools.setting_config import SCM
 from widgets.ai_chat_widget import AiChatWidget
 from widgets.editor_widget import EditorWidget
 import uuid
 
 
 class TabButton(QPushButton):
-    """ Custom Tab Button """
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
         self.setCheckable(True)
         self.setMinimumHeight(30)
-
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
 
 class CustomTabBar(QScrollArea):
-    """ Custom Scrollable Tab Bar """
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWidgetResizable(True)
@@ -36,14 +36,16 @@ class CustomTabBar(QScrollArea):
             self.horizontalScrollBar().value() - delta)
         event.accept()
 
-
 class SidePanelWidget(QWidget):
+    tabActivity = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setObjectName("SidePanelWidget")
         self.setMinimumWidth(150)
         self.tabs = {}
         self.tab_order = []
+        self.scm = SCM()
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
@@ -58,7 +60,6 @@ class SidePanelWidget(QWidget):
         self.page_stack = QStackedWidget(self)
         self.main_layout.addWidget(self.page_stack)
         self.add_new_tab(AiChatWidget(), "AI Chat", {"test": "test"})
-        self.add_new_tab(EditorWidget(), "Editor")
         self._update_tab_bar_visibility()
         self.setStyleSheet(self._get_style_sheet())
 
@@ -67,6 +68,7 @@ class SidePanelWidget(QWidget):
         widget.set_tab_id(tab_id)
         button = TabButton(title)
         button.clicked.connect(lambda _, tid=tab_id: self._on_tab_clicked(tid))
+        button.customContextMenuRequested.connect(lambda pos, tid=tab_id: self._show_tab_context_menu(pos, tid))
         button.installEventFilter(self)
         self.tab_bar.layout.addWidget(button)
         self.page_stack.addWidget(widget)
@@ -78,6 +80,7 @@ class SidePanelWidget(QWidget):
         self.tab_order.append(tab_id)
         button.click()
         self._update_tab_bar_visibility()
+        self.tabActivity.emit()
         return tab_id
 
     def _on_tab_clicked(self, clicked_tab_id: str):
@@ -88,6 +91,7 @@ class SidePanelWidget(QWidget):
             is_checked = (tab_id == clicked_tab_id)
             tab_info['button'].setChecked(is_checked)
         self.page_stack.setCurrentWidget(page_to_show)
+        self.tabActivity.emit()
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.MouseButtonDblClick and isinstance(obj, TabButton):
@@ -141,6 +145,41 @@ class SidePanelWidget(QWidget):
     def set_tab_data_by_uuid(self, tab_id: str, data: dict):
         if tab_id in self.tabs:
             self.tabs[tab_id]['data'] = data
+
+    def find_tab_by_remote_path(self, remote_path: str):
+        """根据远程路径查找已打开的标签页"""
+        for tab_id, tab_info in self.tabs.items():
+            if tab_info.get('data', {}).get('remote_path') == remote_path:
+                return tab_id
+        return None
+
+    def _show_tab_context_menu(self, pos, tab_id):
+        if tab_id not in self.tabs:
+            return
+        widget = self.tabs[tab_id]['page']
+        button = self.tabs[tab_id]['button']
+        if isinstance(widget, EditorWidget):
+            menu = CheckableMenu(parent=self)
+            auto_save_action = Action(FIF.SAVE, self.tr("Auto-save on focus lost (Global)"))
+            auto_save_action.setCheckable(True)
+            auto_save_action.setChecked(self.scm.read_config().get("editor_auto_save_on_focus_lost", False))
+            auto_save_action.triggered.connect(self._toggle_global_auto_save)
+            menu.addAction(auto_save_action)
+            menu.addSeparator()
+            close_action = Action(FIF.CLOSE, self.tr("Close Tab"))
+            close_action.triggered.connect(lambda: self._close_tab(button))
+            menu.addAction(close_action)
+        elif isinstance(widget, AiChatWidget):
+            menu = RoundMenu(parent=self)
+            close_action = Action(FIF.CLOSE, self.tr("Close Tab"))
+            close_action.triggered.connect(lambda: self._close_tab(button))
+            menu.addAction(close_action)
+        else:
+            return
+        menu.exec_(button.mapToGlobal(pos))
+
+    def _toggle_global_auto_save(self, enabled):
+        self.scm.revise_config("editor_auto_save_on_focus_lost", enabled)
 
     def _get_style_sheet(self):
         return """
