@@ -213,8 +213,10 @@ class EditorWidget(QWidget):
         lexer.setColor(QColor("#ce9178"), lexer.SingleQuotedString)
         lexer.setColor(QColor("#569cd6"), lexer.Keyword)
         lexer.setColor(QColor("#b5cea8"), lexer.Number)
-        lexer.setColor(QColor("#dcdcaa"), lexer.ClassName)
-        lexer.setColor(QColor("#dcdcaa"), lexer.FunctionMethodName)
+        if hasattr(lexer, 'ClassName'):
+            lexer.setColor(QColor("#dcdcaa"), lexer.ClassName)
+        if hasattr(lexer, 'FunctionMethodName'):
+            lexer.setColor(QColor("#dcdcaa"), lexer.FunctionMethodName)
         lexer.setColor(QColor("#9cdcfe"), lexer.Identifier)
         lexer.setColor(QColor("#c586c0"), lexer.Operator)
 
@@ -226,8 +228,10 @@ class EditorWidget(QWidget):
         lexer.setColor(QColor("#a31515"), lexer.SingleQuotedString)
         lexer.setColor(QColor("#0000ff"), lexer.Keyword)
         lexer.setColor(QColor("#098658"), lexer.Number)
-        lexer.setColor(QColor("#267f99"), lexer.ClassName)
-        lexer.setColor(QColor("#795e26"), lexer.FunctionMethodName)
+        if hasattr(lexer, 'ClassName'):
+            lexer.setColor(QColor("#267f99"), lexer.ClassName)
+        if hasattr(lexer, 'FunctionMethodName'):
+            lexer.setColor(QColor("#795e26"), lexer.FunctionMethodName)
         lexer.setColor(QColor("#001080"), lexer.Identifier)
         lexer.setColor(QColor("#000000"), lexer.Operator)
 
@@ -278,7 +282,7 @@ class EditorWidget(QWidget):
             self._update_cursor_position()
             self._update_tab_title()
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to load file: {str(e)}")
+            print(f"Failed to load file: {str(e)}")
 
     def reload_file(self):
         if self.file_path:
