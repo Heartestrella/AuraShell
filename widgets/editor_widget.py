@@ -1,11 +1,11 @@
 import os
 import sys
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QMessageBox, QFileDialog,
-                             QHBoxLayout, QLabel, QStatusBar, QPushButton, QSizePolicy)
+                             QHBoxLayout, QLabel, QStatusBar, QScrollBar, QSizePolicy)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QColor, QFocusEvent, QTextCursor
 from tools.setting_config import SCM
-from qfluentwidgets import BodyLabel, LineEdit, PushButton, FluentIcon, TransparentToolButton
+from qfluentwidgets import BodyLabel, LineEdit, ScrollBar, FluentIcon, TransparentToolButton
 
 from PyQt5.QtGui import QSyntaxHighlighter, QTextCharFormat, QTextDocument
 from PyQt5.QtWidgets import QPlainTextEdit
@@ -23,6 +23,7 @@ except ImportError:
 
 from qfluentwidgets import isDarkTheme
 
+
 class PythonHighlighter(QSyntaxHighlighter):
     def __init__(self, document):
         super().__init__(document)
@@ -39,31 +40,45 @@ class PythonHighlighter(QSyntaxHighlighter):
         ]
         for word in keywords:
             pattern = r'\b' + word + r'\b'
-            self.highlighting_rules.append((re.compile(pattern), keyword_format))
+            self.highlighting_rules.append(
+                (re.compile(pattern), keyword_format))
         string_format = QTextCharFormat()
         string_format.setForeground(QColor(214, 157, 133))
-        self.highlighting_rules.append((re.compile(r'"[^"\\]*(\\.[^"\\]*)*"'), string_format))
-        self.highlighting_rules.append((re.compile(r"'[^'\\]*(\\.[^'\\]*)*'"), string_format))
+        self.highlighting_rules.append(
+            (re.compile(r'"[^"\\]*(\\.[^"\\]*)*"'), string_format))
+        self.highlighting_rules.append(
+            (re.compile(r"'[^'\\]*(\\.[^'\\]*)*'"), string_format))
         comment_format = QTextCharFormat()
         comment_format.setForeground(QColor(106, 153, 85))
-        self.highlighting_rules.append((re.compile(r'#[^\n]*'), comment_format))
+        self.highlighting_rules.append(
+            (re.compile(r'#[^\n]*'), comment_format))
         number_format = QTextCharFormat()
         number_format.setForeground(QColor(181, 206, 168))
-        self.highlighting_rules.append((re.compile(r'\b[0-9]+\b'), number_format))
+        self.highlighting_rules.append(
+            (re.compile(r'\b[0-9]+\b'), number_format))
         function_format = QTextCharFormat()
         function_format.setForeground(QColor(220, 220, 170))
-        self.highlighting_rules.append((re.compile(r'\b[A-Za-z0-9_]+(?=\()'), function_format))
+        self.highlighting_rules.append(
+            (re.compile(r'\b[A-Za-z0-9_]+(?=\()'), function_format))
 
     def highlightBlock(self, text):
         for pattern, format in self.highlighting_rules:
             for match in pattern.finditer(text):
-                self.setFormat(match.start(), match.end() - match.start(), format)
+                self.setFormat(match.start(), match.end() -
+                               match.start(), format)
+
 
 class EditorWidget(QWidget):
     file_modified = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setStyleSheet("""
+    QWidget {
+        background: transparent;
+        border: none;
+    }
+""")
         self.tab_id = None
         self._side_panel = None
         self.file_path = None
@@ -72,10 +87,10 @@ class EditorWidget(QWidget):
         self.scm = SCM()
         self.last_search_text = ""
         self.search_bar_visible = False
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setSpacing(0)
-        self.setLayout(self.layout)
+        self.layout_ = QVBoxLayout(self)
+        self.layout_.setContentsMargins(0, 0, 0, 0)
+        self.layout_.setSpacing(0)
+        self.setLayout(self.layout_)
         self._setup_search_bar()
         if QSCINTILLA_AVAILABLE:
             self.editor = QsciScintilla()
@@ -83,7 +98,13 @@ class EditorWidget(QWidget):
         else:
             self.editor = QPlainTextEdit()
             self._setup_plain_text_edit()
-        self.layout.addWidget(self.editor)
+
+        self.editor.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.editor.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        v_scroll = ScrollBar(Qt.Vertical, self.editor)
+        # h_scroll = ScrollBar(Qt.Horizontal, self.editor)
+
+        self.layout_.addWidget(self.editor)
         self._setup_status_bar()
         self._setup_shortcuts()
         self._apply_theme()
@@ -98,7 +119,8 @@ class EditorWidget(QWidget):
         find_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.editor)
         find_shortcut.activated.connect(self.toggle_search_bar)
         replace_shortcut = QShortcut(QKeySequence("Ctrl+H"), self.editor)
-        replace_shortcut.activated.connect(lambda: self.toggle_search_bar(show_replace=True))
+        replace_shortcut.activated.connect(
+            lambda: self.toggle_search_bar(show_replace=True))
         esc_shortcut = QShortcut(QKeySequence("Escape"), self)
         esc_shortcut.activated.connect(self.hide_search_bar)
         find_next_shortcut = QShortcut(QKeySequence("F3"), self.editor)
@@ -119,7 +141,8 @@ class EditorWidget(QWidget):
         paste_shortcut.activated.connect(self.paste)
 
     def _setup_qscintilla(self):
-        font = QFont('Consolas' if sys.platform == 'win32' else 'Monaco' if sys.platform == 'darwin' else 'Monospace')
+        font = QFont('Consolas' if sys.platform ==
+                     'win32' else 'Monaco' if sys.platform == 'darwin' else 'Monospace')
         font.setPointSize(10)
         self.editor.setFont(font)
         self.editor.setMarginType(0, QsciScintilla.NumberMargin)
@@ -156,7 +179,8 @@ class EditorWidget(QWidget):
         self.editor.setMarginWidth(0, width)
 
     def _setup_plain_text_edit(self):
-        font = QFont('Consolas' if sys.platform == 'win32' else 'Monaco' if sys.platform == 'darwin' else 'Monospace')
+        font = QFont('Consolas' if sys.platform ==
+                     'win32' else 'Monaco' if sys.platform == 'darwin' else 'Monospace')
         font.setPointSize(10)
         self.editor.setFont(font)
         self.editor.setTabStopWidth(40)
@@ -171,7 +195,8 @@ class EditorWidget(QWidget):
                 self.editor.setCaretForegroundColor(QColor("#ffffff"))
                 self.editor.setMarginsBackgroundColor(QColor("#1e1e1e"))
                 self.editor.setMarginsForegroundColor(QColor("#858585"))
-                self.editor.setFoldMarginColors(QColor("#1e1e1e"), QColor("#1e1e1e"))
+                self.editor.setFoldMarginColors(
+                    QColor("#1e1e1e"), QColor("#1e1e1e"))
                 self.editor.setPaper(QColor("#1e1e1e"))
                 if hasattr(self.editor, 'lexer') and self.editor.lexer():
                     self._apply_dark_theme_to_lexer(self.editor.lexer())
@@ -179,7 +204,8 @@ class EditorWidget(QWidget):
                 self.editor.setCaretForegroundColor(QColor("#000000"))
                 self.editor.setMarginsBackgroundColor(QColor("#ffffff"))
                 self.editor.setMarginsForegroundColor(QColor("#666666"))
-                self.editor.setFoldMarginColors(QColor("#f0f0f0"), QColor("#f0f0f0"))
+                self.editor.setFoldMarginColors(
+                    QColor("#f0f0f0"), QColor("#f0f0f0"))
                 self.editor.setPaper(QColor("#ffffff"))
                 if hasattr(self.editor, 'lexer') and self.editor.lexer():
                     self._apply_light_theme_to_lexer(self.editor.lexer())
@@ -263,7 +289,8 @@ class EditorWidget(QWidget):
     def load_file_from_tab_data(self):
         tab_data = self.get_tab_data()
         if tab_data and isinstance(tab_data, dict):
-            file_path = tab_data.get('file_path') or tab_data.get('path') or tab_data.get('filepath')
+            file_path = tab_data.get('file_path') or tab_data.get(
+                'path') or tab_data.get('filepath')
             if file_path:
                 self.load_file(file_path)
             else:
@@ -350,7 +377,8 @@ class EditorWidget(QWidget):
         lexer_class = lexer_map.get(ext)
         if lexer_class:
             lexer = lexer_class()
-            font = QFont('Consolas' if sys.platform == 'win32' else 'Monaco' if sys.platform == 'darwin' else 'Monospace')
+            font = QFont('Consolas' if sys.platform ==
+                         'win32' else 'Monaco' if sys.platform == 'darwin' else 'Monospace')
             font.setPointSize(10)
             lexer.setDefaultFont(font)
             if isDarkTheme():
@@ -382,7 +410,8 @@ class EditorWidget(QWidget):
             print(f"File saved: {self.file_path}")
             return True
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save file: {str(e)}")
+            QMessageBox.critical(
+                self, "Error", f"Failed to save file: {str(e)}")
             return False
 
     def _on_text_changed(self):
@@ -424,6 +453,7 @@ class EditorWidget(QWidget):
 
     def _setup_focus_handler(self):
         self._original_focus_out = self.editor.focusOutEvent
+
         def focus_out_handler(event):
             if self.scm.read_config().get("editor_auto_save_on_focus_lost", False):
                 if self.is_modified and self.file_path:
@@ -441,11 +471,13 @@ class EditorWidget(QWidget):
         search_layout.setSpacing(5)
         self.search_input = LineEdit()
         self.search_input.setPlaceholderText("查找...")
-        self.search_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.search_input.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.search_input.returnPressed.connect(self.find_next)
         self.replace_input = LineEdit()
         self.replace_input.setPlaceholderText("替换为...")
-        self.replace_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.replace_input.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.replace_input.setVisible(False)
         self.find_prev_btn = TransparentToolButton(FluentIcon.UP)
         self.find_prev_btn.setToolTip("查找上一个 (Shift+F3)")
@@ -472,7 +504,7 @@ class EditorWidget(QWidget):
         search_layout.addWidget(self.find_next_btn)
         search_layout.addWidget(self.replace_btn)
         search_layout.addWidget(self.replace_all_btn)
-        self.layout.addWidget(self.search_widget)
+        self.layout_.addWidget(self.search_widget)
 
     def toggle_search_bar(self, show_replace=False):
         if not self.search_bar_visible:
@@ -539,18 +571,19 @@ class EditorWidget(QWidget):
                     line_from, index_from, line_to, index_to = self.editor.getSelection()
                     line, index = line_from, index_from
                 found = self.editor.findFirst(text, False, False, False,
-                                            False, False, line, index, False)
+                                              False, False, line, index, False)
                 if not found:
                     last_line = self.editor.lines() - 1
                     last_index = self.editor.lineLength(last_line)
                     found = self.editor.findFirst(text, False, False, False,
-                                                False, False, last_line, last_index, False)
+                                                  False, False, last_line, last_index, False)
             else:
                 line, index = self.editor.getCursorPosition()
                 if self.editor.hasSelectedText():
                     _, _, line_to, index_to = self.editor.getSelection()
                     line, index = line_to, index_to
-                found = self.editor.findFirst(text, False, False, False, True, True, line, index)
+                found = self.editor.findFirst(
+                    text, False, False, False, True, True, line, index)
         else:
             cursor = self.editor.textCursor()
             options = QTextDocument.FindFlags()
@@ -596,7 +629,7 @@ class EditorWidget(QWidget):
         if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
             self.editor.setCursorPosition(0, 0)
             while self.editor.findFirst(find_text, False, False, False,
-                                      False, True, -1, -1, False):
+                                        False, True, -1, -1, False):
                 self.editor.replaceSelectedText(replace_text)
                 count += 1
         else:
@@ -654,11 +687,11 @@ class EditorWidget(QWidget):
         self.encoding_label.setStyleSheet("QLabel { color: #888; }")
         sep1 = BodyLabel("|")
         sep1.setStyleSheet("QLabel { color: #888; }")
-        self.position_label = BodyLabel("行 1, 列 1")
+        self.position_label = BodyLabel(self.tr("Row 1, Column 1"))
         self.position_label.setStyleSheet("QLabel { color: #888; }")
         sep2 = BodyLabel("|")
         sep2.setStyleSheet("QLabel { color: #888; }")
-        self.file_type_label = BodyLabel("纯文本")
+        self.file_type_label = BodyLabel(self.tr("Plain text"))
         self.file_type_label.setStyleSheet("QLabel { color: #888; }")
         status_layout.addWidget(self.encoding_label)
         status_layout.addWidget(sep1)
@@ -681,36 +714,40 @@ class EditorWidget(QWidget):
                 border-top: 1px solid rgba(0, 0, 0, 0.1);
             }
         """)
-        self.layout.addWidget(status_widget)
+        self.layout_.addWidget(status_widget)
 
     def _update_cursor_position(self):
         if QSCINTILLA_AVAILABLE and isinstance(self.editor, QsciScintilla):
             line, col = self.editor.getCursorPosition()
-            self.position_label.setText(f"行 {line + 1}, 列 {col + 1}")
+            self.position_label.setText(
+                self.tr(f"row {line + 1}, column {col + 1}"))
             if self.editor.hasSelectedText():
                 selected_text = self.editor.selectedText()
                 lines = selected_text.count('\n') + 1
                 chars = len(selected_text)
-                self.selection_label.setText(f"已选择 {chars} 个字符")
+                self.selection_label.setText(
+                    self.tr(f"{chars} characters selected"))
                 if lines > 1:
-                    self.selection_label.setText(f"已选择 {lines} 行, {chars} 个字符")
+                    self.selection_label.setText(
+                        self.tr(f"{lines} lines, {chars} characters selected"))
             else:
                 self.selection_label.setText("")
         else:
             cursor = self.editor.textCursor()
             line = cursor.blockNumber() + 1
             col = cursor.columnNumber() + 1
-            self.position_label.setText(f"行 {line}, 列 {col}")
+            self.position_label.setText(self.tr(f"row {line}, column {col}"))
             if cursor.hasSelection():
                 selected_text = cursor.selectedText()
                 chars = len(selected_text)
-                self.selection_label.setText(f"已选择 {chars} 个字符")
+                self.selection_label.setText(
+                    self.tr(f"{chars} characters selected"))
             else:
                 self.selection_label.setText("")
 
     def _update_file_type(self, file_path):
         if not file_path:
-            self.file_type_label.setText("纯文本")
+            self.file_type_label.setText(self.tr("Plain text"))
             return
         ext = os.path.splitext(file_path)[1].lower()
         file_types = {

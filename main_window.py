@@ -125,7 +125,8 @@ class Window(FramelessWindow):
             self.apply_locked_ratio)
         self.settingInterface.opacityEdit.valueChanged.connect(
             self.set_background_opacity)
-        self.settingInterface.themeColorChanged.connect(self.on_theme_color_changed)
+        self.settingInterface.themeColorChanged.connect(
+            self.on_theme_color_changed)
         # Connect transparency setting signal
         # self.settingInterface.bgOpacityChanged.connect(
         #     self.set_background_opacity)
@@ -323,7 +324,8 @@ class Window(FramelessWindow):
                     if open_it and local_path:
                         try:
                             print(f"From Remote Path : {path}")
-                            self._open_downloaded_file(local_path, widget_key, path)
+                            self._open_downloaded_file(
+                                local_path, widget_key, path)
                         except Exception as e:
                             print(f"Error opening file/folder: {e}")
                 else:
@@ -415,7 +417,9 @@ class Window(FramelessWindow):
 
     def _open_downloaded_file(self, local_path: str, widget_key: str, remote_path: str):
         """打开下载的文件"""
-        external_editor = setting_.read_config().get("external_editor", "")
+        config = setting_.read_config()
+        external_editor = config.get("external_editor", "")
+        open_mode = config.get("open_mode", False)
         is_text = False
         mime = None
         try:
@@ -436,24 +440,29 @@ class Window(FramelessWindow):
                         is_text = False
         except Exception as e:
             print(f"Error checking file type: {e}")
-        if external_editor and os.path.isfile(external_editor):
+        if (external_editor and os.path.isfile(external_editor)) and open_mode:
             try:
                 subprocess.Popen([external_editor, local_path])
             except Exception as editor_error:
-                print(f"Error opening with external editor: {editor_error}, fallback to internal editor")
+                print(
+                    f"Error opening with external editor: {editor_error}, fallback to internal editor")
                 if is_text:
-                    self._open_in_internal_editor(local_path, widget_key, remote_path)
+                    self._open_in_internal_editor(
+                        local_path, widget_key, remote_path)
         else:
             if is_text:
-                self._open_in_internal_editor(local_path, widget_key, remote_path)
+                self._open_in_internal_editor(
+                    local_path, widget_key, remote_path)
             else:
-                print(f"File {local_path} is not a text file (MIME: {mime}), cannot open in editor")
+                print(
+                    f"File {local_path} is not a text file (MIME: {mime}), cannot open in editor")
         self._start_file_watching_if_text(local_path, widget_key, remote_path)
-    
+
     def _open_in_internal_editor(self, local_path: str, widget_key: str, remote_path: str):
         """在内置编辑器中打开文件"""
         try:
-            existing_tab_id = self.sidePanel.find_tab_by_remote_path(remote_path)
+            existing_tab_id = self.sidePanel.find_tab_by_remote_path(
+                remote_path)
             if existing_tab_id:
                 self.sidePanel.switch_to_tab(existing_tab_id)
                 tab_info = self.sidePanel.tabs[existing_tab_id]
@@ -462,12 +471,13 @@ class Window(FramelessWindow):
                     editor_widget.load_file(local_path)
             else:
                 tab_title = os.path.basename(remote_path)
-                tab_id = self.sidePanel.add_new_tab( EditorWidget(), tab_title, { "path": local_path, "remote_path": remote_path, "widget_key": widget_key } )
+                tab_id = self.sidePanel.add_new_tab(EditorWidget(), tab_title, {
+                                                    "path": local_path, "remote_path": remote_path, "widget_key": widget_key})
         except Exception as e:
             print(f"Error opening in internal editor: {e}")
             import traceback
             traceback.print_exc()
-    
+
     def _start_file_watching_if_text(self, local_path: str, widget_key: str, remote_path: str):
         """如果是文本文件，启动文件监视以便自动重新上传"""
         try:
@@ -481,32 +491,37 @@ class Window(FramelessWindow):
                 try:
                     content.decode('utf-8')
                     is_text = True
-                    print(f"File detected as text by content analysis (MIME: {mime})")
+                    print(
+                        f"File detected as text by content analysis (MIME: {mime})")
                 except UnicodeDecodeError:
                     try:
                         content.decode('gbk')
                         is_text = True
-                        print(f"File detected as text (GBK encoding) by content analysis (MIME: {mime})")
+                        print(
+                            f"File detected as text (GBK encoding) by content analysis (MIME: {mime})")
                     except UnicodeDecodeError:
                         is_text = False
-            
+
             if is_text:
                 if widget_key in self.watching_dogs:
                     for watcher in self.watching_dogs[widget_key]:
                         if os.path.abspath(watcher.file_path) == os.path.abspath(local_path):
-                            print(f"Watcher for {local_path} already exists. Skipping.")
+                            print(
+                                f"Watcher for {local_path} already exists. Skipping.")
                             return
-                print(f"Text file detected (MIME: {mime}), starting file watching: {local_path}")
+                print(
+                    f"Text file detected (MIME: {mime}), starting file watching: {local_path}")
                 file_thread = FileWatchThread(local_path)
                 file_thread.file_saved.connect(
                     lambda local: self.reupload_when_saved(widget_key, local, remote_path))
                 file_thread.start()
-                
+
                 if widget_key not in self.watching_dogs:
                     self.watching_dogs[widget_key] = []
                 self.watching_dogs[widget_key].append(file_thread)
             else:
-                print(f"File type {mime} is not text file, won't start watching")
+                print(
+                    f"File type {mime} is not text file, won't start watching")
         except Exception as e:
             print(f"Error checking file type: {e}")
 
@@ -618,33 +633,38 @@ class Window(FramelessWindow):
         processes.start()
 
     def _open_server_files(self, path: str, type_: str, widget_key: str):
+        config = setting_.read_config()
         file_manager: RemoteFileManager = self.file_tree_object[widget_key]
 
         # 停止此文件的现有观察者，以防止在重新下载时触发
         session_id = file_manager.session_info.id
         # 构建预期的本地路径以查找观察者
-        expected_local_path = os.path.abspath(os.path.join("tmp", "edit", session_id, path.lstrip('/')))
+        expected_local_path = os.path.abspath(os.path.join(
+            "tmp", "edit", session_id, path.lstrip('/')))
 
         if widget_key in self.watching_dogs:
             # 遍历列表的副本以安全地删除项目
             for watcher in self.watching_dogs[widget_key][:]:
                 if os.path.abspath(watcher.file_path) == expected_local_path:
-                    print(f"Stopping existing watcher for {expected_local_path}")
+                    print(
+                        f"Stopping existing watcher for {expected_local_path}")
                     watcher.stop()
                     self.watching_dogs[widget_key].remove(watcher)
-        
+
         duration = 2000
-        
+
         # 检查是否配置了外置编辑器
-        external_editor = setting_.read_config().get("external_editor", "")
-        
-        if external_editor and os.path.isfile(external_editor):
+        external_editor = config.get("external_editor", "")
+        # True for external, False for internal
+        open_mode = config.get("open_mode", False)
+
+        if (external_editor and os.path.isfile(external_editor)) and open_mode:
             title = self.tr(f"File: {path} Type: {type_}\n")
             msg = self.tr(f"Start to download and open with external editor")
         else:
             title = self.tr(f"File: {path} Type: {type_}\n")
             msg = self.tr(f"Start to download and open with internal editor")
-        
+
         if type_ == "executable":
             title = self.tr(f"{path} is an executable won't start downloading")
             msg = ""
@@ -661,7 +681,8 @@ class Window(FramelessWindow):
         if type_ != "executable":
             # 获取稳定的会话ID
             session_id = file_manager.session_info.id
-            file_manager.download_path_async(path, open_it=True, session_id=session_id)
+            file_manager.download_path_async(
+                path, open_it=True, session_id=session_id)
 
     def _handle_files(self, action_type, full_path, copy_to, cut, widget_key):
         file_manager: RemoteFileManager = self.file_tree_object[widget_key]
@@ -900,7 +921,8 @@ class Window(FramelessWindow):
         self.mainSplitter.addWidget(self.sidePanel)
 
         # Restore splitter sizes
-        splitter_sizes = setting_.read_config().get("splitter_sizes", [self.width() * 0.7, self.width() * 0.3])
+        splitter_sizes = setting_.read_config().get(
+            "splitter_sizes", [self.width() * 0.7, self.width() * 0.3])
         self.mainSplitter.setSizes([int(s) for s in splitter_sizes])
 
         # Connect signal to save sizes
@@ -1085,7 +1107,7 @@ class Window(FramelessWindow):
 
         # Create a truly unique ID for the UI widget
         file_id = f"{widget_key}_{task_identifier}_{time.time()}"
-        
+
         # 根据 transfer_type 和 open_it 决定本地路径
         if transfer_type == 'download' and open_it:
             # 双击编辑模式：使用会话隔离的编辑目录，并镜像远程路径
@@ -1304,7 +1326,8 @@ class Window(FramelessWindow):
             self.mainSplitter.blockSignals(False)
             current_widget = self.ssh_page.sshStack.currentWidget()
             if isinstance(current_widget, SSHWidget):
-                QTimer.singleShot(10, current_widget.force_set_left_panel_width)
+                QTimer.singleShot(
+                    10, current_widget.force_set_left_panel_width)
 
     def _set_language(self, lang_code: str):
         translator = QTranslator()
@@ -1430,6 +1453,6 @@ if __name__ == '__main__':
                 main_logger.info(f"Successfully cleaned up {edit_tmp_dir}.")
             except Exception as e:
                 main_logger.error(f"Error cleaning up {edit_tmp_dir}: {e}")
-                
+
     except Exception as e:
         main_logger.critical("Application startup failure", exc_info=True)

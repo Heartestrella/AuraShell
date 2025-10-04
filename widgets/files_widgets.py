@@ -1,6 +1,6 @@
 
 from PyQt5.QtWidgets import (QApplication, QWidget, QLayout, QSizePolicy,
-                             QRubberBand,  QVBoxLayout, QTableView, QHeaderView, QAbstractItemDelegate, QStyledItemDelegate, QStyle)
+                             QRubberBand,  QVBoxLayout, QTableView, QHeaderView, QAbstractItemDelegate, QStyledItemDelegate, QStyle, QFileDialog)
 from PyQt5.QtGui import QFont, QPainter, QColor, QStandardItemModel, QStandardItem
 from PyQt5.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
 from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit, ScrollArea, TableView, CheckableMenu
@@ -19,10 +19,10 @@ def _format_size(size_bytes):
             size_bytes = 0
         else:
             size_bytes = int(size_bytes)
-        
+
         if size_bytes == 0:
             return "0 B"
-        
+
         size_names = ("B", "KB", "MB", "GB", "TB")
         i = 0
         while size_bytes >= 1024 and i < len(size_names) - 1:
@@ -138,6 +138,7 @@ class FileActionsManager:
             action_factory (callable): A function that returns a dictionary of new QActions.
         """
         self.actions = action_factory()
+        self.pick = self.actions["pick"]
         self.copy = self.actions["copy"]
         self.delete = self.actions["delete"]
         self.cut = self.actions["cut"]
@@ -147,6 +148,7 @@ class FileActionsManager:
         self.info = self.actions["info"]
         self.rename = self.actions["rename"]
 
+        self.pick.triggered.connect(lambda: action_emitter('pick'))
         self.copy.triggered.connect(lambda: action_emitter('copy'))
         self.delete.triggered.connect(lambda: action_emitter('delete'))
         self.cut.triggered.connect(lambda: action_emitter('cut'))
@@ -161,6 +163,7 @@ class FileActionsManager:
     def get_all_actions(self):
         """Returns a list of all managed actions for menu creation."""
         return [
+            self.pick,
             self.copy,
             self.cut,
             self.delete,
@@ -170,8 +173,6 @@ class FileActionsManager:
             self.info,
             self.rename
         ]
-
-
 # ---------------- FileItem ----------------
 
 # Icons mode
@@ -479,7 +480,6 @@ class DetailItem(QWidget):
             return
 
         copy_cut_paths = []  # maybe its download list
-
         for index in indexes:
             name_item = self.details_model.item(index.row(), 0)
             file_name = name_item.text()
@@ -781,6 +781,7 @@ class FileExplorer(QWidget):
     def _create_file_op_actions(self):
         """Creates a dictionary of file operation actions."""
         return {
+            "pick": Action(FIF.EDIT, self.tr("Pick app to open")),
             "copy": Action(FIF.COPY, self.tr("Copy")),
             "delete": Action(FIF.DELETE, self.tr("Delete")),
             "cut": Action(FIF.CUT, self.tr("Cut")),
@@ -882,6 +883,13 @@ class FileExplorer(QWidget):
                 full_path.append(full_path_)
         else:
             full_path = self._get_full_path(file_name)
+
+        if action_type == "pick":
+            app_path = self.handle_pick_app()
+            if app_path:
+                configer.revise_config("external_editor", app_path)
+                self._request_directory_change({file_name: is_dir})
+                return
 
         if action_type == "download" and new_name == True:
             self.file_action.emit(action_type, full_path, "", True)
@@ -1020,6 +1028,7 @@ class FileExplorer(QWidget):
         event.acceptProposedAction()
 
     def _init_actions(self):
+        config = configer.read_config()
         self.refreshaction = Action(FIF.UPDATE, self.tr('Refresh the page'))
         self.details_view_action = Action(FIF.VIEW, self.tr('Details View'))
         self.icon_view_action = Action(FIF.APPLICATION, self.tr('Icon View'))
@@ -1028,7 +1037,17 @@ class FileExplorer(QWidget):
         self.upload_mode_switch = Action(
             FIF.UP, self.tr("Upload files(compression mode)"), checkable=True)
         self.upload_mode_switch.setChecked(
-            configer.read_config()["compress_upload"])
+            config["compress_upload"])
+
+        self.open_external = Action(
+            FIF.TAG, self.tr("External"), checkable=True)
+        self.open_internal = Action(
+            FIF.REMOVE, self.tr("Internal"), checkable=True)
+        self.switch_open_mode(config["open_mode"])
+        self.open_external.triggered.connect(
+            lambda: self.switch_open_mode(True))
+        self.open_internal.triggered.connect(
+            lambda: self.switch_open_mode(False))
 
         self.refreshaction.triggered.connect(
             lambda: self.refresh_action.emit())
@@ -1042,10 +1061,22 @@ class FileExplorer(QWidget):
         self.upload_mode_switch.toggled.connect(lambda checked:
                                                 configer.revise_config("compress_upload", checked))
 
+    def switch_open_mode(self, external: bool):
+        """Switches the open mode actions based on the external flag."""
+        self.open_external.setChecked(external)
+        self.open_internal.setChecked(not external)
+        configer.revise_config("open_mode", external)
+
     def _get_menus(self):
         menu = CheckableMenu(parent=self)
         menu.addActions(
             [self.refreshaction, self.paste, self.make_dir, self.upload_mode_switch])
+
+        submenu = CheckableMenu(self.tr("Open mode"), self)
+        submenu.setIcon(FIF.SEND)
+        submenu.addActions([self.open_external, self.open_internal])
+        menu.addMenu(submenu)
+
         menu.addSeparator()
         menu.addActions(
             [self.details_view_action, self.icon_view_action])
@@ -1101,3 +1132,12 @@ class FileExplorer(QWidget):
                     self.selected_items.add(widget)
         else:
             super().keyPressEvent(event)
+
+    def handle_pick_app(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            None,
+            self.tr("Select executable program"),
+            self.tr("C:\\Program Files"),
+            self.tr("Executable files (*.exe);;All files (*.*)")
+        )
+        return file_path

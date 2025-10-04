@@ -32,8 +32,13 @@ class SCM:
             "aigc_model": "DeepSeek",  # str The AI model to use
             "aigc_history_max_length": 10,  # int The max length of history messages
             "splitter_left_components": [0.18, 0.47, 0.35],
+            "open_mode": False,  # bool  true:external editor, false: internal viewer
             "external_editor": "",
-            "editor_auto_save_on_focus_lost": False,  # bool Auto-save editor files when focus is lost
+            # bool Auto-save editor files when focus is lost
+            "editor_auto_save_on_focus_lost": False,
+            "splitter_sizes": [500, 500],
+            "splitter_lr_left_width": 300,
+            "bg_theme_color": None
         }
         self.config_path = Path.home() / ".config" / "setting-config.json"
         if not os.path.exists(self.config_path):
