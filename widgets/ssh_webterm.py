@@ -621,3 +621,7 @@ class WebTerminal(QWidget):
         except Exception as e:
             # Don't crash the app for logging reasons; print for debug
             print(f"_on_bridge_output error: {e}")
+
+    def execute_command_and_capture(self, command: str):
+        if self.bridge and self.bridge.worker:
+            self.bridge.worker.execute_command_and_capture(command)

@@ -860,3 +860,7 @@ class SSHWidget(QWidget):
         self.llm.result_signal.connect(self.command_input._on_partial_result)
         self.llm.error_signal.connect(self.command_input.suggestion_error)
         self.llm.finished_signal.connect(self.command_input.clear_out)
+
+    def execute_command_and_capture(self, command: str):
+        if self.ssh_widget:
+            self.ssh_widget.execute_command_and_capture(command)
