@@ -24,14 +24,17 @@ class AIMCPManager:
             list: "array",
             dict: "object"
         }
-        for param in sig.parameters.values():
-            param_type = type_mapping.get(param.annotation, "any")
-            properties[param.name] = param_type
-            if param.default != None:
+        doc = handler.__doc__
+        if doc:
+            properties = doc
+        else:
+            for param in sig.parameters.values():
+                param_type = type_mapping.get(param.annotation, "any")
                 properties[param.name] = {
                     "type": param_type,
-                    "default": param.default
                 }
+                if param.default != None:
+                    properties[param.name]["default"] = param.default
         return {
             "type": "object",
             "properties": properties,
@@ -51,7 +54,7 @@ class AIMCPManager:
             "auto_approve": auto_approve
         }
 
-    def execute_tool(self, server_name: str, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    def execute_tool(self, server_name: str, tool_name: str, arguments:str) -> Dict[str, Any]:
         server = self.tools.get(server_name)
         if not server:
             return {"status": "error", "content": f"Server '{server_name}' is not registered."}
@@ -63,6 +66,11 @@ class AIMCPManager:
             return {"status": "error", "content": f"Handler for tool '{tool_name}' is missing."}
         try:
             sig = inspect.signature(handler)
+            try:
+                while not isinstance(arguments, dict):
+                    arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = { "args": arguments }
             bound_args = sig.bind(**arguments)
             return handler(*bound_args.args, **bound_args.kwargs)
         except Exception as e:
@@ -84,7 +92,7 @@ class AIMCPManager:
             tool_name = tool_name_element.text.strip() if tool_name_element.text else ""
             try:
                 arguments_text = arguments_element.text.strip() if arguments_element.text else "{}"
-                arguments = json.loads(arguments_text)
+                arguments = arguments_text
             except json.JSONDecodeError:
                 return None
             tool_info = self.tools.get(server_name, {}).get(tool_name, {})

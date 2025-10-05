@@ -12,12 +12,8 @@ class AIHistoryManager:
     def _ensure_history_dir(self):
         self.history_dir.mkdir(parents=True, exist_ok=True)
 
-    def _sanitize_filename(self, name: str) -> str:
-        name = re.sub(r'[\\/*?:"<>|]', "", name)
-        return name[:16]
-
     def save_history(self, first_message: str, conversation: List[Dict[str, Any]]):
-        filename = self._sanitize_filename(first_message) + ".json"
+        filename = first_message + ".json"
         filepath = self.history_dir / filename
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(conversation, f, ensure_ascii=False, indent=2)

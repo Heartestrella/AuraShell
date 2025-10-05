@@ -27,6 +27,7 @@ class AIBridge(QObject):
         self._register_tool_handlers()
 
     def _register_tool_handlers(self):
+
         def Linux终端():
             def exe_shell(shell: str = '', cwd: str = '.'):
                 command = "cd " + cwd + ";" + shell
@@ -78,6 +79,25 @@ class AIBridge(QObject):
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"Failed to read file: {e}"})
                 pass
+            def add_file(args:str = None):
+                """
+                [[addfile path="{文件绝对路径}"]]
+                {文件内容}
+                [[/addfile]]
+                """
+                pass
+            def edit_file(args:str = None):
+                """
+                [[editfile path="{文件绝对路径}" startline={匹配开始行} endline={匹配结束行}]]
+                [[old]]
+                {原文件内容}
+                [[/old]]
+                [[new]]
+                {新内容}
+                [[/new]]
+                [[/editfile]]
+                """
+                pass
             self.mcp_manager.register_tool_handler(
                 server_name="Linux终端",
                 tool_name="exe_shell",
@@ -92,7 +112,45 @@ class AIBridge(QObject):
                 description="读取服务器文件内容",
                 auto_approve=True
             )
+            # self.mcp_manager.register_tool_handler(
+            #     server_name="Linux终端",
+            #     tool_name="add_file",
+            #     handler=add_file,
+            #     description="新增文件",
+            #     auto_approve=False
+            # )
+            # self.mcp_manager.register_tool_handler(
+            #     server_name="Linux终端",
+            #     tool_name="edit_file",
+            #     handler=edit_file,
+            #     description="编辑文件",
+            #     auto_approve=False
+            # )
         Linux终端()
+        print(self.getSystemPrompt())
+
+    @pyqtSlot(result=str)
+    def getSystemPrompt(self):
+        try:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            prompt_path = os.path.join(current_dir, '..', 'resource', 'widget', 'ai_chat', 'system.md')
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                prompt = f.read()
+            prompt += "\n\n# 已连接的MCP服务器\n"
+            prompt += "当服务器已连接时,你可以通过`use_mcp_tool`工具使用该服务器的工具.\n"
+            for server_name, tools in self.mcp_manager.tools.items():
+                prompt += f"\n## {server_name}\n"
+                prompt += "### 可用工具\n"
+                for tool_name, tool_info in tools.items():
+                    prompt += f"- {tool_name}\n"
+                    prompt += f"      {tool_info['description']}\n\n"
+                    prompt += "      输入模式:\n"
+                    schema_str = tool_info['schema']
+                    prompt += f"{schema_str}\n\n"
+            return prompt
+        except Exception as e:
+            print(f"Error generating system prompt: {e}")
+            return ""
 
     @pyqtSlot(str, result=str)
     def processMessage(self, message):
@@ -102,9 +160,8 @@ class AIBridge(QObject):
         return ""
 
     @pyqtSlot(str, str, str, result=str)
-    def executeMcpTool(self, server_name, tool_name, arguments_json):
+    def executeMcpTool(self, server_name, tool_name, arguments:str):
         try:
-            arguments = json.loads(arguments_json)
             result = self.mcp_manager.execute_tool(server_name, tool_name, arguments)
             return str(result)
         except json.JSONDecodeError as e:
@@ -130,31 +187,6 @@ class AIBridge(QObject):
     @pyqtSlot(str, str)
     def saveSetting(self, key, value):
         CONFIGER.revise_config(key, value)
-
-    @pyqtSlot(result=str)
-    def getSystemPrompt(self):
-        try:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            prompt_path = os.path.join(current_dir, '..', 'resource', 'widget', 'ai_chat', 'system.md')
-            with open(prompt_path, 'r', encoding='utf-8') as f:
-                prompt = f.read()
-
-            prompt += "\n\n# 已连接的MCP服务器\n"
-            prompt += "当服务器已连接时,你可以通过`use_mcp_tool`工具使用该服务器的工具.\n"
-
-            for server_name, tools in self.mcp_manager.tools.items():
-                prompt += f"\n## {server_name}\n"
-                prompt += "### 可用工具\n"
-                for tool_name, tool_info in tools.items():
-                    prompt += f"- {tool_name}\n"
-                    prompt += f"      {tool_info['description']}\n\n"
-                    prompt += "      输入模式:\n"
-                    schema_str = json.dumps(tool_info['schema'], indent=2, ensure_ascii=False)
-                    prompt += f"```json\n{schema_str}\n```\n"
-            return prompt
-        except Exception as e:
-            print(f"Error generating system prompt: {e}")
-            return ""
 
     @pyqtSlot(str, 'QVariant')
     def saveHistory(self, first_message, conversation):

@@ -297,6 +297,7 @@ let aiChatApiOptionsBody = {
 window.firstUserMessage = '';
 let backend;
 const chat = new ChatController('.chat-body');
+const chatHistoryContainer = document.querySelector('.chat-history');
 window.loadHistory = function (filename) {
   initializeBackendConnection(async (backend) => {
     if (!backend) {
@@ -306,8 +307,51 @@ window.loadHistory = function (filename) {
     if (!history) {
       return;
     }
+    chatHistoryContainer.style.display = 'none';
     window.firstUserMessage = filename.replace('.json', '');
     window.messagesHistory = JSON.parse(history);
+    chat.chatBody.innerHTML = '';
+    for (let i = 0; i < window.messagesHistory.length; i++) {
+      const item = window.messagesHistory[i];
+      aiChatApiOptionsBody.messages.push(item.messages);
+      if (item.messages.role === 'user') {
+        if (item.isMcp) {
+          continue;
+        }
+        let userText = '';
+        if (Array.isArray(item.messages.content)) {
+          userText = item.messages.content.map((c) => c.text || '').join('\n');
+        } else {
+          userText = item.messages.content;
+        }
+        chat.addUserBubble(userText);
+      } else if (item.messages.role === 'assistant') {
+        const aiBubble = chat.addAIBubble();
+        const aiContent = item.messages.content;
+        aiBubble.setHTML(aiContent);
+        const result = await backend.processMessage(aiContent);
+        if (result) {
+          try {
+            const toolCall = JSON.parse(result);
+            if (toolCall && toolCall.server_name && toolCall.tool_name && toolCall.arguments) {
+              const toolName = `${toolCall.server_name} -> ${toolCall.tool_name}`;
+              const toolArgsStr = JSON.stringify(toolCall.arguments, null, 2);
+              const systemBubble = chat.addSystemBubble(toolName, toolArgsStr);
+              const nextItem = i + 1 < window.messagesHistory.length ? window.messagesHistory[i + 1] : null;
+              if (nextItem && nextItem.isMcp === true) {
+                const resultText = nextItem.messages.content.map((c) => c.text || '').join('\n');
+                systemBubble.setResult('approved', resultText);
+              } else {
+                systemBubble.setResult('rejected', '用户拒绝了工具调用.');
+              }
+            }
+          } catch (e) {
+            console.error('Failed to process tool call from history:', e);
+          }
+        }
+      }
+    }
+    chat.scrollToBottom();
   });
 };
 function initializeBackendConnection(callback) {
@@ -339,7 +383,6 @@ document.addEventListener('DOMContentLoaded', function () {
     },
     langPrefix: 'hljs language-',
   });
-  const chatHistoryContainer = document.querySelector('.chat-history');
   const textarea = document.querySelector('textarea[id="message-input"]');
   const sendButton = document.querySelector('.send-button');
   let isRequesting = false;
@@ -347,6 +390,11 @@ document.addEventListener('DOMContentLoaded', function () {
     textarea.style.height = 'auto';
     textarea.style.height = textarea.scrollHeight + 'px';
   };
+  function _sanitize_filename(name) {
+    name = name.replace(/[\\/*?:"<>|]/g, '');
+    name = name.replace('\n', '').replace('\t', '').replace('\r', '');
+    return name.substring(0, 16);
+  }
   function sendMessage() {
     if (isRequesting) {
       return;
@@ -355,7 +403,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (message || pastedImageDataUrls.length > 0) {
       chatHistoryContainer.style.display = 'none';
       if (window.firstUserMessage === '') {
-        window.firstUserMessage = message + '_' + Date.now().toString();
+        window.firstUserMessage = _sanitize_filename(message) + '_' + Date.now().toString();
       }
       isRequesting = true;
       sendButton.disabled = true;
