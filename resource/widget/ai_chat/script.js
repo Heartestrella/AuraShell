@@ -4,14 +4,27 @@ class ChatController {
     if (!this.chatBody) {
       throw new Error(`Container element '${chatBodySelector}' not found.`);
     }
+    this.userHasScrolled = false;
+    this.chatBody.addEventListener('scroll', () => {
+      const threshold = 15;
+      const isAtBottom = this.chatBody.scrollHeight - this.chatBody.scrollTop - this.chatBody.clientHeight < threshold;
+      this.userHasScrolled = !isAtBottom;
+    });
+  }
+  scrollToBottom() {
+    setTimeout(() => {
+      this.chatBody.scrollTop = this.chatBody.scrollHeight;
+    }, 100);
   }
   addUserBubble(text, imageUrls) {
     const bubble = new UserBubble(this.chatBody);
     bubble.setContent(text, imageUrls);
+    this.userHasScrolled = false;
+    this.scrollToBottom();
     return bubble;
   }
   addAIBubble() {
-    const bubble = new AIBubble(this.chatBody);
+    const bubble = new AIBubble(this.chatBody, this);
     return bubble;
   }
   addSystemBubble(toolName, code) {
@@ -61,7 +74,7 @@ class UserBubble {
   }
 }
 class AIBubble {
-  constructor(container) {
+  constructor(container, chatController) {
     const template = `<div class="message-group ai">
               <div class="message-sender">
                 <span class="icon">💬</span>
@@ -74,6 +87,10 @@ class AIBubble {
     this.contentElement = this.element.querySelector('.message-content');
     this.fullContent = '';
     this.isStreaming = false;
+    this.chatController = chatController;
+  }
+  getHtml() {
+    return this.contentElement.innerHTML;
   }
   setHTML(markdown) {
     this.isStreaming = false;
@@ -81,6 +98,9 @@ class AIBubble {
     const dirtyHtml = marked.parse(markdown);
     const cleanHtml = DOMPurify.sanitize(dirtyHtml);
     this.contentElement.innerHTML = cleanHtml;
+    if (this.chatController && !this.chatController.userHasScrolled) {
+      this.chatController.scrollToBottom();
+    }
   }
   updateStream(chunk) {
     if (!this.isStreaming) {
@@ -91,12 +111,18 @@ class AIBubble {
     const dirtyHtml = marked.parse(this.fullContent);
     const cleanHtml = DOMPurify.sanitize(dirtyHtml);
     this.contentElement.innerHTML = cleanHtml + '<div class="loader"></div>';
+    if (this.chatController && !this.chatController.userHasScrolled) {
+      this.chatController.scrollToBottom();
+    }
   }
   finishStream() {
     this.isStreaming = false;
     const dirtyHtml = marked.parse(this.fullContent);
     const cleanHtml = DOMPurify.sanitize(dirtyHtml);
     this.contentElement.innerHTML = cleanHtml;
+    if (this.chatController && !this.chatController.userHasScrolled) {
+      this.chatController.scrollToBottom();
+    }
   }
 }
 class SystemBubble {
@@ -258,6 +284,7 @@ function handlePaste(event) {
     event.preventDefault();
   }
 }
+window.messagesHistory = [];
 let aiChatApiOptionsBody = {
   model: '',
   temperature: 0.6,
@@ -267,7 +294,66 @@ let aiChatApiOptionsBody = {
     include_usage: true,
   },
 };
+window.firstUserMessage = '';
 let backend;
+const chat = new ChatController('.chat-body');
+const chatHistoryContainer = document.querySelector('.chat-history');
+window.loadHistory = function (filename) {
+  initializeBackendConnection(async (backend) => {
+    if (!backend) {
+      return;
+    }
+    const history = await backend.loadHistory(filename);
+    if (!history) {
+      return;
+    }
+    chatHistoryContainer.style.display = 'none';
+    window.firstUserMessage = filename.replace('.json', '');
+    window.messagesHistory = JSON.parse(history);
+    chat.chatBody.innerHTML = '';
+    for (let i = 0; i < window.messagesHistory.length; i++) {
+      const item = window.messagesHistory[i];
+      aiChatApiOptionsBody.messages.push(item.messages);
+      if (item.messages.role === 'user') {
+        if (item.isMcp) {
+          continue;
+        }
+        let userText = '';
+        if (Array.isArray(item.messages.content)) {
+          userText = item.messages.content.map((c) => c.text || '').join('\n');
+        } else {
+          userText = item.messages.content;
+        }
+        chat.addUserBubble(userText);
+      } else if (item.messages.role === 'assistant') {
+        const aiBubble = chat.addAIBubble();
+        const aiContent = item.messages.content;
+        aiBubble.setHTML(aiContent);
+        const result = await backend.processMessage(aiContent);
+        if (result) {
+          try {
+            const toolCall = JSON.parse(result);
+            if (toolCall && toolCall.server_name && toolCall.tool_name && toolCall.arguments) {
+              const toolName = `${toolCall.server_name} -> ${toolCall.tool_name}`;
+              const toolArgsStr = JSON.stringify(toolCall.arguments, null, 2);
+              const systemBubble = chat.addSystemBubble(toolName, toolArgsStr);
+              const nextItem = i + 1 < window.messagesHistory.length ? window.messagesHistory[i + 1] : null;
+              if (nextItem && nextItem.isMcp === true) {
+                const resultText = nextItem.messages.content.map((c) => c.text || '').join('\n');
+                systemBubble.setResult('approved', resultText);
+              } else {
+                systemBubble.setResult('rejected', '用户拒绝了工具调用.');
+              }
+            }
+          } catch (e) {
+            console.error('Failed to process tool call from history:', e);
+          }
+        }
+      }
+    }
+    chat.scrollToBottom();
+  });
+};
 function initializeBackendConnection(callback) {
   if (backend) {
     if (callback) {
@@ -297,7 +383,6 @@ document.addEventListener('DOMContentLoaded', function () {
     },
     langPrefix: 'hljs language-',
   });
-  const chat = new ChatController('.chat-body');
   const textarea = document.querySelector('textarea[id="message-input"]');
   const sendButton = document.querySelector('.send-button');
   let isRequesting = false;
@@ -305,13 +390,21 @@ document.addEventListener('DOMContentLoaded', function () {
     textarea.style.height = 'auto';
     textarea.style.height = textarea.scrollHeight + 'px';
   };
+  function _sanitize_filename(name) {
+    name = name.replace(/[\\/*?:"<>|]/g, '');
+    name = name.replace('\n', '').replace('\t', '').replace('\r', '');
+    return name.substring(0, 16);
+  }
   function sendMessage() {
     if (isRequesting) {
       return;
     }
     const message = textarea.value.trim();
-    backend.saveMessage("user", message, function () { });
     if (message || pastedImageDataUrls.length > 0) {
+      chatHistoryContainer.style.display = 'none';
+      if (window.firstUserMessage === '') {
+        window.firstUserMessage = _sanitize_filename(message) + '_' + Date.now().toString();
+      }
       isRequesting = true;
       sendButton.disabled = true;
       chat.addUserBubble(message, [...pastedImageDataUrls]);
@@ -337,6 +430,8 @@ document.addEventListener('DOMContentLoaded', function () {
         content: userMessageContent,
       };
       aiChatApiOptionsBody.messages.push(userMessage);
+      messagesHistory.push({ messages: userMessage, isMcp: false });
+      saveHistory(window.firstUserMessage, messagesHistory);
       pastedImageDataUrls = [];
       renderImagePreviews();
       let aiBubble = chat.addAIBubble();
@@ -353,20 +448,27 @@ document.addEventListener('DOMContentLoaded', function () {
           role: 'assistant',
           content: fullContent,
         };
-        backend.saveMessage("assistant", fullContent, function () { });
         aiChatApiOptionsBody.messages.push(assistantMessage);
+        messagesHistory.push({ messages: assistantMessage, isMcp: false });
+        saveHistory(window.firstUserMessage, messagesHistory);
         cancelButtonContainer.style.display = 'none';
         cancelButton.removeEventListener('click', abortRequest);
         isRequesting = false;
         sendButton.disabled = false;
-        let toolCallHandled = false;
         if (backend) {
           const result = await backend.processMessage(fullContent);
           if (result) {
             try {
               const toolCall = JSON.parse(result);
               if (toolCall && toolCall.server_name && toolCall.tool_name && toolCall.arguments) {
-                toolCallHandled = true;
+                let xml = toolCall._xml_;
+                if (xml) {
+                  let newContent = fullContent.replace(xml, '');
+                  if (newContent == '') {
+                    newContent = toolCall.server_name + ' -> ' + toolCall.tool_name;
+                  }
+                  aiBubble.setHTML(newContent);
+                }
                 const toolName = `${toolCall.server_name} -> ${toolCall.tool_name}`;
                 const toolArgsStr = JSON.stringify(toolCall.arguments, null, 2);
                 const systemBubble = chat.addSystemBubble(toolName, toolArgsStr);
@@ -383,19 +485,25 @@ document.addEventListener('DOMContentLoaded', function () {
                   sendButton.disabled = true;
                   const executionResultStr = await backend.executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments));
                   systemBubble.setResult('approved', executionResultStr);
-                  aiChatApiOptionsBody.messages.push({
+                  let mcpMessages = {
                     role: 'user',
                     content: [
                       { type: 'text', text: '[' + toolCall.server_name + ' -> ' + toolCall.tool_name + '] 执行结果:' },
                       { type: 'text', text: executionResultStr },
                     ],
-                  });
+                  };
+                  aiChatApiOptionsBody.messages.push(mcpMessages);
+                  messagesHistory.push({ messages: mcpMessages, isMcp: true });
+                  saveHistory(window.firstUserMessage, messagesHistory);
                   aiBubble = chat.addAIBubble();
                   aiBubble.updateStream('');
                   requestAiChat(aiBubble.updateStream.bind(aiBubble), onDone, onError, controller.signal);
                 } else {
                   systemBubble.setResult('rejected', 'User rejected the tool call.');
                 }
+              }
+              if (this.chatController && !this.chatController.userHasScrolled) {
+                this.chatController.scrollToBottom();
               }
             } catch (e) {
               console.error('Failed to process or execute MCP tool call:', e);
@@ -427,6 +535,12 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   if (sendButton) {
     sendButton.addEventListener('click', sendMessage);
+  }
+  const newChatButton = document.querySelector('.new-chat-button');
+  if (newChatButton) {
+    newChatButton.addEventListener('click', () => {
+      window.location.reload();
+    });
   }
   const settingsBtn = document.getElementById('settings-btn');
   const settingsPopup = document.getElementById('settings-popup');
@@ -463,20 +577,21 @@ document.addEventListener('DOMContentLoaded', function () {
       settingsPopup.style.display = 'none';
     }
   });
-  initializeBackendConnection();
+  initializeBackendConnection((backend) => {
+    initializeHistoryPanel(backend);
+  });
   function updateAIBubbleMaxWidth() {
     const chatBody = document.querySelector('.chat-body');
-    if (!chatBody) return;
-
+    if (!chatBody) {
+      return;
+    }
     const maxWidth = chatBody.clientWidth;
     let styleTag = document.getElementById('dynamic-ai-bubble-style');
-
     if (!styleTag) {
       styleTag = document.createElement('style');
       styleTag.id = 'dynamic-ai-bubble-style';
       document.head.appendChild(styleTag);
     }
-
     styleTag.innerHTML = `
       .message-group.ai {
         max-width: ${maxWidth}px;
@@ -596,7 +711,6 @@ async function requestAiChat(onStream, onDone, onError, signal) {
         console.error('Error getting system prompt from backend:', err);
       }
     }
-
     let response;
     while (true) {
       if (signal.aborted) {
@@ -615,7 +729,6 @@ async function requestAiChat(onStream, onDone, onError, signal) {
       }
       break;
     }
-
     if (!response.ok) {
       const errorText = await response.text();
       const error = new Error(`${response.status} ${response.statusText}\n${errorText}`);

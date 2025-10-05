@@ -1,15 +1,15 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings
 import os
-from PyQt5.QtCore import QUrl, Qt, QObject, pyqtSlot, QEventLoop, QTimer
+from PyQt5.QtCore import QUrl, Qt, QObject, pyqtSlot, QEventLoop, QTimer, QVariant
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtGui import QKeyEvent, QDesktopServices
 from tools.setting_config import SCM
 from tools.ai_model_manager import AIModelManager
 from tools.ai_mcp_manager import AIMCPManager
+from tools.ai_history_manager import AIHistoryManager
 import json
 import typing
-from tools.setting_config import ChatSessionManager, ChatSession
 
 if typing.TYPE_CHECKING:
     from main_window import Window
@@ -17,16 +17,17 @@ if typing.TYPE_CHECKING:
 
 CONFIGER = SCM()
 
-
 class AIBridge(QObject):
     def __init__(self, parent=None, main_window: 'Window' = None):
         super().__init__(parent)
         self.main_window = main_window
         self.model_manager = AIModelManager()
         self.mcp_manager = AIMCPManager()
+        self.history_manager = AIHistoryManager()
         self._register_tool_handlers()
 
     def _register_tool_handlers(self):
+
         def Linux终端():
             def exe_shell(shell: str = '', cwd: str = '.'):
                 command = "cd " + cwd + ";" + shell
@@ -45,7 +46,6 @@ class AIBridge(QObject):
                 output = []
                 exit_code = [-1]
                 loop = QEventLoop()
-
                 def on_output_ready(result_str, code):
                     output.append(result_str)
                     exit_code[0] = code
@@ -54,7 +54,6 @@ class AIBridge(QObject):
                 timeout_timer = QTimer()
                 timeout_timer.setSingleShot(True)
                 timeout_timer.timeout.connect(loop.quit)
-
                 def reset_timeout(chunk_bytes):
                     timeout_timer.start(30000)
                 worker.result_ready.connect(reset_timeout)
@@ -72,7 +71,6 @@ class AIBridge(QObject):
                     return json.dumps({"status": "error", "content": "Command timed out or produced no output."})
                 output_str = "".join(output)
                 return output_str
-
             def read_file(file_path: str = None):
                 if not file_path:
                     return json.dumps({"status": "error", "content": "No file path provided."})
@@ -80,6 +78,25 @@ class AIBridge(QObject):
                     return exe_shell(f"cat {file_path}")
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"Failed to read file: {e}"})
+                pass
+            def add_file(args:str = None):
+                """
+                [[addfile path="{文件绝对路径}"]]
+                {文件内容}
+                [[/addfile]]
+                """
+                pass
+            def edit_file(args:str = None):
+                """
+                [[editfile path="{文件绝对路径}" startline={匹配开始行} endline={匹配结束行}]]
+                [[old]]
+                {原文件内容}
+                [[/old]]
+                [[new]]
+                {新内容}
+                [[/new]]
+                [[/editfile]]
+                """
                 pass
             self.mcp_manager.register_tool_handler(
                 server_name="Linux终端",
@@ -95,7 +112,45 @@ class AIBridge(QObject):
                 description="读取服务器文件内容",
                 auto_approve=True
             )
+            # self.mcp_manager.register_tool_handler(
+            #     server_name="Linux终端",
+            #     tool_name="add_file",
+            #     handler=add_file,
+            #     description="新增文件",
+            #     auto_approve=False
+            # )
+            # self.mcp_manager.register_tool_handler(
+            #     server_name="Linux终端",
+            #     tool_name="edit_file",
+            #     handler=edit_file,
+            #     description="编辑文件",
+            #     auto_approve=False
+            # )
         Linux终端()
+        print(self.getSystemPrompt())
+
+    @pyqtSlot(result=str)
+    def getSystemPrompt(self):
+        try:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            prompt_path = os.path.join(current_dir, '..', 'resource', 'widget', 'ai_chat', 'system.md')
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                prompt = f.read()
+            prompt += "\n\n# 已连接的MCP服务器\n"
+            prompt += "当服务器已连接时,你可以通过`use_mcp_tool`工具使用该服务器的工具.\n"
+            for server_name, tools in self.mcp_manager.tools.items():
+                prompt += f"\n## {server_name}\n"
+                prompt += "### 可用工具\n"
+                for tool_name, tool_info in tools.items():
+                    prompt += f"- {tool_name}\n"
+                    prompt += f"      {tool_info['description']}\n\n"
+                    prompt += "      输入模式:\n"
+                    schema_str = tool_info['schema']
+                    prompt += f"{schema_str}\n\n"
+            return prompt
+        except Exception as e:
+            print(f"Error generating system prompt: {e}")
+            return ""
 
     @pyqtSlot(str, result=str)
     def processMessage(self, message):
@@ -105,11 +160,9 @@ class AIBridge(QObject):
         return ""
 
     @pyqtSlot(str, str, str, result=str)
-    def executeMcpTool(self, server_name, tool_name, arguments_json):
+    def executeMcpTool(self, server_name, tool_name, arguments:str):
         try:
-            arguments = json.loads(arguments_json)
-            result = self.mcp_manager.execute_tool(
-                server_name, tool_name, arguments)
+            result = self.mcp_manager.execute_tool(server_name, tool_name, arguments)
             return str(result)
         except json.JSONDecodeError as e:
             return json.dumps({"status": "error", "content": f"Invalid arguments format: {e}"})
@@ -135,48 +188,38 @@ class AIBridge(QObject):
     def saveSetting(self, key, value):
         CONFIGER.revise_config(key, value)
 
+    @pyqtSlot(str, 'QVariant')
+    def saveHistory(self, first_message, conversation):
+        try:
+            return self.history_manager.save_history(first_message, conversation)
+        except Exception as e:
+            print(f"Error saving chat history: {e}")
+
     @pyqtSlot(result=str)
-    def getSystemPrompt(self):
+    def listHistories(self):
         try:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            prompt_path = os.path.join(
-                current_dir, '..', 'resource', 'widget', 'ai_chat', 'system.md')
-            with open(prompt_path, 'r', encoding='utf-8') as f:
-                prompt = f.read()
-
-            prompt += "\n\n# 已连接的MCP服务器\n"
-            prompt += "当服务器已连接时,你可以通过`use_mcp_tool`工具使用该服务器的工具.\n"
-
-            for server_name, tools in self.mcp_manager.tools.items():
-                prompt += f"\n## {server_name}\n"
-                prompt += "### 可用工具\n"
-                for tool_name, tool_info in tools.items():
-                    prompt += f"- {tool_name}\n"
-                    prompt += f"      {tool_info['description']}\n\n"
-                    prompt += "      输入模式:\n"
-                    schema_str = json.dumps(
-                        tool_info['schema'], indent=2, ensure_ascii=False)
-                    prompt += f"```json\n{schema_str}\n```\n"
-            return prompt
+            histories = self.history_manager.list_histories()
+            return json.dumps(histories)
         except Exception as e:
-            print(f"Error generating system prompt: {e}")
-            return ""
+            print(f"Error listing chat histories: {e}")
+            return "[]"
 
-    @pyqtSlot(str, str, result=str)
-    def saveMessage(self, role, msg):
-        """
-        保存一条消息到历史，会话管理器实现具体存储
-        role: "user" 或 "ai"
-        msg: 消息内容（文本）
-        """
+    @pyqtSlot(str, result=str)
+    def loadHistory(self, filename):
         try:
-            print(f"Saving message - Role: {role}, Message: {msg}")
-            # # 假设 self.session_manager 管理历史
-            # self.session_manager.add_message(role, msg)
-            # self.session_manager.save_sessions()  # 如果需要持久化
-            return "ok"
+            history = self.history_manager.load_history(filename)
+            return json.dumps(history)
         except Exception as e:
-            return f"error: {e}"
+            print(f"Error loading chat history: {e}")
+            return "[]"
+
+    @pyqtSlot(str, result=bool)
+    def deleteHistory(self, filename):
+        try:
+            return self.history_manager.delete_history(filename)
+        except Exception as e:
+            print(f"Error deleting chat history: {e}")
+            return False
 
 
 class AiChatWidget(QWidget):
@@ -194,17 +237,13 @@ class AiChatWidget(QWidget):
 
         self.browser = QWebEngineView()
         self.browser.page().setWebChannel(self.channel)
-        self.browser.settings().setAttribute(
-            QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
-        self.browser.settings().setAttribute(
-            QWebEngineSettings.LocalContentCanAccessFileUrls, True)
+        self.browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+        self.browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
         self.browser.setContextMenuPolicy(Qt.NoContextMenu)
         self.layout.addWidget(self.browser)
 
-        project_root = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), '..'))
-        index_html_path = os.path.join(
-            project_root, 'resource', 'widget', 'ai_chat', 'index.html')
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        index_html_path = os.path.join(project_root, 'resource', 'widget', 'ai_chat', 'index.html')
         self.browser.setUrl(QUrl.fromLocalFile(index_html_path))
 
     def keyPressEvent(self, event: QKeyEvent):
@@ -212,11 +251,10 @@ class AiChatWidget(QWidget):
             self.browser.reload()
         elif event.key() == Qt.Key_F12:
             if os.environ.get('QTWEBENGINE_REMOTE_DEBUGGING'):
-                QDesktopServices.openUrl(
-                    QUrl("http://localhost:" + str(os.environ['QTWEBENGINE_REMOTE_DEBUGGING'])))
+                QDesktopServices.openUrl(QUrl("http://localhost:" + str(os.environ['QTWEBENGINE_REMOTE_DEBUGGING'])))
         else:
             super().keyPressEvent(event)
-
+            
     def set_tab_id(self, tab_id):
         self.tab_id = tab_id
 
