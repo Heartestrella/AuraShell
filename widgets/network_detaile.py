@@ -1,9 +1,9 @@
 
 import random
-from PyQt5.QtCore import Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel
+from PyQt5.QtCore import Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, pyqtSignal
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QVBoxLayout, QWidget, QHeaderView
-from qfluentwidgets import TableView, setTheme, Theme, PrimaryPushButton, LineEdit, ComboBox
+from qfluentwidgets import TableView, setTheme, FluentIcon, RoundMenu, LineEdit, Action
 
 
 class NetConnectionModel(QAbstractTableModel):
@@ -44,7 +44,6 @@ class NetConnectionModel(QAbstractTableModel):
         return None
 
     def updateData(self, new_data):
-        """更新表格数据的接口"""
         self.beginResetModel()
         # 转换 dict list 到 list of lists
         converted_data = []
@@ -64,6 +63,9 @@ class NetConnectionModel(QAbstractTableModel):
 
 
 class NetProcessMonitor(QWidget):
+    # pid
+    kill_process = pyqtSignal(int)
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle(self.tr("Process Network Connections Monitor"))
@@ -86,7 +88,6 @@ class NetProcessMonitor(QWidget):
         # self.generateSampleData()
 
     def initUI(self):
-        # 设置透明背景
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setStyleSheet("background: transparent;")
 
@@ -94,12 +95,10 @@ class NetProcessMonitor(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # 创建控制面板
         control_layout = QVBoxLayout()
         control_layout.setContentsMargins(0, 0, 0, 0)
         control_layout.setSpacing(5)
 
-        # 搜索框 - 透明样式
         self.filter_input = LineEdit(self)
         self.filter_input.setPlaceholderText(
             self.tr("Filter by process name or PID..."))
@@ -252,6 +251,9 @@ class NetProcessMonitor(QWidget):
 
         # 设置整体布局透明
         self.setStyleSheet("background: transparent;")
+        self.table_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table_view.customContextMenuRequested.connect(
+            self.showContextMenu)
 
     def generateSampleData(self):
         """生成示例数据"""
@@ -348,3 +350,70 @@ class NetProcessMonitor(QWidget):
         """
         self.source_model.updateData(
             self.convert_connections_for_api(process_data))
+
+    def showContextMenu(self, position):
+        index = self.table_view.indexAt(position)
+        if not index.isValid():
+            return
+
+        source_index = self.proxy_model.mapToSource(index)
+        row_data = self.source_model._data[source_index.row()]
+        row_info = {
+            "Process Name": row_data[0] if len(row_data) > 0 else "",
+            "PID": row_data[1] if len(row_data) > 1 else 0,
+            "Local Port": row_data[2] if len(row_data) > 2 else 0,
+            "Local IP": row_data[3] if len(row_data) > 3 else "",
+            "Remote Port": row_data[4] if len(row_data) > 4 else 0,
+            "Connections": row_data[5] if len(row_data) > 5 else 0,
+            "Upload/Download": row_data[6] if len(row_data) > 6 else ""
+        }
+
+        context_menu = RoundMenu(parent=self)
+
+        kill_action = Action(FluentIcon.CLOSE, self.tr("Kill Process"), )
+        kill_action.triggered.connect(
+            lambda: self.kill_process.emit(int(row_info["PID"])))
+        context_menu.addAction(kill_action)
+
+        context_menu.addSeparator()
+
+        copy_menu = RoundMenu(self.tr("Copy info"))
+        copy_menu.setIcon(FluentIcon.COPY)
+
+        # Copy Process Name
+        copy_name = Action(self.tr("Copy Process Name"), self)
+        copy_name.triggered.connect(
+            lambda checked, text=row_info["Process Name"]: self.copyToClipboard(text))
+        copy_menu.addAction(copy_name)
+
+        # Copy PID
+        copy_pid = Action(self.tr("Copy PID"), self)
+        copy_pid.triggered.connect(
+            lambda checked: self.copyToClipboard(str(row_info["PID"])))
+        copy_menu.addAction(copy_pid)
+
+        # Copy Local Port
+        copy_local_port = Action(self.tr("Copy Local Port"), self)
+        copy_local_port.triggered.connect(
+            lambda checked: self.copyToClipboard(str(row_info["Local Port"])))
+        copy_menu.addAction(copy_local_port)
+
+        # Copy Local IP
+        copy_local_ip = Action(self.tr("Copy Local IP"), self)
+        copy_local_ip.triggered.connect(
+            lambda checked: self.copyToClipboard(row_info["Local IP"]))
+        copy_menu.addAction(copy_local_ip)
+
+        # Copy Remote Port
+        copy_remote_port = Action(self.tr("Copy Remote Port"), self)
+        copy_remote_port.triggered.connect(
+            lambda checked: self.copyToClipboard(str(row_info["Remote Port"])))
+        copy_menu.addAction(copy_remote_port)
+
+        context_menu.addMenu(copy_menu)
+        context_menu.exec_(self.table_view.mapToGlobal(position))
+
+    def copyToClipboard(self, text):
+        from PyQt5.QtWidgets import QApplication
+        clipboard = QApplication.clipboard()
+        clipboard.setText(str(text))

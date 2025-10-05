@@ -54,7 +54,8 @@ class Window(FramelessWindow):
         super().__init__(parent=parent)
         if isDebugMode():
             os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = '3354'
-            print('Debug mode enabled: http://localhost:'+os.environ['QTWEBENGINE_REMOTE_DEBUGGING'])
+            print('Debug mode enabled: http://localhost:' +
+                  os.environ['QTWEBENGINE_REMOTE_DEBUGGING'])
         self.icons = My_Icons()
         self.active_transfers = {}
         self.watching_dogs = {}
@@ -385,7 +386,13 @@ class Window(FramelessWindow):
                     title = self.tr(
                         f"Failed to create directory {path}\n{msg}")
                     duration = -1
-
+            elif type_ == "kill":
+                if status:
+                    title = self.tr(f"Kill process of pid {path}")
+                    duration = 2000
+                else:
+                    title = self.tr(f"Kill process of pid {path} failed")
+                    duration = -1
         if title:
             InfoBar.info(
                 title=title,

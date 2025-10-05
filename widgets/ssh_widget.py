@@ -228,14 +228,17 @@ class SSHWidget(QWidget):
 
         self.transfer_progress = TransferProgressWidget(leftContainer)
         self.transfer_progress.setObjectName("transfer_progress")
-        self.transfer_progress.setSizePolicy( QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.transfer_progress.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Preferred)
         leftLayout.addWidget(self.transfer_progress, 0)
-        
+
         self.transfer_progress.expansionChanged.connect(
-            lambda expanded: self._on_transfer_expansion_changed(expanded, leftLayout, self.leftSplitter)
+            lambda expanded: self._on_transfer_expansion_changed(
+                expanded, leftLayout, self.leftSplitter)
         )
 
-        splitter_left_ratio = config.get("splitter_left_components", [0.18, 0.47, 0.35])
+        splitter_left_ratio = config.get(
+            "splitter_left_components", [0.18, 0.47, 0.35])
         if len(splitter_left_ratio) == 3:
             sizes = [int(r * 1000) for r in splitter_left_ratio]
             self.leftSplitter.setSizes(sizes)
@@ -253,7 +256,7 @@ class SSHWidget(QWidget):
         self.rsplitter.setObjectName("splitter_tb_ratio")
         self.rsplitter.setChildrenCollapsible(False)
         self.rsplitter.setHandleWidth(1)
-        
+
         # Top container for ssh_widget and command_bar
         top_container = QFrame(self.rsplitter)
         top_container_layout = QVBoxLayout(top_container)
@@ -438,6 +441,8 @@ class SSHWidget(QWidget):
         connect_file_explorer()
         self.task_detaile = ProcessMonitor()
         self.net_monitor = NetProcessMonitor()
+        self.task_detaile.kill_process.connect(self._kill_process)
+        self.net_monitor.kill_process.connect(self._kill_process)
         file_manage_layout.addWidget(self.file_bar)
         self.net_monitor.hide()
         file_manage_layout.addWidget(self.net_monitor)
@@ -474,7 +479,8 @@ class SSHWidget(QWidget):
 
         splitter_tb_ratio = config.get("splitter_tb_ratio", [0.7, 0.3])
         if len(splitter_tb_ratio) == 2:
-            QTimer.singleShot(100, lambda: self._restore_splitter_sizes(self.rsplitter, splitter_tb_ratio))
+            QTimer.singleShot(100, lambda: self._restore_splitter_sizes(
+                self.rsplitter, splitter_tb_ratio))
 
         if use_ai:
             self.handle_concent()
@@ -486,6 +492,10 @@ class SSHWidget(QWidget):
         else:
             initial_color = '#cccccc'
         self.update_splitter_color(initial_color)
+
+    def _kill_process(self, pid: int):
+        if self.file_manager:
+            self.file_manager.kill_process(pid)
 
     def update_splitter_color(self, color_hex: str):
         """Updates the color of all splitter handles."""
@@ -504,7 +514,7 @@ class SSHWidget(QWidget):
                     background-color: {hover_color};
                 }}
             """
-            
+
             horizontal_stylesheet = f"""
                 QSplitter::handle:horizontal {{
                     background-color: {color_hex};
@@ -536,9 +546,9 @@ class SSHWidget(QWidget):
     def _on_transfer_expansion_changed(self, expanded, left_layout, left_splitter):
         if expanded:
             left_layout.setStretch(0, 2)
-            left_layout.setStretch(1, 1) 
+            left_layout.setStretch(1, 1)
         else:
-            left_layout.setStretch(0, 1) 
+            left_layout.setStretch(0, 1)
             left_layout.setStretch(1, 0)
 
     def on_splitter_moved(self, pos, index):
@@ -548,7 +558,8 @@ class SSHWidget(QWidget):
 
         # For the left-right splitter, save fixed width of the left panel
         if obj_name == "splitter_lr_ratio":
-            if sizes and len(sizes) > 1 and sizes[0] > 10:  # Ensure width is valid
+            # Ensure width is valid
+            if sizes and len(sizes) > 1 and sizes[0] > 10:
                 CONFIGER.revise_config("splitter_lr_left_width", sizes[0])
         # For other splitters, save ratios as before
         else:
@@ -831,7 +842,7 @@ class SSHWidget(QWidget):
             total_size = splitter.width()
         else:
             total_size = splitter.height()
-        
+
         if total_size > 0:
             sizes = [int(r * total_size) for r in ratios]
             splitter.setSizes(sizes)

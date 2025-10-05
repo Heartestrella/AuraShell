@@ -1,12 +1,15 @@
 from pathlib import Path
 import json
 import os
+import time
+import uuid
 # Setting Config Manager
+
+config_dir = Path.home() / ".config" / "pyqt-ssh"
 
 
 class SCM:
     def __init__(self):
-        config_dir = Path.home() / ".config"
         if not os.path.exists(config_dir):
             os.makedirs(config_dir)
 
@@ -40,7 +43,7 @@ class SCM:
             "splitter_lr_left_width": 300,
             "bg_theme_color": None
         }
-        self.config_path = Path.home() / ".config" / "setting-config.json"
+        self.config_path = config_dir / "setting-config.json"
         if not os.path.exists(self.config_path):
             self.init_config()
             print("Config file created at:", self.config_path)
@@ -78,3 +81,71 @@ class SCM:
         with open(self.config_path, mode="r", encoding="utf-8") as f:
             config_dict = json.load(f)
         return config_dict
+
+
+class ChatSession:
+    def __init__(self, session_data=None):
+        self.id = session_data.get("id") if session_data else str(uuid.uuid4())
+        now = int(time.time())
+        self.created_at = session_data.get(
+            "created_at", now) if session_data else now
+        self.updated_at = session_data.get(
+            "updated_at", now) if session_data else now
+        self.messages = session_data.get(
+            "messages", []) if session_data else []
+        self.model = session_data.get("model", "") if session_data else ""
+        self.title = session_data.get("title", "") if session_data else ""
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "messages": self.messages,
+            "model": self.model,
+            "title": self.title,
+        }
+
+    def add_message(self, sender, text):
+        self.messages.append({
+            "sender": sender,
+            "text": text,
+            "time": int(time.time())
+        })
+        self.updated_at = int(time.time())
+
+
+class ChatSessionManager:
+    def __init__(self, config_dir=None):
+        self.config_dir = Path(
+            config_dir) if config_dir else Path.home() / ".config" / "pyqt-ssh"
+        self.sessions_file = self.config_dir / "sessions.json"
+        os.makedirs(self.config_dir, exist_ok=True)
+        self.sessions = self.load_sessions()
+
+    def load_sessions(self):
+        if self.sessions_file.exists():
+            with open(self.sessions_file, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+                return {s["id"]: ChatSession(s) for s in raw}
+        return {}
+
+    def save_sessions(self):
+        with open(self.sessions_file, "w", encoding="utf-8") as f:
+            json.dump([s.to_dict() for s in self.sessions.values()],
+                      f, ensure_ascii=False, indent=2)
+
+    def new_session(self, title="", model=""):
+        session = ChatSession({"title": title, "model": model})
+        self.sessions[session.id] = session
+        self.save_sessions()
+        return session
+
+    def get_session(self, session_id):
+        return self.sessions.get(session_id)
+
+    def add_message(self, session_id, sender, text):
+        sess = self.get_session(session_id)
+        if sess:
+            sess.add_message(sender, text)
+            self.save_sessions()

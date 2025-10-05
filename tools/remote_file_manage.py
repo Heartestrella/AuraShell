@@ -18,6 +18,7 @@ class RemoteFileManager(QThread):
     """
     Remote file manager, responsible for building and maintaining remote file trees
     """
+    kill_finished = pyqtSignal(int, bool, str)
     file_tree_updated = pyqtSignal(dict, str)  # file tree , path
     error_occurred = pyqtSignal(str)
     sftp_ready = pyqtSignal()
@@ -132,6 +133,9 @@ class RemoteFileManager(QThread):
                         if ttype == 'add_path':
                             self._add_path_to_tree(
                                 task['path'], task["update_tree_sign"])
+                        elif ttype == 'kill_process':
+                            self._handle_kill_task(
+                                task['pid'], task.get('callback'))
                         elif ttype == 'remove_path':
                             self._remove_path_from_tree(task['path'])
                         elif ttype == 'refresh':
@@ -478,6 +482,35 @@ class RemoteFileManager(QThread):
         self.condition.wakeAll()
         self.mutex.unlock()
 
+    def kill_process(self, pid: int, callback=None):
+        """
+        Asynchronously kills a remote process by PID.
+
+        This method queues a kill task to be executed in the background.
+        Upon completion, the `kill_finished` signal is emitted.
+
+        Args:
+            pid (int): The PID of the process to kill.
+            callback (callable, optional): A function to be called when the kill
+                is complete. The callback receives two arguments:
+                - success (bool): True if kill succeeded, False otherwise.
+                - error_msg (str): Error message if kill failed, empty string otherwise.
+
+        Signals:
+            kill_finished (int, bool, str): Emitted upon completion with parameters:
+                - pid (int): The PID that was killed.
+                - success (bool): True if kill succeeded, False otherwise.
+                - error_msg (str): Error message if kill failed, empty string otherwise.
+        """
+        self.mutex.lock()
+        self._tasks.append({
+            'type': 'kill_process',
+            'pid': pid,
+            'callback': callback
+        })
+        self.condition.wakeAll()
+        self.mutex.unlock()
+
     def delete_path(self, path, callback=None):
         """
         Asynchronously deletes a remote file or directory.
@@ -665,7 +698,7 @@ class RemoteFileManager(QThread):
                         or mime_out.startswith("application/x-sharedlib")
                         or "x-mach-binary" in mime_out
                         or "pe" in mime_out  # covers various PE-like mimes
-                    ):
+                        ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
 
@@ -1365,6 +1398,49 @@ class RemoteFileManager(QThread):
         group = self.gid_map.get(gid, str(gid))
         return owner, group
 
+    def _handle_kill_task(self, pid: int, callback=None):
+        """
+        内部处理杀死远程进程的任务
+        """
+        if self.conn is None:
+            error_msg = "SSH 连接未就绪"
+            print(f"❌ 杀死进程失败 - {error_msg}: PID {pid}")
+            self.kill_finished.emit(pid, False, error_msg)
+            if callback:
+                callback(False, error_msg)
+            return
+
+        try:
+            # 执行 kill 命令
+            cmd = f"kill {pid}"
+            print(f"🔪 执行命令: {cmd}")
+
+            stdin, stdout, stderr = self.conn.exec_command(cmd)
+            exit_status = stdout.channel.recv_exit_status()
+            error_output = stderr.read().decode('utf-8').strip()
+            output = stdout.read().decode('utf-8').strip()
+
+            if exit_status == 0:
+                print(f"✅ 进程杀死成功: PID {pid}")
+                self.kill_finished.emit(pid, True, "")
+                if callback:
+                    callback(True, "")
+            else:
+                error_msg = error_output if error_output else f"kill 命令失败 (exit code: {exit_status})"
+                print(f"❌ 杀死进程失败: {error_msg}")
+                self.kill_finished.emit(pid, False, error_msg)
+                if callback:
+                    callback(False, error_msg)
+
+        except Exception as e:
+            error_msg = f"杀死进程过程错误: {str(e)}"
+            print(f"❌ {error_msg}")
+            import traceback
+            traceback.print_exc()
+            self.kill_finished.emit(pid, False, error_msg)
+            if callback:
+                callback(False, error_msg)
+
     def list_dir_detailed(self, path: str) -> Optional[List[dict]]:
         if self.sftp is None:
             print("list_dir_detailed: sftp not ready")
@@ -1539,7 +1615,7 @@ class FileManagerHandler:
     def _connect_signals(self):
         fm = self.fm
         ck = self.child_key
-
+        fm.kill_finished.connect(self._on_kill_finished)
         fm.file_tree_updated.connect(
             lambda file_tree, path: self.parent.on_file_tree_updated(
                 file_tree, self.session_widget, path)
@@ -1571,6 +1647,8 @@ class FileManagerHandler:
             self._on_upload_request)
 
     # ---- 封装的槽函数 ----
+    def _on_kill_finished(self, pid, status, error_msg):
+        self._wrap_show_info(pid, status, error_msg, "kill")
 
     def _wrap_show_info(self, path, status, msg, type_, local_path=None, target_path=None, open_it=False):
         print(f"type : {type_}")
@@ -1625,6 +1703,7 @@ class FileManagerHandler:
             "file_info_ready",
             "file_type_ready",
             "mkdir_finished",
+            "kill_finished",
             "start_to_compression",
             "start_to_uncompression",
             "compression_finished",

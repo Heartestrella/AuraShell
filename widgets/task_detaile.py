@@ -1,7 +1,7 @@
 import random
-from PyQt5.QtCore import Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel
+from PyQt5.QtCore import Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, pyqtSignal
 from PyQt5.QtWidgets import QVBoxLayout, QWidget, QHeaderView
-from qfluentwidgets import TableView, LineEdit
+from qfluentwidgets import TableView, LineEdit, RoundMenu, FluentIcon, Action
 
 
 class ProcessTableModel(QAbstractTableModel):
@@ -55,6 +55,8 @@ class ProcessTableModel(QAbstractTableModel):
 
 
 class ProcessMonitor(QWidget):
+    kill_process = pyqtSignal(int)
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Process Info Monitor Demo")
@@ -100,6 +102,9 @@ class ProcessMonitor(QWidget):
         header.resizeSection(5, 700)  # Command
 
         layout.addWidget(self.table_view, 1)
+        self.table_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table_view.customContextMenuRequested.connect(
+            self.showContextMenu)
 
     def filterData(self, text):
         self.proxy_model.setFilterRegExp(text)
@@ -126,3 +131,57 @@ class ProcessMonitor(QWidget):
             }
             sample.append(item)
         self.updateProcessData(sample)
+
+    def showContextMenu(self, position):
+        index = self.table_view.indexAt(position)
+        if not index.isValid():
+            return
+        source_index = self.proxy_model.mapToSource(index)
+        row_data = self.source_model._data[source_index.row()]
+
+        row_info = {
+            "User": row_data[0] if len(row_data) > 0 else "",
+            "PID": row_data[1] if len(row_data) > 1 else 0,
+            "Process Name": row_data[2] if len(row_data) > 2 else "",
+            "CPU %": row_data[3] if len(row_data) > 3 else 0.0,
+            "Mem %": row_data[4] if len(row_data) > 4 else 0.0,
+            "Command": row_data[5] if len(row_data) > 5 else ""
+        }
+
+        context_menu = RoundMenu(parent=self)
+
+        kill_action = Action(FluentIcon.CLOSE, self.tr("Kill Process"),)
+        kill_action.triggered.connect(
+            lambda checked, pid=row_info["PID"]: self.kill_process.emit(int(pid)))
+        context_menu.addAction(kill_action)
+
+        context_menu.addSeparator()
+
+        copy_menu = RoundMenu(self.tr("Copy info"))
+        copy_menu.setIcon(FluentIcon.COPY)
+
+        # Copy User
+        copy_user = Action(self.tr("Copy User"), self)
+        copy_user.triggered.connect(
+            lambda checked, text=row_info["User"]: self.copyToClipboard(text))
+        copy_menu.addAction(copy_user)
+
+        # Copy PID
+        copy_pid = Action(self.tr("Copy PID"), self)
+        copy_pid.triggered.connect(
+            lambda checked: self.copyToClipboard(str(row_info["PID"])))
+        copy_menu.addAction(copy_pid)
+
+        # Copy Command
+        copy_command = Action(self.tr("Copy Command"), self)
+        copy_command.triggered.connect(
+            lambda checked, text=row_info["Command"]: self.copyToClipboard(text))
+        copy_menu.addAction(copy_command)
+
+        context_menu.addMenu(copy_menu)
+        context_menu.exec_(self.table_view.mapToGlobal(position))
+
+    def copyToClipboard(self, text):
+        from PyQt5.QtWidgets import QApplication
+        clipboard = QApplication.clipboard()
+        clipboard.setText(str(text))

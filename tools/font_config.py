@@ -8,7 +8,7 @@ import sys
 
 class font_config:
     def __init__(self):
-        self.config_path = Path.home() / ".config" / "font-config.json"
+        self.config_path = Path.home() / ".config" / "pyqt-ssh" / "font-config.json"
         if not self.config_path.exists():
             self.init_config()
 
