@@ -310,7 +310,6 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
     const message = textarea.value.trim();
-    backend.saveMessage("user", message, function () { });
     if (message || pastedImageDataUrls.length > 0) {
       isRequesting = true;
       sendButton.disabled = true;
@@ -353,7 +352,6 @@ document.addEventListener('DOMContentLoaded', function () {
           role: 'assistant',
           content: fullContent,
         };
-        backend.saveMessage("assistant", fullContent, function () { });
         aiChatApiOptionsBody.messages.push(assistantMessage);
         cancelButtonContainer.style.display = 'none';
         cancelButton.removeEventListener('click', abortRequest);
