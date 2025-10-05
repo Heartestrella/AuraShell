@@ -42,11 +42,19 @@ mime_types = [
 ]
 
 
+def isDebugMode():
+    """Check if the application is running under a debugger."""
+    return sys.gettrace() is not None
+
+
 class Window(FramelessWindow):
     windowResized = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        if isDebugMode():
+            os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = '3354'
+            print('Debug mode enabled: http://localhost:'+os.environ['QTWEBENGINE_REMOTE_DEBUGGING'])
         self.icons = My_Icons()
         self.active_transfers = {}
         self.watching_dogs = {}
@@ -82,7 +90,7 @@ class Window(FramelessWindow):
         self.navigationInterface = NavigationInterface(
             self, showMenuButton=True)
         self.stackWidget = QStackedWidget(self)
-        self.sidePanel = SidePanelWidget(self)
+        self.sidePanel = SidePanelWidget(self, main_window=self)
         self.sidePanel.tabActivity.connect(self._ensure_side_panel_visible)
 
         # create sub interface
@@ -1357,6 +1365,13 @@ class Window(FramelessWindow):
             else:
                 setting_.revise_config("maximized", False)
         super().changeEvent(event)
+
+    def get_active_ssh_widget(self):
+        if self.stackWidget.currentWidget() == self.ssh_page:
+            current_ssh_widget = self.ssh_page.sshStack.currentWidget()
+            if isinstance(current_ssh_widget, SSHWidget):
+                return current_ssh_widget
+        return None
 
 
 def language_code_to_locale(code: str) -> str:

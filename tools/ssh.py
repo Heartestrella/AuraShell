@@ -18,6 +18,7 @@ class SSHWorker(QThread):
     # host_key , processes_md5 key
     key_verification = pyqtSignal(str, str)
     stop_timer_sig = pyqtSignal()
+    command_output_ready = pyqtSignal(str, int)
 
     def __init__(self, session_info, parent=None, for_resources=False, for_file=False):
         super().__init__(parent)
@@ -39,6 +40,11 @@ class SSHWorker(QThread):
         self.file_tree: Dict = {}
         # Store the contents of each directory
         self.dir_contents: Dict[str, List[str]] = {}
+
+        self.is_capturing = False
+        self.capture_buffer = b""
+        self.start_marker = ""
+        self.end_marker = ""
 
     def get_hostkey_fp_hex(self) -> str:
         try:
@@ -259,7 +265,10 @@ class SSHWorker(QThread):
             if self.channel.recv_ready():
                 chunk = self.channel.recv(4096)  # bytes
                 self.result_ready.emit(chunk)
-                if self.for_resources:
+                if self.is_capturing:
+                    self.capture_buffer += chunk
+                    self._process_capture_buffer()
+                elif self.for_resources:
                     self._buffer += chunk
                     self._process_sys_resource_buffer()
 
@@ -267,7 +276,10 @@ class SSHWorker(QThread):
                 while self.channel.recv_ready():
                     chunk = self.channel.recv(4096)
                     self.result_ready.emit(chunk)
-                    if self.for_resources:
+                    if self.is_capturing:
+                        self.capture_buffer += chunk
+                        self._process_capture_buffer()
+                    elif self.for_resources:
                         self._buffer += chunk
                         self._process_sys_resource_buffer()
                 self.quit()
@@ -363,20 +375,66 @@ class SSHWorker(QThread):
     def remove_path_from_tree(self, path: str):
         if not self.for_file:
             return
-
         parts = path.strip('/').split('/')
         current = self.file_tree.get('', {})
-
         for i, part in enumerate(parts[:-1]):
             if part in current:
                 current = current[part]
             else:
-                return  # Path does not exist
-
+                return
         if parts and parts[-1] in current:
             del current[parts[-1]]
-
         self.file_tree_updated.emit(self.file_tree)
 
     def get_file_tree(self) -> Dict:
         return self.file_tree
+
+    def execute_command_and_capture(self, command: str):
+        import uuid
+        if self.is_capturing:
+            self.error_occurred.emit("Another command capture is already in progress.")
+            return
+        unique_id = str(uuid.uuid4())
+        self.start_marker = f"START_CMD_MARKER_{unique_id}"
+        self.end_marker = f"END_CMD_MARKER_{unique_id}"
+        self.is_capturing = True
+        self.capture_buffer = b""
+        wrapped_command = f'echo "{self.start_marker}"; {command}; echo "{self.end_marker}:$?"\n'
+        self.run_command(wrapped_command, add_newline=False)
+
+    def _process_capture_buffer(self):
+        try:
+            start_bytes = self.start_marker.encode()
+            end_bytes = self.end_marker.encode()
+            if end_bytes in self.capture_buffer:
+                parts = self.capture_buffer.split(start_bytes)
+                if len(parts) < 2:
+                    return
+                content_after_last_start = parts[-1]
+                end_pos = content_after_last_start.find(end_bytes)
+                if end_pos != -1:
+                    actual_content_bytes = content_after_last_start[:end_pos]
+                    exit_code_part = content_after_last_start[end_pos + len(end_bytes):].strip()
+                    if actual_content_bytes.startswith(b'\r\n'):
+                        actual_content_bytes = actual_content_bytes[2:]
+                    elif actual_content_bytes.startswith(b'\n'):
+                        actual_content_bytes = actual_content_bytes[1:]
+                    exit_code = -1
+                    try:
+                        exit_code_str = exit_code_part.split(b':')[-1].strip().decode()
+                        if exit_code_str:
+                            exit_code = int(exit_code_str)
+                    except (ValueError, IndexError):
+                        pass
+                    output_str = actual_content_bytes.decode('utf-8', errors='replace')
+                    self.command_output_ready.emit(output_str, exit_code)
+                    self.is_capturing = False
+                    self.capture_buffer = b""
+                    self.start_marker = ""
+                    self.end_marker = ""
+        except Exception as e:
+            self.error_occurred.emit(f"Error processing command output: {e}")
+            self.is_capturing = False
+            self.capture_buffer = b""
+            self.start_marker = ""
+            self.end_marker = ""

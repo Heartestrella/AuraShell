@@ -39,8 +39,9 @@ class CustomTabBar(QScrollArea):
 class SidePanelWidget(QWidget):
     tabActivity = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, main_window=None):
         super().__init__(parent=parent)
+        self.main_window = main_window
         self.setObjectName("SidePanelWidget")
         self.setMinimumWidth(150)
         self.tabs = {}
@@ -59,7 +60,7 @@ class SidePanelWidget(QWidget):
         self.main_layout.addWidget(self.tab_bar_container)
         self.page_stack = QStackedWidget(self)
         self.main_layout.addWidget(self.page_stack)
-        self.add_new_tab(AiChatWidget(), "AI Chat", {"test": "test"})
+        self.add_new_tab(AiChatWidget(main_window=self.main_window), "AI Chat", {})
         self._update_tab_bar_visibility()
         self.setStyleSheet(self._get_style_sheet())
 
