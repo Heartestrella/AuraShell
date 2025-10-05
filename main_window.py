@@ -4,7 +4,7 @@ import ctypes
 import time
 from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
-from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter
+from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter, QLabel
 from widgets.editor_widget import EditorWidget
 from qfluentwidgets import (NavigationInterface, NavigationItemPosition, InfoBar,
                             isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget, Dialog)
@@ -26,7 +26,7 @@ from widgets.ssh_widget import SSHPage, SSHWidget
 from tools.icons import My_Icons
 from functools import partial
 from tools.watching_saved import FileWatchThread
-from widgets.side_panel import SidePanelWidget
+from widgets.side_panel import SidePanelWidget, AutoFitImageLabel
 import magic
 import traceback
 font_ = font_config()
@@ -455,6 +455,11 @@ class Window(FramelessWindow):
                         is_text = False
         except Exception as e:
             print(f"Error checking file type: {e}")
+
+        if mime.startswith("image/"):
+            self.open_media_in_panel(local_path, widget_key)
+            return
+
         if (external_editor and os.path.isfile(external_editor)) and open_mode:
             try:
                 subprocess.Popen([external_editor, local_path])
@@ -464,14 +469,32 @@ class Window(FramelessWindow):
                 if is_text:
                     self._open_in_internal_editor(
                         local_path, widget_key, remote_path)
+                    self._start_file_watching_if_text(
+                        local_path, widget_key, remote_path)
         else:
             if is_text:
                 self._open_in_internal_editor(
                     local_path, widget_key, remote_path)
+                self._start_file_watching_if_text(
+                    local_path, widget_key, remote_path)
             else:
                 print(
                     f"File {local_path} is not a text file (MIME: {mime}), cannot open in editor")
-        self._start_file_watching_if_text(local_path, widget_key, remote_path)
+
+    def open_media_in_panel(self, local_path: str, widget_key: str):
+        if os.path.exists(local_path):
+            try:
+                img = AutoFitImageLabel(local_path)
+                img.set_tab_id = lambda tid: setattr(img, "tab_id", tid)
+
+                base_name = os.path.basename(local_path)
+                self.sidePanel.add_new_tab(img, f"{widget_key} - {base_name}")
+
+            except Exception as e:
+                img = QLabel(str(e))
+                img.setAlignment(Qt.AlignCenter)
+                base_name = os.path.basename(local_path)
+                self.sidePanel.add_new_tab(img, f"{widget_key} - {base_name}")
 
     def _open_in_internal_editor(self, local_path: str, widget_key: str, remote_path: str):
         """在内置编辑器中打开文件"""
@@ -486,7 +509,7 @@ class Window(FramelessWindow):
                     editor_widget.load_file(local_path)
             else:
                 tab_title = os.path.basename(remote_path)
-                tab_id = self.sidePanel.add_new_tab(EditorWidget(), tab_title, {
+                tab_id = self.sidePanel.add_new_tab(EditorWidget(), f'{widget_key} - {tab_title}', {
                                                     "path": local_path, "remote_path": remote_path, "widget_key": widget_key})
         except Exception as e:
             print(f"Error opening in internal editor: {e}")

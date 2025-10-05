@@ -888,6 +888,7 @@ class FileExplorer(QWidget):
             app_path = self.handle_pick_app()
             if app_path:
                 configer.revise_config("external_editor", app_path)
+                configer.read_config("open_mode", True)
                 self._request_directory_change({file_name: is_dir})
                 return
 

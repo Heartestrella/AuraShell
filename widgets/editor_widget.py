@@ -198,6 +198,7 @@ class EditorWidget(QWidget):
                 self.editor.setFoldMarginColors(
                     QColor("#1e1e1e"), QColor("#1e1e1e"))
                 self.editor.setPaper(QColor("#1e1e1e"))
+                self.editor.setColor(QColor("#d4d4d4"))
                 if hasattr(self.editor, 'lexer') and self.editor.lexer():
                     self._apply_dark_theme_to_lexer(self.editor.lexer())
             else:
@@ -207,6 +208,7 @@ class EditorWidget(QWidget):
                 self.editor.setFoldMarginColors(
                     QColor("#f0f0f0"), QColor("#f0f0f0"))
                 self.editor.setPaper(QColor("#ffffff"))
+                self.editor.setColor(QColor("#000000"))
                 if hasattr(self.editor, 'lexer') and self.editor.lexer():
                     self._apply_light_theme_to_lexer(self.editor.lexer())
         else:
@@ -813,5 +815,5 @@ class EditorWidget(QWidget):
             '.diff': 'Diff',
             '.patch': 'Patch',
         }
-        file_type = file_types.get(ext, '纯文本')
+        file_type = file_types.get(ext, self.tr("Plain text"))
         self.file_type_label.setText(file_type)

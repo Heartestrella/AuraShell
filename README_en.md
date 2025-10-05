@@ -145,6 +145,7 @@ sudo apt install -y ss lsblk iostat
 ---
 
 ### 🪟 Other Notes
+- Due to issues with WebEngine, the software experiences lag when dragging.
 - If fonts display incorrectly, ensure the font is installed on your system  
 - Some minor style mismatches may appear in specific themes  
 

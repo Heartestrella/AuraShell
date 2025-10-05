@@ -1,12 +1,34 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QStackedWidget, QLabel,
                              QPushButton, QScrollArea, QHBoxLayout)
 from PyQt5.QtCore import Qt, QEvent, pyqtSignal
+from PyQt5.QtGui import QPixmap
 from qfluentwidgets import RoundMenu, CheckableMenu, Action, FluentIcon as FIF
 from tools.atool import resource_path
 from tools.setting_config import SCM
 from widgets.ai_chat_widget import AiChatWidget
 from widgets.editor_widget import EditorWidget
 import uuid
+
+
+class AutoFitImageLabel(QLabel):
+    def __init__(self, path=None, parent=None):
+        super().__init__(parent)
+        self.setAlignment(Qt.AlignCenter)
+        self.setScaledContents(False)
+        self._pixmap = QPixmap(path) if path else None
+        if self._pixmap:
+            self.setPixmap(self._pixmap)
+
+    def resizeEvent(self, event):
+        if self._pixmap:
+            scaled = self._pixmap.scaled(
+                self.width(),
+                self.height(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
+            self.setPixmap(scaled)
+        super().resizeEvent(event)
 
 
 class TabButton(QPushButton):
