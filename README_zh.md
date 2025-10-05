@@ -25,6 +25,8 @@
   - 文件重命名 / 删除 / 权限修改 等等
   - 类似 Windows 资源管理器的交互体验  
   - 图标/列表显示文件信息 满足不同人群喜好
+  - <img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/e386c2b1-8283-4362-bd28-207b613cb15f" />
+  - <img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/86af85be-661f-4a03-8bde-5687ea4a61b4" />
 
 - ⚡ **多会话管理**  
   - 支持同时连接多个远程主机  
@@ -34,6 +36,15 @@
 - 🛜 **网络进程/详细应用进程查看**
   - 支持查看 并且操作网络与系统进程
   - 文件上传下载进度显示与终止
+  - <img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/c4fb44cf-910c-412b-b4a8-0e8d32c465b6" />
+  
+- **AI智能体接入**
+  - 输入框快捷模式
+    - 当在设置页面中启用并正确配置后 在输入框输入自然语言 并按下Ctrl + O 快捷键 可调用Ai生成指令或辅助定位报错问题
+    - <img width="1570" height="788" alt="image" src="https://github.com/user-attachments/assets/ab2aeb36-76cf-4bf5-b626-fdaf9121a717" />
+  - 侧边栏高级模式
+    - 在拉起后 可以进行更高级对Shell的辅助
+    - <img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/777c658b-1ac4-4742-9e65-6832b76157cd" />
 
 ---
 
@@ -52,7 +63,7 @@ pip install -r requirements.txt
 python main_window.py
 ```
 
-### 从预编译版本运行(真心不建议)
+### 从预编译版本运行
 1. 从 Releases 页面 下载最新的打包版本
 
 2. 解压压缩包
@@ -63,13 +74,12 @@ python main_window.py
 ---
 
 ## 📷 界面截图
-<img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/c4fb44cf-910c-412b-b4a8-0e8d32c465b6" />
+
 
 <img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/2c99f305-65ef-4af2-affe-5b7d0d902d55" />
 
-<img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/e386c2b1-8283-4362-bd28-207b613cb15f" />
-
 <img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/94ed1648-f667-4434-b891-80018a70e618" />
+
 ---
 
 
@@ -82,6 +92,7 @@ python main_window.py
 代码全部UI都默认为英文 用tr标记翻译了尽可能多的UI内容
 但是仍然有极少部分TIPS的汉化出现问题 但都是些常见的单词 也许会在后续修复该非致命问题
 
+~~我真傻逼 从英文翻译到中文 不从中文做对其他语言的~~
 ---
 
 
@@ -93,7 +104,11 @@ PSSH 的源代码仍在开发中
 
 ## ⚠️ 已知问题与使用须知
 
+# 使用技巧
 - AI辅助功能 在正确配置KEY和MODEL后 在命令输入框输入自然语言 然后按Ctrl + O 即可开始生成 按Tab接纳AI建议填充到输入框
+- 若需要关闭内置编辑器的tab 请双击(我要不说 估计没人能知道了)
+
+# 部分小问题
 - 若需要左侧栏的功能 请手动安装 ss lsblk iostat 这几个包(apt yum等包管理器) 脚本虽然内置安装 但不一定管用 若不显示左侧边栏信息 多半是这几个包的问题
 - 部分页面可能未正确显示自定义字体
 - 部分界面元素可能与主窗口风格不完全一致
@@ -103,10 +118,7 @@ PSSH 的源代码仍在开发中
 
 > ⚠️ **Beta 版本说明：**  
 > 这是一个测试版本如果遇到任何 bug，请将运行日志以及大致复现方法提交到 [GitHub Issues](https://github.com/Heartestrella/P-SSH/issues)
-> 尚未实现的功能
-- 监听打开的Text类型文件保存并自动上传
-- 内置的notepad
-
+> 若您愿意参与到项目的开发中来 向我们提交Pr 我们将在3日内审核
 
 ## 🔮 未来发展方向
 
