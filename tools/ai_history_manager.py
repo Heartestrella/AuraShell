@@ -13,16 +13,15 @@ class AIHistoryManager:
         self.history_dir.mkdir(parents=True, exist_ok=True)
 
     def _sanitize_filename(self, name: str) -> str:
-        # Remove invalid characters for filenames
         name = re.sub(r'[\\/*?:"<>|]', "", name)
-        # Limit length to avoid issues with long filenames
-        return name[:100]
+        return name[:16]
 
-    def save_history(self, conversation: List[Dict[str, Any]], first_message: str):
+    def save_history(self, first_message: str, conversation: List[Dict[str, Any]]):
         filename = self._sanitize_filename(first_message) + ".json"
         filepath = self.history_dir / filename
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(conversation, f, ensure_ascii=False, indent=2)
+        return filename
 
     def list_histories(self) -> List[Dict[str, str]]:
         histories = []
@@ -37,9 +36,7 @@ class AIHistoryManager:
                     "modifiedAt": modified_at
                 })
             except FileNotFoundError:
-                # File might be deleted during iteration
                 continue
-        # Sort by creation date, newest first
         histories.sort(key=lambda x: x['createdAt'], reverse=True)
         return histories
 

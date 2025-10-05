@@ -62,7 +62,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 25px;
-  display: none; /* Hide by default */
 }
 
 .message-group {

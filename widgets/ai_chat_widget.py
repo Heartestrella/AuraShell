@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings
 import os
-from PyQt5.QtCore import QUrl, Qt, QObject, pyqtSlot, QEventLoop, QTimer
+from PyQt5.QtCore import QUrl, Qt, QObject, pyqtSlot, QEventLoop, QTimer, QVariant
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtGui import QKeyEvent, QDesktopServices
 from tools.setting_config import SCM
@@ -156,11 +156,10 @@ class AIBridge(QObject):
             print(f"Error generating system prompt: {e}")
             return ""
 
-    @pyqtSlot(str, str)
-    def saveHistory(self, conversation_json, first_message):
+    @pyqtSlot(str, 'QVariant')
+    def saveHistory(self, first_message, conversation):
         try:
-            conversation = json.loads(conversation_json)
-            self.history_manager.save_history(conversation, first_message)
+            return self.history_manager.save_history(first_message, conversation)
         except Exception as e:
             print(f"Error saving chat history: {e}")
 

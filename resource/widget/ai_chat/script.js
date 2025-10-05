@@ -284,7 +284,7 @@ function handlePaste(event) {
     event.preventDefault();
   }
 }
-let messagesHistory = [];
+window.messagesHistory = [];
 let aiChatApiOptionsBody = {
   model: '',
   temperature: 0.6,
@@ -294,7 +294,21 @@ let aiChatApiOptionsBody = {
     include_usage: true,
   },
 };
+window.firstUserMessage = '';
 let backend;
+window.loadHistory = function (filename) {
+  initializeBackendConnection(async (backend) => {
+    if (!backend) {
+      return;
+    }
+    const history = await backend.loadHistory(filename);
+    if (!history) {
+      return;
+    }
+    window.firstUserMessage = filename.replace('.json', '');
+    window.messagesHistory = history;
+  });
+};
 function initializeBackendConnection(callback) {
   if (backend) {
     if (callback) {
@@ -340,6 +354,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const message = textarea.value.trim();
     if (message || pastedImageDataUrls.length > 0) {
       chatHistoryContainer.style.display = 'none';
+      if (window.firstUserMessage === '') {
+        window.firstUserMessage = message + '_' + Date.now().toString();
+      }
       isRequesting = true;
       sendButton.disabled = true;
       chat.addUserBubble(message, [...pastedImageDataUrls]);
@@ -365,6 +382,8 @@ document.addEventListener('DOMContentLoaded', function () {
         content: userMessageContent,
       };
       aiChatApiOptionsBody.messages.push(userMessage);
+      messagesHistory.push({ messages: userMessage, isMcp: false });
+      saveHistory(window.firstUserMessage, messagesHistory);
       pastedImageDataUrls = [];
       renderImagePreviews();
       let aiBubble = chat.addAIBubble();
@@ -382,6 +401,8 @@ document.addEventListener('DOMContentLoaded', function () {
           content: fullContent,
         };
         aiChatApiOptionsBody.messages.push(assistantMessage);
+        messagesHistory.push({ messages: assistantMessage, isMcp: false });
+        saveHistory(window.firstUserMessage, messagesHistory);
         cancelButtonContainer.style.display = 'none';
         cancelButton.removeEventListener('click', abortRequest);
         isRequesting = false;
@@ -416,13 +437,16 @@ document.addEventListener('DOMContentLoaded', function () {
                   sendButton.disabled = true;
                   const executionResultStr = await backend.executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments));
                   systemBubble.setResult('approved', executionResultStr);
-                  aiChatApiOptionsBody.messages.push({
+                  let mcpMessages = {
                     role: 'user',
                     content: [
                       { type: 'text', text: '[' + toolCall.server_name + ' -> ' + toolCall.tool_name + '] 执行结果:' },
                       { type: 'text', text: executionResultStr },
                     ],
-                  });
+                  };
+                  aiChatApiOptionsBody.messages.push(mcpMessages);
+                  messagesHistory.push({ messages: mcpMessages, isMcp: true });
+                  saveHistory(window.firstUserMessage, messagesHistory);
                   aiBubble = chat.addAIBubble();
                   aiBubble.updateStream('');
                   requestAiChat(aiBubble.updateStream.bind(aiBubble), onDone, onError, controller.signal);

@@ -21,6 +21,7 @@ function initializeHistoryPanel(backend) {
         const title = document.createElement('div');
         title.className = 'history-item-title';
         title.textContent = filename.replace('.json', '');
+        title.textContent = title.textContent.slice(0, title.textContent.lastIndexOf('_'));
         info.appendChild(title);
         const timestamp = document.createElement('div');
         timestamp.className = 'history-item-timestamp';
@@ -49,7 +50,7 @@ function initializeHistoryPanel(backend) {
         actions.appendChild(deleteBtn);
         item.appendChild(actions);
         item.addEventListener('click', () => {
-          console.log(`History item clicked: ${filename}`);
+          window.loadHistory(filename);
         });
         chatHistoryContainer.appendChild(item);
       });
@@ -59,4 +60,15 @@ function initializeHistoryPanel(backend) {
     }
   };
   window.loadHistoryList();
+  async function saveHistory(name, value) {
+    if (!backend) {
+      return;
+    }
+    try {
+      await backend.saveHistory(name, value);
+    } catch (e) {
+      console.error('Error saving history:', e);
+    }
+  }
+  window.saveHistory = saveHistory;
 }
