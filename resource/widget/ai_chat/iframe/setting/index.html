@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Settings</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="settings-layout">
+      <aside class="sidebar">
+        <nav>
+          <ul>
+            <li class="active" data-tab="provider" title="模型列表">
+              <a href="#">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-sliders" viewBox="0 0 16 16">
+                  <path fill-rule="evenodd" d="M11.5 2a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM9.05 3a2.5 2.5 0 0 1 4.9 0H16v1h-2.05a2.5 2.5 0 0 1-4.9 0H0V3h9.05zM4.5 7a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM2.05 8a2.5 2.5 0 0 1 4.9 0H16v1H6.95a2.5 2.5 0 0 1-4.9 0H0V8h2.05zm9.45 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm-2.45 1a2.5 2.5 0 0 1 4.9 0H16v1h-2.05a2.5 2.5 0 0 1-4.9 0H0v-1h9.05z" />
+                </svg>
+              </a>
+            </li>
+            <li data-tab="tools" title="工具">
+              <a href="#">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-gear-fill" viewBox="0 0 16 16">
+                  <path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311a1.464 1.464 0 0 1-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413-1.4-2.397 0-2.81l.34-.1a1.464 1.464 0 0 1 .872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.858 2.929 2.929 0 0 1 0 5.858z" />
+                </svg>
+              </a>
+            </li>
+          </ul>
+        </nav>
+      </aside>
+      <main class="main-content">
+        <div id="provider" class="tab-content active">
+          <div class="container">
+            <header>
+              <h1>模型列表</h1>
+            </header>
+
+            <div class="form-group">
+              <div class="config-file-controls">
+                <select id="config-file"></select>
+                <button id="add-config-btn">+</button>
+                <button id="edit-config-btn">✎</button>
+                <button id="delete-config-btn">🗑</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="base-url">OpenAI 基础 URL</label>
+              <input type="text" id="base-url" value="" />
+            </div>
+
+            <div class="form-group">
+              <label for="api-key">API 密钥</label>
+              <input type="password" id="api-key" value="" />
+            </div>
+
+            <div class="form-group">
+              <label for="model-name-input">模型</label>
+              <div class="model-input-container">
+                <div class="custom-select-container">
+                  <input type="text" id="model-name-input" autocomplete="off" value="" />
+                  <div id="model-options-list" class="custom-select-options"></div>
+                </div>
+                <button id="refresh-models-btn" title="刷新模型列表">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+                    <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="tools" class="tab-content"></div>
+      </main>
+    </div>
+    <script src="script.js" defer></script>
+
+    <div id="custom-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content">
+        <h2 id="modal-title"></h2>
+        <p id="modal-text"></p>
+        <input type="text" id="modal-input" style="display: none;" />
+        <div class="modal-buttons">
+          <button id="modal-cancel-btn">取消</button>
+          <button id="modal-confirm-btn">确认</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

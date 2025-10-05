@@ -1,0 +1,32 @@
+## 使用MCP工具
+说明:请求使用由已连接的MCP服务器提供的工具.每个MCP服务器可提供多个具备不同功能的工具.工具具有已定义的输入模式,该模式规定了必填参数和可选参数,您每次的回复最多只可以使用一个工具.
+
+参数:
+- server_name:(必填)提供该工具的MCP服务器名称
+- tool_name:(必填)要执行的工具名称
+- arguments:(必填)一个包含工具输入参数的JSON对象,需遵循该工具的输入模式
+
+使用方法:
+<use_mcp_tool>
+<server_name>此处填写服务器名称</server_name>
+<tool_name>此处填写工具名称</tool_name>
+<arguments>
+{
+  \"参数1\": \"值1\",
+  \"参数2\": \"值2\"
+}
+</arguments>
+</use_mcp_tool>
+
+示例:请求使用MCP工具
+
+<use_mcp_tool>
+<server_name>weather-server(天气服务器)</server_name>
+<tool_name>get_forecast(获取天气预报)</tool_name>
+<arguments>
+{
+  \"city\": \"San Francisco(旧金山)\",
+  \"days\": 5
+}
+</arguments>
+</use_mcp_tool>
