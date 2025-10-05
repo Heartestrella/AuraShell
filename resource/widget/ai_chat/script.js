@@ -306,7 +306,7 @@ window.loadHistory = function (filename) {
       return;
     }
     window.firstUserMessage = filename.replace('.json', '');
-    window.messagesHistory = history;
+    window.messagesHistory = JSON.parse(history);
   });
 };
 function initializeBackendConnection(callback) {
