@@ -75,6 +75,9 @@ class AIBubble {
     this.fullContent = '';
     this.isStreaming = false;
   }
+  getHtml() {
+    return this.contentElement.innerHTML;
+  }
   setHTML(markdown) {
     this.isStreaming = false;
     this.fullContent = markdown;
@@ -357,14 +360,20 @@ document.addEventListener('DOMContentLoaded', function () {
         cancelButton.removeEventListener('click', abortRequest);
         isRequesting = false;
         sendButton.disabled = false;
-        let toolCallHandled = false;
         if (backend) {
           const result = await backend.processMessage(fullContent);
           if (result) {
             try {
               const toolCall = JSON.parse(result);
               if (toolCall && toolCall.server_name && toolCall.tool_name && toolCall.arguments) {
-                toolCallHandled = true;
+                let xml = toolCall._xml_;
+                if (xml) {
+                  let newContent = fullContent.replace(xml, '');
+                  if (newContent == '') {
+                    newContent = toolCall.server_name + ' -> ' + toolCall.tool_name;
+                  }
+                  aiBubble.setHTML(newContent);
+                }
                 const toolName = `${toolCall.server_name} -> ${toolCall.tool_name}`;
                 const toolArgsStr = JSON.stringify(toolCall.arguments, null, 2);
                 const systemBubble = chat.addSystemBubble(toolName, toolArgsStr);

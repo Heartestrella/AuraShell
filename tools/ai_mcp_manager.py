@@ -93,7 +93,8 @@ class AIMCPManager:
                 "server_name": server_name,
                 "tool_name": tool_name,
                 "arguments": arguments,
-                "auto_approve": auto_approve
+                "auto_approve": auto_approve,
+                "_xml_": xml_content
             }
         except ET.ParseError:
             return None
