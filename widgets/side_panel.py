@@ -16,6 +16,7 @@ class TabButton(QPushButton):
         self.setMinimumHeight(30)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
 
+
 class CustomTabBar(QScrollArea):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -35,6 +36,7 @@ class CustomTabBar(QScrollArea):
         self.horizontalScrollBar().setValue(
             self.horizontalScrollBar().value() - delta)
         event.accept()
+
 
 class SidePanelWidget(QWidget):
     tabActivity = pyqtSignal()
@@ -68,7 +70,8 @@ class SidePanelWidget(QWidget):
         widget.set_tab_id(tab_id)
         button = TabButton(title)
         button.clicked.connect(lambda _, tid=tab_id: self._on_tab_clicked(tid))
-        button.customContextMenuRequested.connect(lambda pos, tid=tab_id: self._show_tab_context_menu(pos, tid))
+        button.customContextMenuRequested.connect(
+            lambda pos, tid=tab_id: self._show_tab_context_menu(pos, tid))
         button.installEventFilter(self)
         self.tab_bar.layout.addWidget(button)
         self.page_stack.addWidget(widget)
@@ -160,9 +163,11 @@ class SidePanelWidget(QWidget):
         button = self.tabs[tab_id]['button']
         if isinstance(widget, EditorWidget):
             menu = CheckableMenu(parent=self)
-            auto_save_action = Action(FIF.SAVE, self.tr("Auto-save on focus lost (Global)"))
+            auto_save_action = Action(FIF.SAVE, self.tr(
+                "Auto-save on focus lost (Global)"))
             auto_save_action.setCheckable(True)
-            auto_save_action.setChecked(self.scm.read_config().get("editor_auto_save_on_focus_lost", False))
+            auto_save_action.setChecked(self.scm.read_config().get(
+                "editor_auto_save_on_focus_lost", False))
             auto_save_action.triggered.connect(self._toggle_global_auto_save)
             menu.addAction(auto_save_action)
             menu.addSeparator()
