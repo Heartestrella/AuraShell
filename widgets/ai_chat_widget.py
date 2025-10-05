@@ -7,6 +7,7 @@ from PyQt5.QtGui import QKeyEvent, QDesktopServices
 from tools.setting_config import SCM
 from tools.ai_model_manager import AIModelManager
 from tools.ai_mcp_manager import AIMCPManager
+from tools.ai_history_manager import AIHistoryManager
 import json
 import typing
 
@@ -22,6 +23,7 @@ class AIBridge(QObject):
         self.main_window = main_window
         self.model_manager = AIModelManager()
         self.mcp_manager = AIMCPManager()
+        self.history_manager = AIHistoryManager()
         self._register_tool_handlers()
 
     def _register_tool_handlers(self):
@@ -153,6 +155,40 @@ class AIBridge(QObject):
         except Exception as e:
             print(f"Error generating system prompt: {e}")
             return ""
+
+    @pyqtSlot(str, str)
+    def saveHistory(self, conversation_json, first_message):
+        try:
+            conversation = json.loads(conversation_json)
+            self.history_manager.save_history(conversation, first_message)
+        except Exception as e:
+            print(f"Error saving chat history: {e}")
+
+    @pyqtSlot(result=str)
+    def listHistories(self):
+        try:
+            histories = self.history_manager.list_histories()
+            return json.dumps(histories)
+        except Exception as e:
+            print(f"Error listing chat histories: {e}")
+            return "[]"
+
+    @pyqtSlot(str, result=str)
+    def loadHistory(self, filename):
+        try:
+            history = self.history_manager.load_history(filename)
+            return json.dumps(history)
+        except Exception as e:
+            print(f"Error loading chat history: {e}")
+            return "[]"
+
+    @pyqtSlot(str, result=bool)
+    def deleteHistory(self, filename):
+        try:
+            return self.history_manager.delete_history(filename)
+        except Exception as e:
+            print(f"Error deleting chat history: {e}")
+            return False
 
 
 class AiChatWidget(QWidget):

@@ -284,6 +284,7 @@ function handlePaste(event) {
     event.preventDefault();
   }
 }
+let messagesHistory = [];
 let aiChatApiOptionsBody = {
   model: '',
   temperature: 0.6,
@@ -324,6 +325,7 @@ document.addEventListener('DOMContentLoaded', function () {
     langPrefix: 'hljs language-',
   });
   const chat = new ChatController('.chat-body');
+  const chatHistoryContainer = document.querySelector('.chat-history');
   const textarea = document.querySelector('textarea[id="message-input"]');
   const sendButton = document.querySelector('.send-button');
   let isRequesting = false;
@@ -337,6 +339,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     const message = textarea.value.trim();
     if (message || pastedImageDataUrls.length > 0) {
+      chatHistoryContainer.style.display = 'none';
       isRequesting = true;
       sendButton.disabled = true;
       chat.addUserBubble(message, [...pastedImageDataUrls]);
@@ -461,6 +464,12 @@ document.addEventListener('DOMContentLoaded', function () {
   if (sendButton) {
     sendButton.addEventListener('click', sendMessage);
   }
+  const newChatButton = document.querySelector('.new-chat-button');
+  if (newChatButton) {
+    newChatButton.addEventListener('click', () => {
+      window.location.reload();
+    });
+  }
   const settingsBtn = document.getElementById('settings-btn');
   const settingsPopup = document.getElementById('settings-popup');
   const closeSettingsBtn = document.getElementById('close-settings-btn');
@@ -496,10 +505,14 @@ document.addEventListener('DOMContentLoaded', function () {
       settingsPopup.style.display = 'none';
     }
   });
-  initializeBackendConnection();
+  initializeBackendConnection((backend) => {
+    initializeHistoryPanel(backend);
+  });
   function updateAIBubbleMaxWidth() {
     const chatBody = document.querySelector('.chat-body');
-    if (!chatBody) return;
+    if (!chatBody) {
+      return;
+    }
     const maxWidth = chatBody.clientWidth;
     let styleTag = document.getElementById('dynamic-ai-bubble-style');
     if (!styleTag) {
