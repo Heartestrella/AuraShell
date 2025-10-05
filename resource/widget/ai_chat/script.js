@@ -296,6 +296,7 @@ let aiChatApiOptionsBody = {
 };
 window.firstUserMessage = '';
 let backend;
+const chat = new ChatController('.chat-body');
 window.loadHistory = function (filename) {
   initializeBackendConnection(async (backend) => {
     if (!backend) {
@@ -338,7 +339,6 @@ document.addEventListener('DOMContentLoaded', function () {
     },
     langPrefix: 'hljs language-',
   });
-  const chat = new ChatController('.chat-body');
   const chatHistoryContainer = document.querySelector('.chat-history');
   const textarea = document.querySelector('textarea[id="message-input"]');
   const sendButton = document.querySelector('.send-button');
