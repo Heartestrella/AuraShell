@@ -4,14 +4,27 @@ class ChatController {
     if (!this.chatBody) {
       throw new Error(`Container element '${chatBodySelector}' not found.`);
     }
+    this.userHasScrolled = false;
+    this.chatBody.addEventListener('scroll', () => {
+      const threshold = 15;
+      const isAtBottom = this.chatBody.scrollHeight - this.chatBody.scrollTop - this.chatBody.clientHeight < threshold;
+      this.userHasScrolled = !isAtBottom;
+    });
+  }
+  scrollToBottom() {
+    setTimeout(() => {
+      this.chatBody.scrollTop = this.chatBody.scrollHeight;
+    }, 100);
   }
   addUserBubble(text, imageUrls) {
     const bubble = new UserBubble(this.chatBody);
     bubble.setContent(text, imageUrls);
+    this.userHasScrolled = false;
+    this.scrollToBottom();
     return bubble;
   }
   addAIBubble() {
-    const bubble = new AIBubble(this.chatBody);
+    const bubble = new AIBubble(this.chatBody, this);
     return bubble;
   }
   addSystemBubble(toolName, code) {
@@ -61,7 +74,7 @@ class UserBubble {
   }
 }
 class AIBubble {
-  constructor(container) {
+  constructor(container, chatController) {
     const template = `<div class="message-group ai">
               <div class="message-sender">
                 <span class="icon">💬</span>
@@ -74,6 +87,7 @@ class AIBubble {
     this.contentElement = this.element.querySelector('.message-content');
     this.fullContent = '';
     this.isStreaming = false;
+    this.chatController = chatController;
   }
   getHtml() {
     return this.contentElement.innerHTML;
@@ -84,6 +98,9 @@ class AIBubble {
     const dirtyHtml = marked.parse(markdown);
     const cleanHtml = DOMPurify.sanitize(dirtyHtml);
     this.contentElement.innerHTML = cleanHtml;
+    if (this.chatController && !this.chatController.userHasScrolled) {
+      this.chatController.scrollToBottom();
+    }
   }
   updateStream(chunk) {
     if (!this.isStreaming) {
@@ -94,12 +111,18 @@ class AIBubble {
     const dirtyHtml = marked.parse(this.fullContent);
     const cleanHtml = DOMPurify.sanitize(dirtyHtml);
     this.contentElement.innerHTML = cleanHtml + '<div class="loader"></div>';
+    if (this.chatController && !this.chatController.userHasScrolled) {
+      this.chatController.scrollToBottom();
+    }
   }
   finishStream() {
     this.isStreaming = false;
     const dirtyHtml = marked.parse(this.fullContent);
     const cleanHtml = DOMPurify.sanitize(dirtyHtml);
     this.contentElement.innerHTML = cleanHtml;
+    if (this.chatController && !this.chatController.userHasScrolled) {
+      this.chatController.scrollToBottom();
+    }
   }
 }
 class SystemBubble {
@@ -404,6 +427,9 @@ document.addEventListener('DOMContentLoaded', function () {
                   systemBubble.setResult('rejected', 'User rejected the tool call.');
                 }
               }
+              if (this.chatController && !this.chatController.userHasScrolled) {
+                this.chatController.scrollToBottom();
+              }
             } catch (e) {
               console.error('Failed to process or execute MCP tool call:', e);
             }
@@ -474,16 +500,13 @@ document.addEventListener('DOMContentLoaded', function () {
   function updateAIBubbleMaxWidth() {
     const chatBody = document.querySelector('.chat-body');
     if (!chatBody) return;
-
     const maxWidth = chatBody.clientWidth;
     let styleTag = document.getElementById('dynamic-ai-bubble-style');
-
     if (!styleTag) {
       styleTag = document.createElement('style');
       styleTag.id = 'dynamic-ai-bubble-style';
       document.head.appendChild(styleTag);
     }
-
     styleTag.innerHTML = `
       .message-group.ai {
         max-width: ${maxWidth}px;
@@ -603,7 +626,6 @@ async function requestAiChat(onStream, onDone, onError, signal) {
         console.error('Error getting system prompt from backend:', err);
       }
     }
-
     let response;
     while (true) {
       if (signal.aborted) {
@@ -622,7 +644,6 @@ async function requestAiChat(onStream, onDone, onError, signal) {
       }
       break;
     }
-
     if (!response.ok) {
       const errorText = await response.text();
       const error = new Error(`${response.status} ${response.statusText}\n${errorText}`);
