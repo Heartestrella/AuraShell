@@ -16,35 +16,71 @@ class ChatController {
       this.chatBody.scrollTop = this.chatBody.scrollHeight;
     }, 100);
   }
-  addUserBubble(text, imageUrls) {
-    const bubble = new UserBubble(this.chatBody);
+  addUserBubble(text, imageUrls, messageIndex = -1, historyIndex = -1) {
+    const bubble = new UserBubble(this.chatBody, messageIndex, historyIndex);
     bubble.setContent(text, imageUrls);
     this.userHasScrolled = false;
     this.scrollToBottom();
     return bubble;
   }
-  addAIBubble() {
-    const bubble = new AIBubble(this.chatBody, this);
+  addAIBubble(messageIndex = -1, historyIndex = -1) {
+    const bubble = new AIBubble(this.chatBody, this, messageIndex, historyIndex);
     return bubble;
   }
-  addSystemBubble(toolName, code) {
-    const bubble = new SystemBubble(this.chatBody);
+  addSystemBubble(toolName, code, relatedMessageIndex = -1, historyIndex = -1) {
+    const bubble = new SystemBubble(this.chatBody, relatedMessageIndex, historyIndex);
     bubble.setToolCall(toolName, code);
     return bubble;
   }
 }
 class UserBubble {
-  constructor(container) {
-    const template = `<div class="message-group user">
+  constructor(container, messageIndex = -1, historyIndex = -1) {
+    const template = `<div class="message-group user"${messageIndex >= 0 ? ` data-message-index="${messageIndex}"` : ''}${historyIndex >= 0 ? ` data-history-index="${historyIndex}"` : ''}>
               <div class="message-sender">
                 <span class="icon">👤</span>
                 <div>用户</div>
+                <div class="message-actions">
+                  <button class="edit-button" title="编辑">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                    </svg>
+                  </button>
+                  <button class="retry-button" title="重试">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"/>
+                      <path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z"/>
+                    </svg>
+                  </button>
+                  <button class="delete-button" title="删除">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                      <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
               <div class="user-response"></div>
             </div>`;
     container.insertAdjacentHTML('beforeend', template);
     this.element = container.lastElementChild;
     this.contentElement = this.element.querySelector('.user-response');
+    this.messageIndex = messageIndex;
+    this.historyIndex = historyIndex;
+    this.bindEventListeners();
+  }
+  bindEventListeners() {
+    const editBtn = this.element.querySelector('.edit-button');
+    const retryBtn = this.element.querySelector('.retry-button');
+    const deleteBtn = this.element.querySelector('.delete-button');
+    if (editBtn) {
+      editBtn.addEventListener('click', () => editUserMessage(this.element));
+    }
+    if (retryBtn) {
+      retryBtn.addEventListener('click', () => retryUserMessage(this.element));
+    }
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', () => deleteUserMessage(this.element));
+    }
   }
   setContent(text, imageUrls) {
     this.contentElement.innerHTML = '';
@@ -74,11 +110,25 @@ class UserBubble {
   }
 }
 class AIBubble {
-  constructor(container, chatController) {
-    const template = `<div class="message-group ai">
+  constructor(container, chatController, messageIndex = -1, historyIndex = -1) {
+    const template = `<div class="message-group ai"${messageIndex >= 0 ? ` data-message-index="${messageIndex}"` : ''}${historyIndex >= 0 ? ` data-history-index="${historyIndex}"` : ''}>
               <div class="message-sender">
                 <span class="icon">💬</span>
                 <div>智能助手</div>
+                <div class="message-actions">
+                  <button class="retry-button" title="重试">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"/>
+                      <path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z"/>
+                    </svg>
+                  </button>
+                  <button class="delete-button" title="删除">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                      <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
               <div class="message-content"></div>
             </div>`;
@@ -88,6 +138,19 @@ class AIBubble {
     this.fullContent = '';
     this.isStreaming = false;
     this.chatController = chatController;
+    this.messageIndex = messageIndex;
+    this.historyIndex = historyIndex;
+    this.bindEventListeners();
+  }
+  bindEventListeners() {
+    const retryBtn = this.element.querySelector('.retry-button');
+    const deleteBtn = this.element.querySelector('.delete-button');
+    if (retryBtn) {
+      retryBtn.addEventListener('click', () => retryAIMessage(this.element));
+    }
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', () => deleteAIMessage(this.element));
+    }
   }
   getHtml() {
     return this.contentElement.innerHTML;
@@ -126,8 +189,8 @@ class AIBubble {
   }
 }
 class SystemBubble {
-  constructor(container) {
-    const template = `<div class="message-group system">
+  constructor(container, relatedMessageIndex = -1, historyIndex = -1) {
+    const template = `<div class="message-group system"${relatedMessageIndex >= 0 ? ` data-related-message-index="${relatedMessageIndex}"` : ''}${historyIndex >= 0 ? ` data-history-index="${historyIndex}"` : ''}>
               <div class="tool-call-card">
                 <div class="tool-call-header">
                   <span class="tool-name"></span>
@@ -143,33 +206,131 @@ class SystemBubble {
             </div>`;
     container.insertAdjacentHTML('beforeend', template);
     this.element = container.lastElementChild;
+    this.toolCardElement = this.element.querySelector('.tool-call-card');
     this.toolNameElement = this.element.querySelector('.tool-name');
     this.detailElement = this.element.querySelector('.tool-call-body .code-block');
+    this.bodyContainer = this.element.querySelector('.tool-call-body');
     this.resultContainer = this.element.querySelector('.tool-call-result');
     this.resultContentElement = this.element.querySelector('.tool-call-result .code-block');
     this.headerElement = this.element.querySelector('.tool-call-header');
     this.statusIconElement = this.element.querySelector('.tool-status-icon');
   }
+  isDangerousTool(toolName, detail) {
+    if (!toolName.toLowerCase().includes('exe_shell')) {
+      return '';
+    }
+    const dangerousCommands = ['rm ', 'chmod ', 'mv ', 'killall ', 'kill ', 'mkfs '];
+    let args = detail;
+    try {
+      while (typeof args === 'string') {
+        args = JSON.parse(args);
+      }
+    } catch (e) {
+      return '';
+    }
+    if (typeof args !== 'object' || args === null || typeof args.shell !== 'string') {
+      return '';
+    }
+    const shellCommand = args.shell;
+    const shellCommandLower = shellCommand.toLowerCase();
+    for (const cmd of dangerousCommands) {
+      if (shellCommandLower.startsWith(cmd)) {
+        return shellCommand.substring(0, cmd.length);
+      }
+    }
+    return '';
+  }
+  _prettyPrintXml(xml) {
+    const PADDING = '  ';
+    const reg = /(>)(<)(\/*)/g;
+    let pad = 0;
+    xml = xml.replace(reg, '$1\n$2$3');
+    return xml
+      .split('\n')
+      .map((node) => {
+        let indent = 0;
+        if (node.match(/.+<\/\w[^>]*>$/)) {
+          indent = 0;
+        } else if (node.match(/^<\/\w/)) {
+          if (pad !== 0) {
+            pad -= 1;
+          }
+        } else if (node.match(/^<\w[^>]*[^\/]>.*$/)) {
+          indent = 1;
+        }
+        const padding = PADDING.repeat(pad);
+        pad += indent;
+        return padding + node;
+      })
+      .join('\n');
+  }
+  _formatAndHighlight(code) {
+    let content = code.trim();
+    if (content.startsWith('"') && content.endsWith('"')) {
+      content = content.substring(1, content.length - 1);
+    }
+    try {
+      const jsonObj = JSON.parse(content);
+      const formatted = JSON.stringify(jsonObj, null, 2);
+      return hljs.highlight(formatted, { language: 'json' }).value;
+    } catch (e) {}
+    const trimmedContent = content.trim();
+    if (trimmedContent.startsWith('<') && trimmedContent.endsWith('>')) {
+      const formattedXml = this._prettyPrintXml(content);
+      return hljs.highlight(formattedXml, { language: 'xml' }).value;
+    }
+    return hljs.highlight(code, { language: 'plaintext' }).value;
+  }
   setToolCall(toolName, detail) {
     this.toolNameElement.textContent = toolName;
-    this.detailElement.textContent = detail;
+    const dangerousCmd = this.isDangerousTool(toolName, detail);
+    if (dangerousCmd) {
+      this.toolCardElement.classList.add('dangerous');
+      this.toolNameElement.innerHTML = '⚠️ ' + this.toolNameElement.textContent;
+      try {
+        let args = detail;
+        while (typeof args === 'string') {
+          args = JSON.parse(args);
+        }
+        const fullCommand = args.shell;
+        const restOfCommand = fullCommand.substring(dangerousCmd.length);
+        this.detailElement.innerHTML = '';
+        this.detailElement.appendChild(document.createTextNode('{\n  "shell": "'));
+        const dangerousSpan = document.createElement('span');
+        dangerousSpan.className = 'dangerous-command';
+        dangerousSpan.textContent = dangerousCmd;
+        this.detailElement.appendChild(dangerousSpan);
+        this.detailElement.appendChild(document.createTextNode(restOfCommand));
+        this.detailElement.appendChild(document.createTextNode('"\n}'));
+      } catch (e) {
+        this.detailElement.innerHTML = this._formatAndHighlight(detail);
+      }
+    } else {
+      this.detailElement.innerHTML = this._formatAndHighlight(detail);
+    }
   }
   setResult(status, content) {
     this.statusIconElement.innerHTML = '';
+    this.bodyContainer.style.display = 'none';
     if (status === 'approved') {
-      this.resultContentElement.textContent = content;
+      this.resultContentElement.innerHTML = this._formatAndHighlight(content);
       this.statusIconElement.textContent = '▼';
       this.statusIconElement.classList.add('success');
       this.headerElement.addEventListener('click', () => {
         if (this.resultContentElement.textContent) {
           const isHidden = this.resultContainer.style.display === 'none';
           this.resultContainer.style.display = isHidden ? 'block' : 'none';
+          this.bodyContainer.style.display = isHidden ? 'block' : 'none';
           this.statusIconElement.textContent = isHidden ? '▲' : '▼';
         }
       });
     } else if (status === 'rejected') {
       this.statusIconElement.textContent = '❌';
       this.resultContainer.style.display = 'none';
+      this.headerElement.addEventListener('click', () => {
+        const isHidden = this.bodyContainer.style.display === 'none';
+        this.bodyContainer.style.display = isHidden ? 'block' : 'none';
+      });
     }
   }
   async requireApproval() {
@@ -177,15 +338,12 @@ class SystemBubble {
       const approvalContainer = document.getElementById('approve-reject-buttons');
       const approveBtn = approvalContainer.querySelector('.cmd-button');
       const rejectBtn = approvalContainer.querySelector('.reject-button');
-
       approvalContainer.style.display = 'flex';
-
       const cleanup = () => {
         approvalContainer.style.display = 'none';
         approveBtn.replaceWith(approveBtn.cloneNode(true));
         rejectBtn.replaceWith(rejectBtn.cloneNode(true));
       };
-
       approveBtn.addEventListener(
         'click',
         () => {
@@ -194,7 +352,6 @@ class SystemBubble {
         },
         { once: true },
       );
-
       rejectBtn.addEventListener(
         'click',
         () => {
@@ -207,6 +364,224 @@ class SystemBubble {
   }
 }
 let pastedImageDataUrls = [];
+function editUserMessage(bubbleElement) {
+  const messageIndex = parseInt(bubbleElement.dataset.messageIndex);
+  const historyIndex = parseInt(bubbleElement.dataset.historyIndex);
+  if (isNaN(historyIndex) || historyIndex < 0) {
+    console.error('Invalid history index');
+    return;
+  }
+  const messageItem = window.messagesHistory[historyIndex];
+  if (!messageItem || messageItem.messages.role !== 'user' || messageItem.isMcp) {
+    console.error('Can only edit user messages');
+    return;
+  }
+  const messageContent = messageItem.messages.content;
+  let text = '';
+  let images = [];
+  if (Array.isArray(messageContent)) {
+    messageContent.forEach((item) => {
+      if (item.type === 'text') {
+        text = item.text || '';
+      } else if (item.type === 'image_url' && item.image_url) {
+        images.push(item.image_url.url);
+      }
+    });
+  } else if (typeof messageContent === 'string') {
+    text = messageContent;
+  }
+  truncateFromMessage(messageIndex, historyIndex);
+  const textarea = document.querySelector('#message-input');
+  if (textarea) {
+    textarea.value = text;
+    const event = new Event('input', { bubbles: true });
+    textarea.dispatchEvent(event);
+  }
+  pastedImageDataUrls = [...images];
+  renderImagePreviews();
+  if (textarea) {
+    textarea.focus();
+  }
+}
+function retryUserMessage(bubbleElement) {
+  editUserMessage(bubbleElement);
+  setTimeout(() => {
+    const sendButton = document.querySelector('.send-button');
+    if (sendButton) {
+      sendButton.click();
+    }
+  }, 100);
+}
+function deleteUserMessage(bubbleElement) {
+  const messageIndex = parseInt(bubbleElement.dataset.messageIndex);
+  const historyIndex = parseInt(bubbleElement.dataset.historyIndex);
+  if (isNaN(historyIndex) || historyIndex < 0) {
+    console.error('Invalid history index');
+    return;
+  }
+  const messageItem = window.messagesHistory[historyIndex];
+  if (!messageItem || messageItem.messages.role !== 'user' || messageItem.isMcp) {
+    console.error('Can only delete user messages');
+    return;
+  }
+  truncateFromMessage(messageIndex, historyIndex);
+}
+function truncateFromMessage(messageIndex, historyIndex) {
+  if (!isNaN(messageIndex) && messageIndex >= 0) {
+    const hasSystemMessage = aiChatApiOptionsBody.messages.length > 0 && aiChatApiOptionsBody.messages[0].role === 'system';
+    if (hasSystemMessage) {
+      aiChatApiOptionsBody.messages = aiChatApiOptionsBody.messages.slice(0, messageIndex);
+    } else {
+      const actualIndex = messageIndex - 1;
+      if (actualIndex >= 0) {
+        aiChatApiOptionsBody.messages = aiChatApiOptionsBody.messages.slice(0, actualIndex);
+      } else {
+        aiChatApiOptionsBody.messages = [];
+      }
+    }
+  }
+  window.messagesHistory = window.messagesHistory.slice(0, historyIndex);
+  const bubblesToRemove = document.querySelectorAll('[data-history-index]');
+  bubblesToRemove.forEach((bubble) => {
+    const bubbleHistoryIndex = parseInt(bubble.dataset.historyIndex);
+    if (bubbleHistoryIndex >= historyIndex) {
+      bubble.remove();
+    }
+  });
+  if (typeof window.saveHistory === 'function' && window.firstUserMessage) {
+    window.saveHistory(window.firstUserMessage, window.messagesHistory);
+  }
+}
+function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHistoryIndex, controller, onComplete) {
+  const cancelButtonContainer = document.getElementById('cancel-button-container');
+  const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
+  const sendButton = document.querySelector('.send-button');
+  return async (fullContent) => {
+    aiBubble.finishStream();
+    const assistantMessage = {
+      role: 'assistant',
+      content: fullContent,
+    };
+    aiChatApiOptionsBody.messages.push(assistantMessage);
+    messagesHistory.push({ messages: assistantMessage, isMcp: false });
+    saveHistory(window.firstUserMessage, messagesHistory);
+    cancelButton.removeEventListener('click', () => controller.abort());
+    cancelButtonContainer.style.display = 'none';
+    if (backend) {
+      const result = await backend.processMessage(fullContent);
+      if (result) {
+        try {
+          const toolCall = JSON.parse(result);
+          if (toolCall && toolCall.server_name && toolCall.tool_name && toolCall.arguments) {
+            let xml = toolCall._xml_;
+            if (xml) {
+              let newContent = fullContent.replace(xml, '');
+              if (newContent == '') {
+                newContent = toolCall.server_name + ' -> ' + toolCall.tool_name;
+              }
+              aiBubble.setHTML(newContent);
+            }
+            const toolName = `${toolCall.server_name} -> ${toolCall.tool_name}`;
+            const toolArgsStr = JSON.stringify(toolCall.arguments, null, 2);
+            const systemBubble = chat.addSystemBubble(toolName, toolArgsStr, aiMessageIndex, aiHistoryIndex);
+            let userDecision = 'rejected';
+            if (toolCall['auto_approve'] === true) {
+              userDecision = 'approved';
+            } else {
+              userDecision = await systemBubble.requireApproval();
+            }
+            if (userDecision === 'approved') {
+              cancelButtonContainer.style.display = 'flex';
+              cancelButton.addEventListener('click', () => controller.abort());
+              sendButton.disabled = true;
+              const executionResultStr = await backend.executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments));
+              systemBubble.setResult('approved', executionResultStr);
+              let mcpMessages = {
+                role: 'user',
+                content: [
+                  { type: 'text', text: '[' + toolCall.server_name + ' -> ' + toolCall.tool_name + '] 执行结果:' },
+                  { type: 'text', text: executionResultStr },
+                ],
+              };
+              aiChatApiOptionsBody.messages.push(mcpMessages);
+              messagesHistory.push({ messages: mcpMessages, isMcp: true });
+              saveHistory(window.firstUserMessage, messagesHistory);
+              const newAiMessageIndex = aiChatApiOptionsBody.messages.length + messageOffset;
+              const newAiHistoryIndex = messagesHistory.length;
+              const newAiBubble = chat.addAIBubble(newAiMessageIndex, newAiHistoryIndex);
+              newAiBubble.updateStream('');
+              const newHandler = createAIResponseHandler(newAiBubble, messageOffset, newAiMessageIndex, newAiHistoryIndex, controller, onComplete);
+              requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newHandler, controller.signal);
+              return;
+            } else {
+              systemBubble.setResult('rejected', 'User rejected the tool call.');
+            }
+          }
+        } catch (e) {
+          console.error('Failed to process or execute MCP tool call:', e);
+        }
+      }
+    }
+    if (onComplete) {
+      onComplete();
+    }
+  };
+}
+function retryAIMessage(bubbleElement) {
+  const messageIndex = parseInt(bubbleElement.dataset.messageIndex);
+  const historyIndex = parseInt(bubbleElement.dataset.historyIndex);
+  if (isNaN(historyIndex) || historyIndex < 0) {
+    console.error('Invalid history index');
+    return;
+  }
+  const messageItem = window.messagesHistory[historyIndex];
+  if (!messageItem || messageItem.messages.role !== 'assistant') {
+    console.error('Can only retry AI messages');
+    return;
+  }
+  const sendButton = document.querySelector('.send-button');
+  if (sendButton && sendButton.disabled) {
+    console.log('Another request is in progress');
+    return;
+  }
+  truncateFromMessage(messageIndex, historyIndex);
+  const hasSystemMessage = aiChatApiOptionsBody.messages.length > 0 && aiChatApiOptionsBody.messages[0].role === 'system';
+  const messageOffset = hasSystemMessage ? 0 : 1;
+  const aiMessageIndex = aiChatApiOptionsBody.messages.length + messageOffset;
+  const aiHistoryIndex = messagesHistory.length;
+  let aiBubble = chat.addAIBubble(aiMessageIndex, aiHistoryIndex);
+  aiBubble.updateStream('');
+  sendButton.disabled = true;
+  chat.chatBody.classList.add('request-in-progress');
+  const cancelButtonContainer = document.getElementById('cancel-button-container');
+  const controller = new AbortController();
+  const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
+  cancelButton.addEventListener('click', () => controller.abort());
+  cancelButtonContainer.style.display = 'flex';
+  const onComplete = () => {
+    sendButton.disabled = false;
+    chat.chatBody.classList.remove('request-in-progress');
+    if (chat.chatController && !chat.chatController.userHasScrolled) {
+      chat.chatController.scrollToBottom();
+    }
+  };
+  const responseHandler = createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHistoryIndex, controller, onComplete);
+  requestAiChat(aiBubble.updateStream.bind(aiBubble), responseHandler, controller.signal);
+}
+function deleteAIMessage(bubbleElement) {
+  const messageIndex = parseInt(bubbleElement.dataset.messageIndex);
+  const historyIndex = parseInt(bubbleElement.dataset.historyIndex);
+  if (isNaN(historyIndex) || historyIndex < 0) {
+    console.error('Invalid history index');
+    return;
+  }
+  const messageItem = window.messagesHistory[historyIndex];
+  if (!messageItem || messageItem.messages.role !== 'assistant') {
+    console.error('Can only delete AI messages');
+    return;
+  }
+  truncateFromMessage(messageIndex, historyIndex);
+}
 function renderImagePreviews() {
   const inputArea = document.querySelector('.input-area');
   let previewContainer = document.getElementById('image-preview-container');
@@ -311,32 +686,55 @@ window.loadHistory = function (filename) {
     window.firstUserMessage = filename.replace('.json', '');
     window.messagesHistory = JSON.parse(history);
     chat.chatBody.innerHTML = '';
+    let messageIndexOffset = 0;
     for (let i = 0; i < window.messagesHistory.length; i++) {
       const item = window.messagesHistory[i];
       aiChatApiOptionsBody.messages.push(item.messages);
+      if (i === 0 && item.messages.role === 'system') {
+        messageIndexOffset = 0;
+        continue;
+      } else if (i === 0) {
+        messageIndexOffset = 1;
+      }
+      const messageIndex = aiChatApiOptionsBody.messages.length - 1 + messageIndexOffset;
       if (item.messages.role === 'user') {
         if (item.isMcp) {
           continue;
         }
         let userText = '';
+        let imageUrls = [];
         if (Array.isArray(item.messages.content)) {
-          userText = item.messages.content.map((c) => c.text || '').join('\n');
+          item.messages.content.forEach((contentPart) => {
+            if (contentPart.type === 'text') {
+              userText += contentPart.text || '';
+            } else if (contentPart.type === 'image_url' && contentPart.image_url) {
+              imageUrls.push(contentPart.image_url.url);
+            }
+          });
         } else {
           userText = item.messages.content;
         }
-        chat.addUserBubble(userText);
+        chat.addUserBubble(userText, imageUrls, messageIndex, i);
       } else if (item.messages.role === 'assistant') {
-        const aiBubble = chat.addAIBubble();
-        const aiContent = item.messages.content;
+        const aiBubble = chat.addAIBubble(messageIndex, i);
+        let aiContent = item.messages.content;
         aiBubble.setHTML(aiContent);
         const result = await backend.processMessage(aiContent);
         if (result) {
           try {
             const toolCall = JSON.parse(result);
             if (toolCall && toolCall.server_name && toolCall.tool_name && toolCall.arguments) {
+              let xml = toolCall._xml_;
+              if (xml) {
+                let newContent = aiContent.replace(xml, '');
+                if (newContent == '') {
+                  newContent = toolCall.server_name + ' -> ' + toolCall.tool_name;
+                }
+                aiBubble.setHTML(newContent);
+              }
               const toolName = `${toolCall.server_name} -> ${toolCall.tool_name}`;
               const toolArgsStr = JSON.stringify(toolCall.arguments, null, 2);
-              const systemBubble = chat.addSystemBubble(toolName, toolArgsStr);
+              const systemBubble = chat.addSystemBubble(toolName, toolArgsStr, messageIndex, i);
               const nextItem = i + 1 < window.messagesHistory.length ? window.messagesHistory[i + 1] : null;
               if (nextItem && nextItem.isMcp === true) {
                 const resultText = nextItem.messages.content.map((c) => c.text || '').join('\n');
@@ -395,7 +793,15 @@ document.addEventListener('DOMContentLoaded', function () {
     name = name.replace('\n', '').replace('\t', '').replace('\r', '');
     return name.substring(0, 16);
   }
-  function sendMessage() {
+  async function sendMessage() {
+    const approvalContainer = document.getElementById('approve-reject-buttons');
+    if (approvalContainer && approvalContainer.style.display === 'flex') {
+      const rejectBtn = approvalContainer.querySelector('.reject-button');
+      if (rejectBtn) {
+        rejectBtn.click();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
     if (isRequesting) {
       return;
     }
@@ -407,7 +813,12 @@ document.addEventListener('DOMContentLoaded', function () {
       }
       isRequesting = true;
       sendButton.disabled = true;
-      chat.addUserBubble(message, [...pastedImageDataUrls]);
+      chat.chatBody.classList.add('request-in-progress');
+      const hasSystemMessage = aiChatApiOptionsBody.messages.length > 0 && aiChatApiOptionsBody.messages[0].role === 'system';
+      const messageOffset = hasSystemMessage ? 0 : 1;
+      const currentMessageIndex = aiChatApiOptionsBody.messages.length + messageOffset;
+      const currentHistoryIndex = messagesHistory.length;
+      chat.addUserBubble(message, [...pastedImageDataUrls], currentMessageIndex, currentHistoryIndex);
       const userMessageContent = [];
       if (message) {
         userMessageContent.push({
@@ -434,7 +845,9 @@ document.addEventListener('DOMContentLoaded', function () {
       saveHistory(window.firstUserMessage, messagesHistory);
       pastedImageDataUrls = [];
       renderImagePreviews();
-      let aiBubble = chat.addAIBubble();
+      const aiMessageIndex = aiChatApiOptionsBody.messages.length + messageOffset;
+      const aiHistoryIndex = messagesHistory.length;
+      let aiBubble = chat.addAIBubble(aiMessageIndex, aiHistoryIndex);
       aiBubble.updateStream('');
       const cancelButtonContainer = document.getElementById('cancel-button-container');
       const controller = new AbortController();
@@ -442,83 +855,16 @@ document.addEventListener('DOMContentLoaded', function () {
       const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
       cancelButton.addEventListener('click', abortRequest);
       cancelButtonContainer.style.display = 'flex';
-      const onDone = async (fullContent) => {
-        aiBubble.finishStream();
-        const assistantMessage = {
-          role: 'assistant',
-          content: fullContent,
-        };
-        aiChatApiOptionsBody.messages.push(assistantMessage);
-        messagesHistory.push({ messages: assistantMessage, isMcp: false });
-        saveHistory(window.firstUserMessage, messagesHistory);
-        cancelButtonContainer.style.display = 'none';
-        cancelButton.removeEventListener('click', abortRequest);
+      const onComplete = () => {
         isRequesting = false;
         sendButton.disabled = false;
-        if (backend) {
-          const result = await backend.processMessage(fullContent);
-          if (result) {
-            try {
-              const toolCall = JSON.parse(result);
-              if (toolCall && toolCall.server_name && toolCall.tool_name && toolCall.arguments) {
-                let xml = toolCall._xml_;
-                if (xml) {
-                  let newContent = fullContent.replace(xml, '');
-                  if (newContent == '') {
-                    newContent = toolCall.server_name + ' -> ' + toolCall.tool_name;
-                  }
-                  aiBubble.setHTML(newContent);
-                }
-                const toolName = `${toolCall.server_name} -> ${toolCall.tool_name}`;
-                const toolArgsStr = JSON.stringify(toolCall.arguments, null, 2);
-                const systemBubble = chat.addSystemBubble(toolName, toolArgsStr);
-                let userDecision = 'rejected';
-                if (toolCall['auto_approve'] === true) {
-                  userDecision = 'approved';
-                } else {
-                  userDecision = await systemBubble.requireApproval();
-                }
-                if (userDecision === 'approved') {
-                  cancelButtonContainer.style.display = 'flex';
-                  cancelButton.addEventListener('click', abortRequest);
-                  isRequesting = true;
-                  sendButton.disabled = true;
-                  const executionResultStr = await backend.executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments));
-                  systemBubble.setResult('approved', executionResultStr);
-                  let mcpMessages = {
-                    role: 'user',
-                    content: [
-                      { type: 'text', text: '[' + toolCall.server_name + ' -> ' + toolCall.tool_name + '] 执行结果:' },
-                      { type: 'text', text: executionResultStr },
-                    ],
-                  };
-                  aiChatApiOptionsBody.messages.push(mcpMessages);
-                  messagesHistory.push({ messages: mcpMessages, isMcp: true });
-                  saveHistory(window.firstUserMessage, messagesHistory);
-                  aiBubble = chat.addAIBubble();
-                  aiBubble.updateStream('');
-                  requestAiChat(aiBubble.updateStream.bind(aiBubble), onDone, onError, controller.signal);
-                } else {
-                  systemBubble.setResult('rejected', 'User rejected the tool call.');
-                }
-              }
-              if (this.chatController && !this.chatController.userHasScrolled) {
-                this.chatController.scrollToBottom();
-              }
-            } catch (e) {
-              console.error('Failed to process or execute MCP tool call:', e);
-            }
-          }
+        chat.chatBody.classList.remove('request-in-progress');
+        if (chat.chatController && !chat.chatController.userHasScrolled) {
+          chat.chatController.scrollToBottom();
         }
       };
-      const onError = (error) => {
-        aiBubble.setHTML(`**Error:**\n\`\`\`\n${error.message}\n\`\`\``);
-        cancelButtonContainer.style.display = 'none';
-        cancelButton.removeEventListener('click', abortRequest);
-        isRequesting = false;
-        sendButton.disabled = false;
-      };
-      requestAiChat(aiBubble.updateStream.bind(aiBubble), onDone, onError, controller.signal);
+      const onDone = createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHistoryIndex, controller, onComplete);
+      requestAiChat(aiBubble.updateStream.bind(aiBubble), onDone, controller.signal);
       textarea.value = '';
       resizeTextarea();
     }
@@ -535,6 +881,29 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   if (sendButton) {
     sendButton.addEventListener('click', sendMessage);
+  }
+  const imageButton = document.querySelector('#image-button');
+  if (imageButton) {
+    imageButton.addEventListener('click', () => {
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/*';
+      fileInput.multiple = true;
+      fileInput.addEventListener('change', (event) => {
+        const files = event.target.files;
+        if (files.length > 0) {
+          Array.from(files).forEach((file) => {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+              pastedImageDataUrls.push(e.target.result);
+              renderImagePreviews();
+            };
+            reader.readAsDataURL(file);
+          });
+        }
+      });
+      fileInput.click();
+    });
   }
   const newChatButton = document.querySelector('.new-chat-button');
   if (newChatButton) {
@@ -691,7 +1060,90 @@ function getRequestAiChatApiOptions() {
     body: JSON.stringify(getAiChatApiOptionsBody()),
   };
 }
-async function requestAiChat(onStream, onDone, onError, signal) {
+window.debugChatIndexes = {
+  findByMessageIndex: function (index) {
+    return document.querySelector(`[data-message-index="${index}"]`);
+  },
+  findByHistoryIndex: function (index) {
+    return document.querySelector(`[data-history-index="${index}"]`);
+  },
+  showAllIndexes: function () {
+    const elements = document.querySelectorAll('[data-message-index], [data-history-index]');
+    const info = [];
+    elements.forEach((elem) => {
+      info.push({
+        type: elem.classList.contains('user') ? 'user' : elem.classList.contains('ai') ? 'ai' : 'system',
+        messageIndex: elem.dataset.messageIndex,
+        historyIndex: elem.dataset.historyIndex,
+        relatedIndex: elem.dataset.relatedMessageIndex,
+        element: elem,
+      });
+    });
+    console.table(info);
+    return info;
+  },
+  validateIndexes: function () {
+    const hasSystemMessage = aiChatApiOptionsBody.messages.length > 0 && aiChatApiOptionsBody.messages[0].role === 'system';
+    const offset = hasSystemMessage ? 0 : 1;
+    const issues = [];
+    const elements = document.querySelectorAll('[data-message-index]');
+    elements.forEach((elem) => {
+      const domIndex = parseInt(elem.dataset.messageIndex);
+      const actualIndex = domIndex - offset;
+      if (actualIndex >= 0 && actualIndex < aiChatApiOptionsBody.messages.length) {
+        const message = aiChatApiOptionsBody.messages[actualIndex];
+        const expectedRole = elem.classList.contains('user') ? 'user' : 'assistant';
+        if (message.role !== expectedRole) {
+          issues.push({
+            element: elem,
+            domIndex,
+            actualIndex,
+            expectedRole,
+            actualRole: message.role,
+          });
+        }
+      } else {
+        issues.push({
+          element: elem,
+          domIndex,
+          actualIndex,
+          error: 'Index out of bounds',
+        });
+      }
+    });
+    if (issues.length > 0) {
+      console.error('Index validation issues:', issues);
+    } else {
+      console.log('All indexes are valid');
+    }
+    return issues;
+  },
+  showMessagesState: function () {
+    console.log('System message exists:', aiChatApiOptionsBody.messages.length > 0 && aiChatApiOptionsBody.messages[0].role === 'system');
+    console.log('Total messages:', aiChatApiOptionsBody.messages.length);
+    console.log(
+      'Messages:',
+      aiChatApiOptionsBody.messages.map((m, i) => ({
+        index: i,
+        role: m.role,
+        contentPreview: typeof m.content === 'string' ? m.content.substring(0, 50) + '...' : 'Complex content',
+      })),
+    );
+  },
+  showHistoryState: function () {
+    console.log('Total history items:', messagesHistory.length);
+    console.log(
+      'History:',
+      messagesHistory.map((item, i) => ({
+        index: i,
+        role: item.messages.role,
+        isMcp: item.isMcp || false,
+        contentPreview: typeof item.messages.content === 'string' ? item.messages.content.substring(0, 50) + '...' : 'Complex content',
+      })),
+    );
+  },
+};
+async function requestAiChat(onStream, onDone, signal) {
   let fullContent = '';
   try {
     if (aiChatApiOptionsBody.messages.length === 0 || aiChatApiOptionsBody.messages[0].role !== 'system') {
@@ -737,7 +1189,6 @@ async function requestAiChat(onStream, onDone, onError, signal) {
       }
       return;
     }
-
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -747,14 +1198,24 @@ async function requestAiChat(onStream, onDone, onError, signal) {
         if (onDone) {
           onDone(fullContent);
         }
-        break;
+        return;
       }
+      console.log('done', done, 'value', decoder.decode(value, { stream: true }));
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop();
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const dataStr = line.substring(6).trim();
+          try {
+            const data = JSON.parse(dataStr);
+            if (data.choices[0].finish_reason === 'stop') {
+              if (onDone) {
+                onDone(fullContent);
+              }
+              return;
+            }
+          } catch (e) {}
           if (dataStr === '[DONE]') {
             if (onDone) {
               onDone(fullContent);
@@ -768,24 +1229,22 @@ async function requestAiChat(onStream, onDone, onError, signal) {
               fullContent += contentChunk;
               if (onStream) {
                 onStream(contentChunk);
-                console.log(`[${performance.now().toFixed(2)}] Received chunk:`, contentChunk);
               }
             }
-          } catch (e) {
-            // console.error('Error parsing JSON from stream:', dataStr, e);
-          }
+          } catch (e) {}
         }
       }
     }
   } catch (error) {
     if (error.name === 'AbortError') {
-      console.log('Request aborted by user.');
       if (onDone) {
         onDone(fullContent);
       }
     } else {
-      console.error('Fetch error:', error);
-      if (onError) onError(error);
+      console.error('Fetch Error:', error);
+      if (onError) {
+        onDone('Fetch Error:' + error);
+      }
     }
   }
 }

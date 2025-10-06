@@ -4,17 +4,14 @@
 参数:
 - server_name:(必填)提供该工具的MCP服务器名称
 - tool_name:(必填)要执行的工具名称
-- arguments:(必填)一个包含工具输入参数的JSON对象,需遵循该工具的输入模式
+- arguments:(必填)一个包含工具输入参数的对象,必须遵循该工具的输入模式或格式
 
 使用方法:
 <use_mcp_tool>
 <server_name>此处填写服务器名称</server_name>
 <tool_name>此处填写工具名称</tool_name>
 <arguments>
-{
-  \"参数1\": \"值1\",
-  \"参数2\": \"值2\"
-}
+此处根据参数的输入模式填写有效参数(Json\Xml\String)
 </arguments>
 </use_mcp_tool>
 
@@ -24,9 +21,6 @@
 <server_name>weather-server(天气服务器)</server_name>
 <tool_name>get_forecast(获取天气预报)</tool_name>
 <arguments>
-{
-  \"city\": \"San Francisco(旧金山)\",
-  \"days\": 5
-}
+{ "city": "San Francisco(旧金山)", "days": 5 }
 </arguments>
 </use_mcp_tool>

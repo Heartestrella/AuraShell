@@ -9,6 +9,8 @@ from tools.ai_model_manager import AIModelManager
 from tools.ai_mcp_manager import AIMCPManager
 from tools.ai_history_manager import AIHistoryManager
 import json
+import base64
+import re
 import typing
 
 if typing.TYPE_CHECKING:
@@ -32,17 +34,17 @@ class AIBridge(QObject):
             def exe_shell(shell: str = '', cwd: str = '.'):
                 command = "cd " + cwd + ";" + shell
                 if not command:
-                    return json.dumps({"status": "error", "content": "No command provided."})
+                    return json.dumps({"status": "error", "content": "No command provided."}, ensure_ascii=False)
                 if not self.main_window:
-                    return json.dumps({"status": "error", "content": "Main window not available."})
+                    return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
                 active_widget = self.main_window.get_active_ssh_widget()
                 if not active_widget:
-                    return json.dumps({"status": "error", "content": "No active SSH session found."})
+                    return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
                 worker = None
                 if hasattr(active_widget, 'ssh_widget') and hasattr(active_widget.ssh_widget, 'bridge'):
                     worker = active_widget.ssh_widget.bridge.worker
                 if not worker:
-                    return json.dumps({"status": "error", "content": "Could not find the SSH worker for the active session."})
+                    return json.dumps({"status": "error", "content": "Could not find the SSH worker for the active session."}, ensure_ascii=False)
                 output = []
                 exit_code = [-1]
                 loop = QEventLoop()
@@ -68,36 +70,114 @@ class AIBridge(QObject):
                 except TypeError:
                     pass
                 if not output:
-                    return json.dumps({"status": "error", "content": "Command timed out or produced no output."})
+                    return json.dumps({"status": "error", "content": "Command timed out or produced no output."}, ensure_ascii=False)
                 output_str = "".join(output)
                 return output_str
-            def read_file(file_path: str = None):
+            def read_file(file_path: str = None, show_line: bool = False):
                 if not file_path:
-                    return json.dumps({"status": "error", "content": "No file path provided."})
+                    return json.dumps({"status": "error", "content": "No file path provided."}, ensure_ascii=False)
                 try:
-                    return exe_shell(f"cat {file_path}")
+                    command = f"cat {file_path}"
+                    if show_line:
+                        command = f"awk '{{print NR\"|\" $0}}' {file_path}"
+                    return exe_shell(command)
                 except Exception as e:
-                    return json.dumps({"status": "error", "content": f"Failed to read file: {e}"})
+                    return json.dumps({"status": "error", "content": f"Failed to read file: {e}"}, ensure_ascii=False)
                 pass
-            def add_file(args:str = None):
+            def write_file(args:str = None):
                 """
-                [[addfile path="{文件绝对路径}"]]
-                {文件内容}
-                [[/addfile]]
+                <write_to_file><path>{文件绝对路径}</path><content>{文件内容}</content></write_to_file>
                 """
-                pass
+                if not args:
+                    return json.dumps({"status": "error", "content": "No arguments provided."}, ensure_ascii=False)
+                try:
+                    path_match = re.search(r'<path>(.*?)</path>', args, re.DOTALL)
+                    if not path_match:
+                        return json.dumps({"status": "error", "content": "Missing or invalid <path> tag."}, ensure_ascii=False)
+                    file_path = path_match.group(1).strip()
+                    if not file_path:
+                        return json.dumps({"status": "error", "content": "File path cannot be empty."}, ensure_ascii=False)
+                    content_start_tag = '<content>'
+                    content_end_tag = '</content>'
+                    start_index = args.find(content_start_tag)
+                    end_index = args.rfind(content_end_tag)
+                    if start_index == -1 or end_index == -1 or start_index >= end_index:
+                        return json.dumps({"status": "error", "content": "Missing or invalid <content> tag."}, ensure_ascii=False)
+                    content = args[start_index + len(content_start_tag):end_index]
+                    if content.startswith('\n'):
+                        content = content[1:]
+                    if content.endswith('\n'):
+                        content = content[:-1]
+                    encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+                    command = f"echo '{encoded_content}' | base64 --decode > {file_path}"
+                    return exe_shell(command)
+                except Exception as e:
+                    return json.dumps({"status": "error", "content": f"An unexpected error occurred during file creation: {e}"}, ensure_ascii=False)
             def edit_file(args:str = None):
                 """
-                [[editfile path="{文件绝对路径}" startline={匹配开始行} endline={匹配结束行}]]
-                [[old]]
-                {原文件内容}
-                [[/old]]
-                [[new]]
-                {新内容}
-                [[/new]]
-                [[/editfile]]
+                <edit_file><path>{文件绝对路径}</path><start_line>{开始行号}</start_line><end_line>{结束行号}</end_line><search>{要查找的原始内容}</search><replace>{替换成的新内容}</replace></edit_file>
                 """
-                pass
+                if not args:
+                    return json.dumps({"status": "error", "content": "No arguments provided for edit_file."}, ensure_ascii=False)
+                try:
+                    path_match = re.search(r'<path>(.*?)</path>', args, re.DOTALL)
+                    start_line_match = re.search(r'<start_line>(\d+)</start_line>', args)
+                    end_line_match = re.search(r'<end_line>(\d+)</end_line>', args)
+                    if not (path_match and start_line_match and end_line_match):
+                        return json.dumps({"status": "error", "content": "Missing or invalid path/start_line/end_line tags."}, ensure_ascii=False)
+                    file_path = path_match.group(1).strip()
+                    start_line = int(start_line_match.group(1))
+                    end_line = int(end_line_match.group(1))
+                    search_content = re.search(r'<search>(.*?)</search>', args, re.DOTALL)
+                    if search_content is None:
+                         return json.dumps({"status": "error", "content": "Missing <search> tag."}, ensure_ascii=False)
+                    search_block = search_content.group(1)
+                    replace_content = re.search(r'<replace>(.*?)</replace>', args, re.DOTALL)
+                    if replace_content is None:
+                        return json.dumps({"status": "error", "content": "Missing <replace> tag."}, ensure_ascii=False)
+                    replace_block = replace_content.group(1)
+                    remote_content_json = read_file(file_path)
+                    try:
+                        remote_data = json.loads(remote_content_json)
+                        if remote_data.get("status") == "error":
+                            return remote_content_json
+                        remote_content = remote_data.get("content", "")
+                    except (json.JSONDecodeError, AttributeError):
+                        remote_content = remote_content_json
+                    remote_content = remote_content.replace('\r', '')
+                    lines = remote_content.splitlines(True)
+                    if not (1 <= start_line <= end_line <= len(lines)):
+                        return json.dumps({"status": "error", "content": f"Line numbers out of bounds. File has {len(lines)} lines."}, ensure_ascii=False)
+                    actual_block = "".join(lines[start_line - 1:end_line])
+                    search_block_stripped = search_block.strip()
+                    actual_block_stripped = actual_block.strip()
+                    if actual_block_stripped != search_block_stripped:
+                        return json.dumps({
+                            "status": "error",
+                            "content": "Content verification failed. The content on the server does not match the 'search' block.",
+                            "expected": search_block_stripped,
+                            "actual": actual_block_stripped
+                        }, ensure_ascii=False)
+                    original_last_line = lines[end_line - 1]
+                    line_ending = '\n'
+                    if original_last_line.endswith('\r\n'):
+                        line_ending = '\r\n'
+                    replace_block_stripped = replace_block.strip()
+                    new_content_parts = []
+                    if replace_block_stripped:
+                        replace_lines = replace_block_stripped.splitlines()
+                        new_content_parts = [line + line_ending for line in replace_lines]
+                    new_lines = lines[:start_line - 1] + new_content_parts + lines[end_line:]
+                    new_full_content = "".join(new_lines)
+                    encoded_content = base64.b64encode(new_full_content.encode('utf-8')).decode('utf-8')
+                    command = f"echo '{encoded_content}' | base64 --decode > {file_path}"
+                    r = exe_shell(command)
+                    if r == '':
+                        return json.dumps({"status": "success", "content": f"{file_path} {start_line}-{end_line} {search_block} -> {replace_block}"}, ensure_ascii=False)
+                    else:
+                        return json.dumps({"status": "error", "content": r}, ensure_ascii=False)
+                except Exception as e:
+                    return json.dumps({"status": "error", "content": f"An unexpected error occurred during file edit: {e}"}, ensure_ascii=False)
             self.mcp_manager.register_tool_handler(
                 server_name="Linux终端",
                 tool_name="exe_shell",
@@ -112,20 +192,20 @@ class AIBridge(QObject):
                 description="读取服务器文件内容",
                 auto_approve=True
             )
-            # self.mcp_manager.register_tool_handler(
-            #     server_name="Linux终端",
-            #     tool_name="add_file",
-            #     handler=add_file,
-            #     description="新增文件",
-            #     auto_approve=False
-            # )
-            # self.mcp_manager.register_tool_handler(
-            #     server_name="Linux终端",
-            #     tool_name="edit_file",
-            #     handler=edit_file,
-            #     description="编辑文件",
-            #     auto_approve=False
-            # )
+            self.mcp_manager.register_tool_handler(
+                server_name="Linux终端",
+                tool_name="write_file",
+                handler=write_file,
+                description="覆盖服务器文件",
+                auto_approve=False
+            )
+            self.mcp_manager.register_tool_handler(
+                server_name="Linux终端",
+                tool_name="edit_file",
+                handler=edit_file,
+                description="编辑文件",
+                auto_approve=False
+            )
         Linux终端()
         print(self.getSystemPrompt())
 
@@ -156,7 +236,7 @@ class AIBridge(QObject):
     def processMessage(self, message):
         mcp_tool_call = self.mcp_manager.parse_mcp_tool_use(message)
         if mcp_tool_call:
-            return json.dumps(mcp_tool_call)
+            return json.dumps(mcp_tool_call, ensure_ascii=False)
         return ""
 
     @pyqtSlot(str, str, str, result=str)
@@ -165,11 +245,11 @@ class AIBridge(QObject):
             result = self.mcp_manager.execute_tool(server_name, tool_name, arguments)
             return str(result)
         except json.JSONDecodeError as e:
-            return json.dumps({"status": "error", "content": f"Invalid arguments format: {e}"})
+            return json.dumps({"status": "error", "content": f"Invalid arguments format: {e}"}, ensure_ascii=False)
 
     @pyqtSlot(result=str)
     def getModels(self):
-        return json.dumps(self.model_manager.load_models())
+        return json.dumps(self.model_manager.load_models(), ensure_ascii=False)
 
     @pyqtSlot(str)
     def saveModels(self, models_json):
@@ -199,7 +279,7 @@ class AIBridge(QObject):
     def listHistories(self):
         try:
             histories = self.history_manager.list_histories()
-            return json.dumps(histories)
+            return json.dumps(histories, ensure_ascii=False)
         except Exception as e:
             print(f"Error listing chat histories: {e}")
             return "[]"
@@ -208,7 +288,7 @@ class AIBridge(QObject):
     def loadHistory(self, filename):
         try:
             history = self.history_manager.load_history(filename)
-            return json.dumps(history)
+            return json.dumps(history, ensure_ascii=False)
         except Exception as e:
             print(f"Error loading chat history: {e}")
             return "[]"
