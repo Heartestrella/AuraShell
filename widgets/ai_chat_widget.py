@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings
 import os
-from PyQt5.QtCore import QUrl, Qt, QObject, pyqtSlot, QEventLoop, QTimer, QVariant
+from PyQt5.QtCore import QUrl, Qt, QObject, pyqtSlot, QEventLoop, QTimer, QVariant, pyqtSignal
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtGui import QKeyEvent, QDesktopServices
 from tools.setting_config import SCM
@@ -12,6 +12,7 @@ import json
 import base64
 import re
 import typing
+import time
 
 if typing.TYPE_CHECKING:
     from main_window import Window
@@ -20,12 +21,15 @@ if typing.TYPE_CHECKING:
 CONFIGER = SCM()
 
 class AIBridge(QObject):
+    toolResultReady = pyqtSignal(str, str)
+    
     def __init__(self, parent=None, main_window: 'Window' = None):
         super().__init__(parent)
         self.main_window = main_window
         self.model_manager = AIModelManager()
         self.mcp_manager = AIMCPManager()
         self.history_manager = AIHistoryManager()
+        self.pending_tool_calls = {} 
         self._register_tool_handlers()
 
     def _register_tool_handlers(self):
@@ -69,8 +73,6 @@ class AIBridge(QObject):
                     worker.command_output_ready.disconnect(on_output_ready)
                 except TypeError:
                     pass
-                if not output:
-                    return json.dumps({"status": "error", "content": "Command timed out or produced no output."}, ensure_ascii=False)
                 output_str = "".join(output)
                 return output_str
             def read_file(file_path: str = None, show_line: bool = False):
@@ -274,13 +276,37 @@ class AIBridge(QObject):
             return json.dumps(mcp_tool_call, ensure_ascii=False)
         return ""
 
-    @pyqtSlot(str, str, str, result=str)
-    def executeMcpTool(self, server_name, tool_name, arguments:str):
+    def _execute_tool_async(self, server_name, tool_name, arguments, request_id):
         try:
             result = self.mcp_manager.execute_tool(server_name, tool_name, arguments)
-            return str(result)
+            result_str = str(result)
         except json.JSONDecodeError as e:
-            return json.dumps({"status": "error", "content": f"Invalid arguments format: {e}"}, ensure_ascii=False)
+            result_str = json.dumps({"status": "error", "content": f"Invalid arguments format: {e}"}, ensure_ascii=False)
+        except Exception as e:
+            result_str = json.dumps({"status": "error", "content": f"Tool execution error: {e}"}, ensure_ascii=False)
+        self.toolResultReady.emit(request_id, result_str)
+        if request_id in self.pending_tool_calls:
+            del self.pending_tool_calls[request_id]
+    
+    @pyqtSlot(str, str, str, result=str)
+    @pyqtSlot(str, str, str, str, result=str)
+    def executeMcpTool(self, server_name, tool_name, arguments:str, request_id=None):
+        if request_id:
+            self.pending_tool_calls[request_id] = {
+                'server_name': server_name,
+                'tool_name': tool_name,
+                'start_time': time.time()
+            }
+            QTimer.singleShot(0, lambda: self._execute_tool_async(
+                server_name, tool_name, arguments, request_id
+            ))
+            return ""
+        else:
+            try:
+                result = self.mcp_manager.execute_tool(server_name, tool_name, arguments)
+                return str(result)
+            except json.JSONDecodeError as e:
+                return json.dumps({"status": "error", "content": f"Invalid arguments format: {e}"}, ensure_ascii=False)
 
     @pyqtSlot(result=str)
     def getModels(self):

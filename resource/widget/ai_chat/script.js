@@ -1,3 +1,53 @@
+const pendingRequests = new Map();
+function generateUniqueId() {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function cleanupRequest(requestId) {
+  const request = pendingRequests.get(requestId);
+  if (request && request.handler) {
+    backend.toolResultReady.disconnect(request.handler);
+  }
+  pendingRequests.delete(requestId);
+}
+
+async function executeMcpTool(serverName, toolName, args) {
+  return new Promise((resolve, reject) => {
+    const requestId = generateUniqueId();
+    const handler = (receivedId, result) => {
+      if (receivedId === requestId) {
+        cleanupRequest(requestId);
+        resolve(result);
+      }
+    };
+    pendingRequests.set(requestId, {
+      handler,
+      serverName,
+      toolName,
+      startTime: Date.now(),
+    });
+    backend.toolResultReady.connect(handler);
+    try {
+      backend.executeMcpTool(serverName, toolName, args, requestId);
+    } catch (error) {
+      cleanupRequest(requestId);
+      reject(error);
+    }
+  });
+}
+
+function getPendingRequests() {
+  const requests = [];
+  for (const [id, info] of pendingRequests) {
+    requests.push({
+      id,
+      tool: `${info.serverName}.${info.toolName}`,
+      duration: Date.now() - info.startTime,
+    });
+  }
+  return requests;
+}
+
 class ChatController {
   constructor(chatBodySelector) {
     this.chatBody = document.querySelector(chatBodySelector);
@@ -503,7 +553,7 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
               cancelButtonContainer.style.display = 'flex';
               cancelButton.addEventListener('click', () => controller.abort());
               sendButton.disabled = true;
-              const executionResultStr = await backend.executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments));
+              const executionResultStr = await executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments));
               systemBubble.setResult('approved', executionResultStr);
               let mcpMessages = {
                 role: 'user',
@@ -1210,8 +1260,8 @@ async function requestAiChat(onStream, onDone, signal) {
     if (!response.ok) {
       const errorText = await response.text();
       const error = new Error(`${response.status} ${response.statusText}\n${errorText}`);
-      if (onError) {
-        onError(error);
+      if (onDone) {
+        onDone(error);
       }
       return;
     }
@@ -1262,15 +1312,8 @@ async function requestAiChat(onStream, onDone, signal) {
       }
     }
   } catch (error) {
-    if (error.name === 'AbortError') {
-      if (onDone) {
-        onDone(fullContent);
-      }
-    } else {
-      console.error('Fetch Error:', error);
-      if (onError) {
-        onDone('Fetch Error:' + error);
-      }
+    if (onDone) {
+      onDone('Fetch Error:' + error);
     }
   }
 }
