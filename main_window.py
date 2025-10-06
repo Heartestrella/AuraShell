@@ -1493,7 +1493,6 @@ sys.excepthook = excepthook
 
 
 def update_splash_progress(step, total_steps=10, message=""):
-    """更新启动画面进度 - 简化版"""
     if not pyi_splash:
         return
 
