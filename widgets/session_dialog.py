@@ -112,49 +112,58 @@ class SessionDialog(MessageBoxBase):
     def _setup_proxy_ui(self):
         # Proxy Type
         self.proxy_type_combo.addItems(["None", "HTTP", "SOCKS4", "SOCKS5"])
-        self.proxy_type_combo.currentIndexChanged.connect(self._on_proxy_type_changed)
+        self.proxy_type_combo.currentIndexChanged.connect(
+            self._on_proxy_type_changed)
         proxy_type_layout = QHBoxLayout()
         proxy_type_layout.addWidget(QLabel(self.tr("Proxy Type:")))
         proxy_type_layout.addWidget(self.proxy_type_combo)
         proxy_type_layout.setStretch(1, 1)
 
         # Proxy Host
+        self.proxy_host_widget = QWidget()
         self.proxy_host.setPlaceholderText(self.tr("Proxy server address"))
-        proxy_host_layout = QHBoxLayout()
+        proxy_host_layout = QHBoxLayout(self.proxy_host_widget)
+        proxy_host_layout.setContentsMargins(0, 0, 0, 0)
         proxy_host_layout.addWidget(QLabel(self.tr("Proxy Host:")))
         proxy_host_layout.addWidget(self.proxy_host)
         proxy_host_layout.setStretch(1, 1)
 
         # Proxy Port
+        self.proxy_port_widget = QWidget()
         self.proxy_port.setPlaceholderText(self.tr("Proxy server port"))
-        proxy_port_layout = QHBoxLayout()
+        proxy_port_layout = QHBoxLayout(self.proxy_port_widget)
+        proxy_port_layout.setContentsMargins(0, 0, 0, 0)
         proxy_port_layout.addWidget(QLabel(self.tr("Proxy Port:")))
         proxy_port_layout.addWidget(self.proxy_port)
         proxy_port_layout.setStretch(1, 1)
 
         # Proxy Username
+        self.proxy_username_widget = QWidget()
         self.proxy_username.setPlaceholderText(self.tr("Optional"))
-        proxy_username_layout = QHBoxLayout()
+        proxy_username_layout = QHBoxLayout(self.proxy_username_widget)
+        proxy_username_layout.setContentsMargins(0, 0, 0, 0)
         proxy_username_layout.addWidget(QLabel(self.tr("Proxy Username:")))
         proxy_username_layout.addWidget(self.proxy_username)
         proxy_username_layout.setStretch(1, 1)
 
         # Proxy Password
+        self.proxy_password_widget = QWidget()
         self.proxy_password.setPlaceholderText(self.tr("Optional"))
-        proxy_password_layout = QHBoxLayout()
+        proxy_password_layout = QHBoxLayout(self.proxy_password_widget)
+        proxy_password_layout.setContentsMargins(0, 0, 0, 0)
         proxy_password_layout.addWidget(QLabel(self.tr("Proxy Password:")))
         proxy_password_layout.addWidget(self.proxy_password)
         proxy_password_layout.setStretch(1, 1)
 
         self.proxy_widgets = [
-            self.proxy_host, self.proxy_port, self.proxy_username, self.proxy_password
+            self.proxy_host_widget, self.proxy_port_widget, self.proxy_username_widget, self.proxy_password_widget
         ]
 
         self.viewLayout.addLayout(proxy_type_layout)
-        self.viewLayout.addLayout(proxy_host_layout)
-        self.viewLayout.addLayout(proxy_port_layout)
-        self.viewLayout.addLayout(proxy_username_layout)
-        self.viewLayout.addLayout(proxy_password_layout)
+        self.viewLayout.addWidget(self.proxy_host_widget)
+        self.viewLayout.addWidget(self.proxy_port_widget)
+        self.viewLayout.addWidget(self.proxy_username_widget)
+        self.viewLayout.addWidget(self.proxy_password_widget)
 
         self._on_proxy_type_changed(0)
 
@@ -162,12 +171,6 @@ class SessionDialog(MessageBoxBase):
         is_proxy_enabled = self.proxy_type_combo.currentText() != "None"
         for widget in self.proxy_widgets:
             widget.setVisible(is_proxy_enabled)
-            # Also hide the labels
-            layout = widget.parent().layout()
-            if layout:
-                label = layout.itemAt(0).widget()
-                if isinstance(label, QLabel):
-                    label.setVisible(is_proxy_enabled)
 
 
     def set_font_recursive(self, widget: QWidget, font):
