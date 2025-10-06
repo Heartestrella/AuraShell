@@ -209,6 +209,7 @@ class SystemBubble {
     this.toolCardElement = this.element.querySelector('.tool-call-card');
     this.toolNameElement = this.element.querySelector('.tool-name');
     this.detailElement = this.element.querySelector('.tool-call-body .code-block');
+    this.bodyContainer = this.element.querySelector('.tool-call-body');
     this.resultContainer = this.element.querySelector('.tool-call-result');
     this.resultContentElement = this.element.querySelector('.tool-call-result .code-block');
     this.headerElement = this.element.querySelector('.tool-call-header');
@@ -269,6 +270,7 @@ class SystemBubble {
   }
   setResult(status, content) {
     this.statusIconElement.innerHTML = '';
+    this.bodyContainer.style.display = 'none';
     if (status === 'approved') {
       this.resultContentElement.textContent = content;
       this.statusIconElement.textContent = '▼';
@@ -277,12 +279,17 @@ class SystemBubble {
         if (this.resultContentElement.textContent) {
           const isHidden = this.resultContainer.style.display === 'none';
           this.resultContainer.style.display = isHidden ? 'block' : 'none';
+          this.bodyContainer.style.display = isHidden ? 'block' : 'none';
           this.statusIconElement.textContent = isHidden ? '▲' : '▼';
         }
       });
     } else if (status === 'rejected') {
       this.statusIconElement.textContent = '❌';
       this.resultContainer.style.display = 'none';
+      this.headerElement.addEventListener('click', () => {
+        const isHidden = this.bodyContainer.style.display === 'none';
+        this.bodyContainer.style.display = isHidden ? 'block' : 'none';
+      });
     }
   }
   async requireApproval() {
