@@ -2,12 +2,12 @@
 import sys
 import ctypes
 import time
-from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal
+from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal, QSize
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter, QLabel
 from widgets.editor_widget import EditorWidget
-from qfluentwidgets import (NavigationInterface, NavigationItemPosition, InfoBar,
-                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget, Dialog)
+from qfluentwidgets import (NavigationInterface,  NavigationItemPosition, InfoBar,
+                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget, SplashScreen, Dialog)
 from qframelesswindow import FramelessWindow, StandardTitleBar
 from widgets.setting_page import SettingPage
 from widgets.home_interface import MainInterface
@@ -29,6 +29,7 @@ from tools.watching_saved import FileWatchThread
 from widgets.side_panel import SidePanelWidget, AutoFitImageLabel
 import magic
 import traceback
+from tools.check_update import CheckUpdate
 font_ = font_config()
 setting_ = SCM()
 mime_types = [
@@ -52,6 +53,9 @@ class Window(FramelessWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        self.splashScreen = SplashScreen(self.windowIcon(), self)
+        self.splashScreen.setIconSize(QSize(102, 102))
+        self.show()
         if isDebugMode():
             os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = '3354'
             print('Debug mode enabled: http://localhost:' +
@@ -146,9 +150,48 @@ class Window(FramelessWindow):
         self.initNavigation()
 
         self.initWindow()
-
+        self.splashScreen.finish()
         if setting_.read_config()["maximized"]:
             self.showMaximized()
+
+        self.checker = CheckUpdate()
+        self.checker.run()
+        self.checker.hash.connect(self.show_hash)
+
+    def show_hash(self, status, hash):
+        if status:
+            local_hash = open("update_hash.txt", encoding="utf-8").read()
+            if local_hash == hash:
+                InfoBar.success(
+                    title=self.tr(f"No update needed"),
+                    content=hash,
+                    orient=Qt.Vertical,
+                    isClosable=True,
+                    position=InfoBarPosition.TOP_RIGHT,
+                    duration=2000,
+                    parent=self
+                )
+            else:
+                InfoBar.warning(
+                    title=self.tr(f"U should redownload the software"),
+                    content=self.tr(
+                        f"Remote hash: {hash},Local hash : {hash}"),
+                    orient=Qt.Vertical,
+                    isClosable=True,
+                    position=InfoBarPosition.TOP_RIGHT,
+                    duration=2000,
+                    parent=self
+                )
+        else:
+            InfoBar.error(
+                title=self.tr("Failed to obtain hash"),
+                content=hash,
+                orient=Qt.Vertical,
+                isClosable=True,
+                position=InfoBarPosition.TOP_RIGHT,
+                duration=-1,
+                parent=self
+            )
 
     def set_background_opacity(self, opacity: float):
         if not self._bg_pixmap:
