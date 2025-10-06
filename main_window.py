@@ -1493,13 +1493,22 @@ sys.excepthook = excepthook
 
 
 def update_splash_progress(step, total_steps=10, message=""):
-    """更新启动画面进度"""
+    """更新启动画面进度 - 简化版"""
     if not pyi_splash:
         return
 
     progress = int((step / total_steps) * 100)
+
     if message:
-        pyi_splash.update_text(f"{message}... {progress}%")
+        clean_message = message.replace('\n', ' ').replace('\r', '')
+        display_text = f"{clean_message} {progress}%"
+    else:
+        display_text = f"Loading {progress}%"
+
+    try:
+        pyi_splash.update_text(display_text)
+    except Exception as e:
+        pass
 
 
 if __name__ == '__main__':

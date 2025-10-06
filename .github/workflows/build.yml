@@ -84,7 +84,7 @@ jobs:
       - name: 编译打包 (Windows)
         if: runner.os == 'Windows'
         run: |
-          python -m PyInstaller --icon "resource\icons\icon.ico" -w -F --add-data "resource;resource" --splash "resource\splash.gif" --name "AuraShell" .\main_window.py
+          python -m PyInstaller --icon "resource\icons\icon.ico" -w -F --add-data "resource;resource" --splash "resource\icons\splash.gif" --name "AuraShell" .\main_window.py
 
       - name: 编译打包 (Linux)
         if: runner.os == 'Linux'
