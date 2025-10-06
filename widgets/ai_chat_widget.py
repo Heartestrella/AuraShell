@@ -336,6 +336,32 @@ class AIBridge(QObject):
             print(f"Error deleting chat history: {e}")
             return False
 
+    @pyqtSlot(result=str)
+    def get_current_cwd(self):
+        if not self.main_window:
+            return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
+        active_widget = self.main_window.get_active_ssh_widget()
+        if not active_widget:
+            return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
+        if hasattr(active_widget, 'ssh_widget') and hasattr(active_widget.ssh_widget, 'bridge'):
+            cwd = active_widget.ssh_widget.bridge.current_directory
+            return json.dumps({"status": "success", "cwd": cwd}, ensure_ascii=False)
+        else:
+            return json.dumps({"status": "error", "content": "Could not find the terminal bridge."}, ensure_ascii=False)
+
+    @pyqtSlot(result=str)
+    def get_file_manager_cwd(self):
+        if not self.main_window:
+            return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
+        active_widget = self.main_window.get_active_ssh_widget()
+        if not active_widget:
+            return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
+        if hasattr(active_widget, 'file_explorer'):
+            cwd = active_widget.file_explorer.path
+            return json.dumps({"status": "success", "cwd": cwd}, ensure_ascii=False)
+        else:
+            return json.dumps({"status": "error", "content": "Could not find the file explorer."}, ensure_ascii=False)
+
 
 class AiChatWidget(QWidget):
     def __init__(self, parent=None, main_window: 'Window' = None):

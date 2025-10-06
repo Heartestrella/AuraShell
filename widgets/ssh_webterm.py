@@ -639,8 +639,7 @@ class WebTerminal(QWidget):
             str: 一个包含命令和输出的 XML 格式字符串。
         """
         output_blocks = deque(maxlen=count)
-        prompt_pattern = re.compile(
-            r'(\[.*?\][\$#]\s*|[\w\d_-]+@[\w\d\.-]+:.*[\$#]\s*)')
+        prompt_pattern = re.compile(r'(\[.*?\][\$#]\s*|[\w\d_-]+@[\w\d\.-]+:.*?[\$#]\s*)')
         parts = prompt_pattern.split(self.terminal_texts)
         i = 1
         while i < len(parts) - 1:

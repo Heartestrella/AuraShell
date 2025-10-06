@@ -389,7 +389,9 @@ function editUserMessage(bubbleElement) {
   if (Array.isArray(messageContent)) {
     messageContent.forEach((item) => {
       if (item.type === 'text') {
-        text = item.text || '';
+        if (!item.text.startsWith('<附加系统数据>')) {
+          text = item.text || '';
+        }
       } else if (item.type === 'image_url' && item.image_url) {
         images.push(item.image_url.url);
       }
@@ -713,7 +715,10 @@ window.loadHistory = function (filename) {
         if (Array.isArray(item.messages.content)) {
           item.messages.content.forEach((contentPart) => {
             if (contentPart.type === 'text') {
-              userText += contentPart.text || '';
+              const text = contentPart.text || '';
+              if (!text.startsWith('<附加系统数据>')) {
+                userText += text;
+              }
             } else if (contentPart.type === 'image_url' && contentPart.image_url) {
               imageUrls.push(contentPart.image_url.url);
             }
@@ -806,6 +811,8 @@ document.addEventListener('DOMContentLoaded', function () {
     return name.substring(0, 16);
   }
   async function sendMessage() {
+    let sshCwd = JSON.parse(await backend.get_current_cwd()).cwd;
+    let fileManagerCwd = JSON.parse(await backend.get_file_manager_cwd()).cwd;
     const approvalContainer = document.getElementById('approve-reject-buttons');
     if (approvalContainer && approvalContainer.style.display === 'flex') {
       const rejectBtn = approvalContainer.querySelector('.reject-button');
@@ -848,6 +855,13 @@ document.addEventListener('DOMContentLoaded', function () {
           });
         });
       }
+      userMessageContent.push({
+        type: 'text',
+        text: `<附加系统数据>
+<终端工作目录>${sshCwd}</终端工作目录>
+<文件管理器工作目录>${fileManagerCwd}</文件管理器工作目录>
+</附加系统数据>`,
+      });
       const userMessage = {
         role: 'user',
         content: userMessageContent,
