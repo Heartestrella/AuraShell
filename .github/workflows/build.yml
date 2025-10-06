@@ -22,16 +22,16 @@ jobs:
           - os: windows-latest
             platform_name: Windows
             artifact_name: AuraShell.exe
-            build_name: main_window.exe
+            build_name: AuraShell.exe
             separator: ';'
           - os: ubuntu-latest
             platform_name: Linux
-            artifact_name: AuraShell
+            artifact_name: AuraShell-Linux
             build_name: main_window
             separator: ':'
           - os: macos-latest
             platform_name: macOS
-            artifact_name: AuraShell
+            artifact_name: AuraShell-Macos
             build_name: main_window
             separator: ':'
 
