@@ -58,6 +58,9 @@ class SSH_CARD(CardWidget):
 
         self.moreButton.setFixedSize(32, 32)
 
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.showContextMenu)
+
         self.menu = RoundMenu(parent=self)
 
         self.action_open = Action(FIF.FOLDER, self.tr("Open a new session"))
@@ -132,6 +135,11 @@ class SSH_CARD(CardWidget):
     def showMenu(self):
         pos = self.moreButton.mapToGlobal(self.moreButton.rect().bottomRight())
         self.menu.exec(pos)
+
+    def showContextMenu(self, pos):
+        """Shows the context menu at the given position."""
+        global_pos = self.mapToGlobal(pos)
+        self.menu.exec(global_pos)
 
 
 class MainInterface(QWidget):
