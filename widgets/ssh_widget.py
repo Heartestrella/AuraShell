@@ -777,6 +777,7 @@ class SSHWidget(QWidget):
 
         # ensure explorer.path updated and only refresh once
         self.file_explorer.path = path
+        self.ssh_widget.bridge.current_directory = path
         # explicitly request one refresh
         self._update_file_explorer(path)
 

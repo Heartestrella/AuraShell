@@ -317,11 +317,18 @@ class SystemBubble {
       this.statusIconElement.textContent = '▼';
       this.statusIconElement.classList.add('success');
       this.headerElement.addEventListener('click', () => {
-        if (this.resultContentElement.textContent) {
-          const isHidden = this.resultContainer.style.display === 'none';
-          this.resultContainer.style.display = isHidden ? 'block' : 'none';
-          this.bodyContainer.style.display = isHidden ? 'block' : 'none';
-          this.statusIconElement.textContent = isHidden ? '▲' : '▼';
+        const isCollapsed = this.bodyContainer.style.display === 'none';
+        const hasResult = this.resultContentElement.textContent.trim() !== '';
+        if (isCollapsed) {
+          this.bodyContainer.style.display = 'block';
+          if (hasResult) {
+            this.resultContainer.style.display = 'block';
+          }
+          this.statusIconElement.textContent = '▲';
+        } else {
+          this.bodyContainer.style.display = 'none';
+          this.resultContainer.style.display = 'none';
+          this.statusIconElement.textContent = '▼';
         }
       });
     } else if (status === 'rejected') {
@@ -382,7 +389,9 @@ function editUserMessage(bubbleElement) {
   if (Array.isArray(messageContent)) {
     messageContent.forEach((item) => {
       if (item.type === 'text') {
-        text = item.text || '';
+        if (!item.text.startsWith('<附加系统数据>')) {
+          text = item.text || '';
+        }
       } else if (item.type === 'image_url' && item.image_url) {
         images.push(item.image_url.url);
       }
@@ -706,7 +715,10 @@ window.loadHistory = function (filename) {
         if (Array.isArray(item.messages.content)) {
           item.messages.content.forEach((contentPart) => {
             if (contentPart.type === 'text') {
-              userText += contentPart.text || '';
+              const text = contentPart.text || '';
+              if (!text.startsWith('<附加系统数据>')) {
+                userText += text;
+              }
             } else if (contentPart.type === 'image_url' && contentPart.image_url) {
               imageUrls.push(contentPart.image_url.url);
             }
@@ -737,7 +749,12 @@ window.loadHistory = function (filename) {
               const systemBubble = chat.addSystemBubble(toolName, toolArgsStr, messageIndex, i);
               const nextItem = i + 1 < window.messagesHistory.length ? window.messagesHistory[i + 1] : null;
               if (nextItem && nextItem.isMcp === true) {
-                const resultText = nextItem.messages.content.map((c) => c.text || '').join('\n');
+                let resultText = '';
+                if (Array.isArray(nextItem.messages.content) && nextItem.messages.content.length > 1 && nextItem.messages.content[1].type === 'text') {
+                  resultText = nextItem.messages.content[1].text || '';
+                } else {
+                  resultText = nextItem.messages.content.map((c) => c.text || '').join('\n');
+                }
                 systemBubble.setResult('approved', resultText);
               } else {
                 systemBubble.setResult('rejected', '用户拒绝了工具调用.');
@@ -794,6 +811,8 @@ document.addEventListener('DOMContentLoaded', function () {
     return name.substring(0, 16);
   }
   async function sendMessage() {
+    let sshCwd = JSON.parse(await backend.get_current_cwd()).cwd;
+    let fileManagerCwd = JSON.parse(await backend.get_file_manager_cwd()).cwd;
     const approvalContainer = document.getElementById('approve-reject-buttons');
     if (approvalContainer && approvalContainer.style.display === 'flex') {
       const rejectBtn = approvalContainer.querySelector('.reject-button');
@@ -836,6 +855,13 @@ document.addEventListener('DOMContentLoaded', function () {
           });
         });
       }
+      userMessageContent.push({
+        type: 'text',
+        text: `<附加系统数据>
+<终端工作目录>${sshCwd}</终端工作目录>
+<文件管理器工作目录>${fileManagerCwd}</文件管理器工作目录>
+</附加系统数据>`,
+      });
       const userMessage = {
         role: 'user',
         content: userMessageContent,

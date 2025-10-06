@@ -22,6 +22,8 @@ Usage:
 """
 import base64
 import json
+import html
+from collections import deque
 from PyQt5.QtCore import Qt, QObject, pyqtSignal, pyqtSlot, QUrl
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QSizePolicy, QHBoxLayout, QApplication
@@ -625,3 +627,41 @@ class WebTerminal(QWidget):
     def execute_command_and_capture(self, command: str):
         if self.bridge and self.bridge.worker:
             self.bridge.worker.execute_command_and_capture(command)
+
+    def get_latest_output(self, count=1):
+        """
+        从终端缓冲区中提取最新的命令及其输出。
+
+        Args:
+            count (int): 要提取的最新命令的数量。
+
+        Returns:
+            str: 一个包含命令和输出的 XML 格式字符串。
+        """
+        output_blocks = deque(maxlen=count)
+        prompt_pattern = re.compile(r'(\[.*?\][\$#]\s*|[\w\d_-]+@[\w\d\.-]+:.*?[\$#]\s*)')
+        parts = prompt_pattern.split(self.terminal_texts)
+        i = 1
+        while i < len(parts) - 1:
+            content_with_command = parts[i+1]
+            if not content_with_command.strip():
+                i += 2
+                continue
+            lines = content_with_command.split('\n', 1)
+            command = lines[0].strip()
+            output = lines[1].strip() if len(lines) > 1 else ''
+            output_blocks.append({
+                "command": command,
+                "output": output
+            })
+            i += 2
+        xml_parts = ['<result>']
+        for idx, block in enumerate(output_blocks):
+            escaped_command = html.escape(block["command"])
+            escaped_output = html.escape(block["output"])
+            xml_parts.append(f'    <n_{idx + 1}>')
+            xml_parts.append(f'      <command>{escaped_command}</command>')
+            xml_parts.append(f'      <output>{escaped_output}</output>')
+            xml_parts.append(f'    </n_{idx + 1}>')
+        xml_parts.append('</result>')
+        return '\n'.join(xml_parts)
