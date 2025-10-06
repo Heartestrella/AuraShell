@@ -317,11 +317,18 @@ class SystemBubble {
       this.statusIconElement.textContent = '▼';
       this.statusIconElement.classList.add('success');
       this.headerElement.addEventListener('click', () => {
-        if (this.resultContentElement.textContent) {
-          const isHidden = this.resultContainer.style.display === 'none';
-          this.resultContainer.style.display = isHidden ? 'block' : 'none';
-          this.bodyContainer.style.display = isHidden ? 'block' : 'none';
-          this.statusIconElement.textContent = isHidden ? '▲' : '▼';
+        const isCollapsed = this.bodyContainer.style.display === 'none';
+        const hasResult = this.resultContentElement.textContent.trim() !== '';
+        if (isCollapsed) {
+          this.bodyContainer.style.display = 'block';
+          if (hasResult) {
+            this.resultContainer.style.display = 'block';
+          }
+          this.statusIconElement.textContent = '▲';
+        } else {
+          this.bodyContainer.style.display = 'none';
+          this.resultContainer.style.display = 'none';
+          this.statusIconElement.textContent = '▼';
         }
       });
     } else if (status === 'rejected') {
@@ -737,7 +744,12 @@ window.loadHistory = function (filename) {
               const systemBubble = chat.addSystemBubble(toolName, toolArgsStr, messageIndex, i);
               const nextItem = i + 1 < window.messagesHistory.length ? window.messagesHistory[i + 1] : null;
               if (nextItem && nextItem.isMcp === true) {
-                const resultText = nextItem.messages.content.map((c) => c.text || '').join('\n');
+                let resultText = '';
+                if (Array.isArray(nextItem.messages.content) && nextItem.messages.content.length > 1 && nextItem.messages.content[1].type === 'text') {
+                  resultText = nextItem.messages.content[1].text || '';
+                } else {
+                  resultText = nextItem.messages.content.map((c) => c.text || '').join('\n');
+                }
                 systemBubble.setResult('approved', resultText);
               } else {
                 systemBubble.setResult('rejected', '用户拒绝了工具调用.');
