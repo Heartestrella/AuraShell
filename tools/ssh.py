@@ -86,6 +86,7 @@ class SSHWorker(QThread):
                                   key_filename=self.key_path, timeout=10, port=self.port)
 
             transport = self.conn.get_transport()
+            transport.set_keepalive(30)
             self.channel = transport.open_session()
             self.channel.get_pty(term='xterm', width=120, height=30)
             self.channel.invoke_shell()
@@ -234,6 +235,10 @@ class SSHWorker(QThread):
             pass
         try:
             if self.conn:
+                # 关闭连接前先关闭keepalive
+                transport = self.conn.get_transport()
+                if transport:
+                    transport.set_keepalive(0)
                 self.conn.close()
         except Exception:
             pass
@@ -262,6 +267,14 @@ class SSHWorker(QThread):
         try:
             if not self.channel:
                 return
+            
+            # 检查SSH连接是否仍然活跃
+            if self.conn and self.conn.get_transport():
+                if not self.conn.get_transport().is_active():
+                    self.error_occurred.emit("SSH连接已断开")
+                    self.quit()
+                    return
+            
             if self.channel.recv_ready():
                 chunk = self.channel.recv(4096)  # bytes
                 self.result_ready.emit(chunk)
@@ -388,6 +401,15 @@ class SSHWorker(QThread):
 
     def get_file_tree(self) -> Dict:
         return self.file_tree
+
+    def is_connection_active(self) -> bool:
+        """检查SSH连接是否仍然活跃"""
+        try:
+            if not self.conn or not self.conn.get_transport():
+                return False
+            return self.conn.get_transport().is_active()
+        except Exception:
+            return False
 
     def execute_command_and_capture(self, command: str):
         import uuid
