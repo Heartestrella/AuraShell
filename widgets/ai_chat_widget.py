@@ -110,7 +110,19 @@ class AIBridge(QObject):
                         content = content[:-1]
                     encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
                     command = f"echo '{encoded_content}' | base64 --decode > {file_path}"
-                    return exe_shell(command)
+                    r = exe_shell(command)
+                    if r == '':
+                        active_widget = self.main_window.get_active_ssh_widget()
+                        if active_widget:
+                            widget_key = active_widget.objectName()
+                            self.main_window._refresh_paths(widget_key)
+                        return json.dumps({"status": "success", "content": f"File '{file_path}' was written successfully."}, ensure_ascii=False)
+                    else:
+                        try:
+                            error_data = json.loads(r)
+                            return json.dumps(error_data, ensure_ascii=False)
+                        except json.JSONDecodeError:
+                            return json.dumps({"status": "error", "content": r}, ensure_ascii=False)
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"An unexpected error occurred during file creation: {e}"}, ensure_ascii=False)
             def edit_file(args:str = None):
@@ -173,11 +185,27 @@ class AIBridge(QObject):
                     command = f"echo '{encoded_content}' | base64 --decode > {file_path}"
                     r = exe_shell(command)
                     if r == '':
+                        active_widget = self.main_window.get_active_ssh_widget()
+                        if active_widget:
+                            widget_key = active_widget.objectName()
+                            self.main_window._refresh_paths(widget_key)
                         return json.dumps({"status": "success", "content": f"{file_path} {start_line}-{end_line} {search_block} -> {replace_block}"}, ensure_ascii=False)
                     else:
                         return json.dumps({"status": "error", "content": r}, ensure_ascii=False)
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"An unexpected error occurred during file edit: {e}"}, ensure_ascii=False)
+
+            def get_terminal_output(count: int = 1):
+                if not self.main_window:
+                    return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
+                active_widget = self.main_window.get_active_ssh_widget()
+                if not active_widget:
+                    return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
+                if hasattr(active_widget, 'ssh_widget') and hasattr(active_widget.ssh_widget, 'get_latest_output'):
+                    return active_widget.ssh_widget.get_latest_output(count)
+                else:
+                    return json.dumps({"status": "error", "content": "Could not find the terminal output function."}, ensure_ascii=False)
+
             self.mcp_manager.register_tool_handler(
                 server_name="Linux终端",
                 tool_name="exe_shell",
@@ -205,6 +233,13 @@ class AIBridge(QObject):
                 handler=edit_file,
                 description="编辑文件",
                 auto_approve=False
+            )
+            self.mcp_manager.register_tool_handler(
+                server_name="Linux终端",
+                tool_name="get_terminal_output",
+                handler=get_terminal_output,
+                description="获取最新几条的所执行命令的终端输出",
+                auto_approve=True
             )
         Linux终端()
         print(self.getSystemPrompt())
@@ -300,6 +335,32 @@ class AIBridge(QObject):
         except Exception as e:
             print(f"Error deleting chat history: {e}")
             return False
+
+    @pyqtSlot(result=str)
+    def get_current_cwd(self):
+        if not self.main_window:
+            return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
+        active_widget = self.main_window.get_active_ssh_widget()
+        if not active_widget:
+            return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
+        if hasattr(active_widget, 'ssh_widget') and hasattr(active_widget.ssh_widget, 'bridge'):
+            cwd = active_widget.ssh_widget.bridge.current_directory
+            return json.dumps({"status": "success", "cwd": cwd}, ensure_ascii=False)
+        else:
+            return json.dumps({"status": "error", "content": "Could not find the terminal bridge."}, ensure_ascii=False)
+
+    @pyqtSlot(result=str)
+    def get_file_manager_cwd(self):
+        if not self.main_window:
+            return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
+        active_widget = self.main_window.get_active_ssh_widget()
+        if not active_widget:
+            return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
+        if hasattr(active_widget, 'file_explorer'):
+            cwd = active_widget.file_explorer.path
+            return json.dumps({"status": "success", "cwd": cwd}, ensure_ascii=False)
+        else:
+            return json.dumps({"status": "error", "content": "Could not find the file explorer."}, ensure_ascii=False)
 
 
 class AiChatWidget(QWidget):
