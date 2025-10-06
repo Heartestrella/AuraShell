@@ -206,6 +206,7 @@ class SystemBubble {
             </div>`;
     container.insertAdjacentHTML('beforeend', template);
     this.element = container.lastElementChild;
+    this.toolCardElement = this.element.querySelector('.tool-call-card');
     this.toolNameElement = this.element.querySelector('.tool-name');
     this.detailElement = this.element.querySelector('.tool-call-body .code-block');
     this.resultContainer = this.element.querySelector('.tool-call-result');
@@ -213,9 +214,58 @@ class SystemBubble {
     this.headerElement = this.element.querySelector('.tool-call-header');
     this.statusIconElement = this.element.querySelector('.tool-status-icon');
   }
+  isDangerousTool(toolName, detail) {
+    if (!toolName.toLowerCase().includes('exe_shell')) {
+      return '';
+    }
+    const dangerousCommands = ['rm ', 'chmod ', 'mv ', 'killall ', 'kill ', 'mkfs '];
+    let args = detail;
+    try {
+      while (typeof args === 'string') {
+        args = JSON.parse(args);
+      }
+    } catch (e) {
+      return '';
+    }
+    if (typeof args !== 'object' || args === null || typeof args.shell !== 'string') {
+      return '';
+    }
+    const shellCommand = args.shell;
+    const shellCommandLower = shellCommand.toLowerCase();
+    for (const cmd of dangerousCommands) {
+      if (shellCommandLower.startsWith(cmd)) {
+        return shellCommand.substring(0, cmd.length);
+      }
+    }
+    return '';
+  }
   setToolCall(toolName, detail) {
     this.toolNameElement.textContent = toolName;
-    this.detailElement.textContent = detail;
+    const dangerousCmd = this.isDangerousTool(toolName, detail);
+    if (dangerousCmd) {
+      this.toolCardElement.classList.add('dangerous');
+      this.toolNameElement.innerHTML = '⚠️ ' + this.toolNameElement.textContent;
+      try {
+        let args = detail;
+        while (typeof args === 'string') {
+          args = JSON.parse(args);
+        }
+        const fullCommand = args.shell;
+        const restOfCommand = fullCommand.substring(dangerousCmd.length);
+        this.detailElement.innerHTML = '';
+        this.detailElement.appendChild(document.createTextNode('{\n  "shell": "'));
+        const dangerousSpan = document.createElement('span');
+        dangerousSpan.className = 'dangerous-command';
+        dangerousSpan.textContent = dangerousCmd;
+        this.detailElement.appendChild(dangerousSpan);
+        this.detailElement.appendChild(document.createTextNode(restOfCommand));
+        this.detailElement.appendChild(document.createTextNode('"\n}'));
+      } catch (e) {
+        this.detailElement.textContent = detail;
+      }
+    } else {
+      this.detailElement.textContent = detail;
+    }
   }
   setResult(status, content) {
     this.statusIconElement.innerHTML = '';
@@ -695,12 +745,13 @@ document.addEventListener('DOMContentLoaded', function () {
     name = name.replace('\n', '').replace('\t', '').replace('\r', '');
     return name.substring(0, 16);
   }
-  function sendMessage() {
+  async function sendMessage() {
     const approvalContainer = document.getElementById('approve-reject-buttons');
     if (approvalContainer && approvalContainer.style.display === 'flex') {
       const rejectBtn = approvalContainer.querySelector('.reject-button');
       if (rejectBtn) {
         rejectBtn.click();
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
     }
     if (isRequesting) {

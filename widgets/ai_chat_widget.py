@@ -81,9 +81,12 @@ class AIBridge(QObject):
                 pass
             def add_file(args:str = None):
                 """
-                [[addfile path="{文件绝对路径}"]]
+                <write_to_file>
+                <path>{文件绝对路径}</path>
+                <content>
                 {文件内容}
-                [[/addfile]]
+                </content>
+                </write_to_file>
                 """
                 pass
             def edit_file(args:str = None):
@@ -112,20 +115,20 @@ class AIBridge(QObject):
                 description="读取服务器文件内容",
                 auto_approve=True
             )
-            # self.mcp_manager.register_tool_handler(
-            #     server_name="Linux终端",
-            #     tool_name="add_file",
-            #     handler=add_file,
-            #     description="新增文件",
-            #     auto_approve=False
-            # )
-            # self.mcp_manager.register_tool_handler(
-            #     server_name="Linux终端",
-            #     tool_name="edit_file",
-            #     handler=edit_file,
-            #     description="编辑文件",
-            #     auto_approve=False
-            # )
+            self.mcp_manager.register_tool_handler(
+                server_name="Linux终端",
+                tool_name="add_file",
+                handler=add_file,
+                description="新增文件",
+                auto_approve=False
+            )
+            self.mcp_manager.register_tool_handler(
+                server_name="Linux终端",
+                tool_name="edit_file",
+                handler=edit_file,
+                description="编辑文件",
+                auto_approve=False
+            )
         Linux终端()
         print(self.getSystemPrompt())
 

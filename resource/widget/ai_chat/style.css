@@ -240,6 +240,11 @@ body {
   width: 100%;
   margin-top: 4px;
 }
+
+.tool-call-card.dangerous {
+  background-color: rgba(231, 76, 60, 0.1);
+  border: 2px solid var(--accent-color-red);
+}
 .tool-call-header {
   display: flex;
   align-items: center;
@@ -252,6 +257,16 @@ body {
   font-weight: bold;
   font-size: 13px;
   color: var(--text-color);
+}
+
+.tool-call-card.dangerous .tool-name {
+  color: var(--accent-color-red);
+  font-weight: 900;
+}
+
+.dangerous-command {
+  color: var(--accent-color-red);
+  font-weight: bold;
 }
 .toggle-details {
   background: none;
