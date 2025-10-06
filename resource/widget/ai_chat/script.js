@@ -240,6 +240,47 @@ class SystemBubble {
     }
     return '';
   }
+  _prettyPrintXml(xml) {
+    const PADDING = '  ';
+    const reg = /(>)(<)(\/*)/g;
+    let pad = 0;
+    xml = xml.replace(reg, '$1\n$2$3');
+    return xml
+      .split('\n')
+      .map((node) => {
+        let indent = 0;
+        if (node.match(/.+<\/\w[^>]*>$/)) {
+          indent = 0;
+        } else if (node.match(/^<\/\w/)) {
+          if (pad !== 0) {
+            pad -= 1;
+          }
+        } else if (node.match(/^<\w[^>]*[^\/]>.*$/)) {
+          indent = 1;
+        }
+        const padding = PADDING.repeat(pad);
+        pad += indent;
+        return padding + node;
+      })
+      .join('\n');
+  }
+  _formatAndHighlight(code) {
+    let content = code.trim();
+    if (content.startsWith('"') && content.endsWith('"')) {
+      content = content.substring(1, content.length - 1);
+    }
+    try {
+      const jsonObj = JSON.parse(content);
+      const formatted = JSON.stringify(jsonObj, null, 2);
+      return hljs.highlight(formatted, { language: 'json' }).value;
+    } catch (e) {}
+    const trimmedContent = content.trim();
+    if (trimmedContent.startsWith('<') && trimmedContent.endsWith('>')) {
+      const formattedXml = this._prettyPrintXml(content);
+      return hljs.highlight(formattedXml, { language: 'xml' }).value;
+    }
+    return hljs.highlight(code, { language: 'plaintext' }).value;
+  }
   setToolCall(toolName, detail) {
     this.toolNameElement.textContent = toolName;
     const dangerousCmd = this.isDangerousTool(toolName, detail);
@@ -262,17 +303,17 @@ class SystemBubble {
         this.detailElement.appendChild(document.createTextNode(restOfCommand));
         this.detailElement.appendChild(document.createTextNode('"\n}'));
       } catch (e) {
-        this.detailElement.textContent = detail;
+        this.detailElement.innerHTML = this._formatAndHighlight(detail);
       }
     } else {
-      this.detailElement.textContent = detail;
+      this.detailElement.innerHTML = this._formatAndHighlight(detail);
     }
   }
   setResult(status, content) {
     this.statusIconElement.innerHTML = '';
     this.bodyContainer.style.display = 'none';
     if (status === 'approved') {
-      this.resultContentElement.textContent = content;
+      this.resultContentElement.innerHTML = this._formatAndHighlight(content);
       this.statusIconElement.textContent = '▼';
       this.statusIconElement.classList.add('success');
       this.headerElement.addEventListener('click', () => {
