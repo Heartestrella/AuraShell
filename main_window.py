@@ -32,9 +32,10 @@ import traceback
 from tools.check_update import CheckUpdate
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QSplashScreen, QLabel
-from PyQt5.QtCore import Qt, QTimer, QSize
-from PyQt5.QtGui import QPixmap, QMovie, QPainter
+try:
+    import pyi_splash
+except ImportError:
+    pyi_splash = None
 font_ = font_config()
 setting_ = SCM()
 mime_types = [
@@ -1491,176 +1492,70 @@ def excepthook(exc_type, exc_value, exc_traceback):
 sys.excepthook = excepthook
 
 
-class UniversalSplashScreen(QSplashScreen):
-    """支持 GIF 和静态图片的启动画面"""
+def update_splash_progress(step, total_steps=10, message=""):
+    """更新启动画面进度"""
+    if not pyi_splash:
+        return
 
-    def __init__(self, image_path, parent=None):
-        # 先创建一个空白的pixmap
-        pixmap = QPixmap(400, 300)
-        pixmap.fill(Qt.transparent)
-        super().__init__(pixmap)
-
-        self.image_path = image_path
-        self.is_gif = image_path.lower().endswith('.gif')
-        self.movie = None
-        self.image_label = None
-
-        self.setup_ui()
-
-    def setup_ui(self):
-        """设置UI"""
-        self.setFixedSize(400, 300)
-        self.setWindowFlags(Qt.SplashScreen | Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-
-        # 创建显示标签
-        self.image_label = QLabel(self)
-        self.image_label.setAlignment(Qt.AlignCenter)
-        self.image_label.setGeometry(0, 0, 400, 250)
-
-        # 加载图片或GIF
-        if self.is_gif:
-            self.load_gif()
-        else:
-            self.load_image()
-
-        # 添加加载文本
-        self.loading_label = QLabel(self.tr("Starting..."), self)
-        self.loading_label.setAlignment(Qt.AlignCenter)
-        self.loading_label.setGeometry(0, 260, 400, 30)
-        self.loading_label.setStyleSheet("color: white; font-size: 14px;")
-
-    def load_gif(self):
-        """加载GIF动画"""
-        try:
-            self.movie = QMovie(self.image_path)
-            self.movie.setScaledSize(QSize(200, 200))
-            self.image_label.setMovie(self.movie)
-            self.movie.start()
-        except Exception as e:
-            print(f"GIF加载失败: {e}")
-            self.load_fallback_image()
-
-    def load_image(self):
-        """加载静态图片"""
-        try:
-            pixmap = QPixmap(self.image_path)
-            if not pixmap.isNull():
-                scaled_pixmap = pixmap.scaled(
-                    200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                self.image_label.setPixmap(scaled_pixmap)
-            else:
-                self.load_fallback_image()
-        except Exception as e:
-            print(f"图片加载失败: {e}")
-            self.load_fallback_image()
-
-    def load_fallback_image(self):
-        """加载备用图片（当指定图片加载失败时）"""
-        # 创建一个简单的彩色圆形作为备用
-        pixmap = QPixmap(200, 200)
-        pixmap.fill(Qt.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(Qt.blue)
-        painter.drawEllipse(0, 0, 200, 200)
-        painter.end()
-        self.image_label.setPixmap(pixmap)
-
-    def set_progress(self, percent, message=None):
-        """更新进度"""
-        if message:
-            self.loading_label.setText(f"{message}... {percent}%")
-
-
-def show_splash_screen(app, image_path="resource/splash.gif"):
-    """显示启动画面并返回splash对象"""
-    # 确保资源文件存在
-    if not os.path.exists(image_path):
-        # 如果指定文件不存在，尝试其他格式
-        for ext in ['.gif', '.png', '.jpg', '.webp']:
-            alt_path = image_path.rsplit('.', 1)[0] + ext
-            if os.path.exists(alt_path):
-                image_path = alt_path
-                break
-
-    splash = UniversalSplashScreen(image_path)
-    splash.show()
-
-    # 立即刷新显示
-    app.processEvents()
-
-    return splash
+    progress = int((step / total_steps) * 100)
+    if message:
+        pyi_splash.update_text(f"{message}... {progress}%")
 
 
 if __name__ == '__main__':
     try:
+        # 步骤1: 初始化日志
+        update_splash_progress(1, 8, "初始化日志系统")
         configer = SCM()
         setup_global_logging()
-        main_logger.info("Application Startup with Hardware Acceleration")
+
+        # 步骤2: 设置硬件加速
+        update_splash_progress(2, 8, "设置硬件加速")
         QApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-
         QApplication.setAttribute(Qt.AA_UseOpenGLES, False)
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
         QApplication.setAttribute(Qt.AA_UseDesktopOpenGL, True)
-        QApplication.setAttribute(
-            Qt.AA_DontCreateNativeWidgetSiblings, True)
+        QApplication.setAttribute(Qt.AA_DontCreateNativeWidgetSiblings, True)
 
         app = QApplication(sys.argv)
 
-        # ========== 添加启动画面 ==========
-        splash = show_splash_screen(
-            app, resource_path("resource/icons/TEST.gif"))
-        splash.set_progress(10, "初始化应用")
-        # =================================
-
+        # 步骤3: 设置应用属性
+        update_splash_progress(3, 8, "设置应用属性")
         try:
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
                 "su8aru.remmotessh.1.0.0")
-            main_logger.info("✅ Windows 应用 ID 设置成功")
-        except Exception as icon_error:
-            main_logger.warning(f"⚠️  应用 ID 设置失败: {icon_error}")
+        except:
+            pass
 
-        splash.set_progress(30, "加载配置")
-
+        # 步骤4: 加载配置
+        update_splash_progress(4, 8, "加载配置文件")
         config = configer.read_config()
         lang = language_code_to_locale(config.get("language", "system"))
-        main_logger.info(f"🌐  语言设置: {lang}")
 
-        splash.set_progress(50, "设置语言")
-
+        # 步骤5: 设置语言
+        update_splash_progress(5, 8, "设置语言环境")
         translator = QTranslator()
         translator_1 = FluentTranslator()
-
-        if lang == "en_US":
-            main_logger.info("使用英语界面")
-        elif translator.load(resource_path(f"resource/i18n/pssh_{lang}.qm")):
+        if lang != "en_US":
+            translator.load(resource_path(f"resource/i18n/pssh_{lang}.qm"))
             app.installTranslator(translator)
-            main_logger.info(f"✅ 翻译文件加载成功: {lang}")
-        else:
-            main_logger.warning(f"⚠️  翻译文件加载失败: {lang}")
-            print("Translation file loading failed")
-
         app.installTranslator(translator_1)
 
-        splash.set_progress(70, "初始化组件")
-
+        # 步骤6: 初始化组件
+        update_splash_progress(6, 8, "初始化组件")
         clipboard = app.clipboard()
-        main_logger.info("📋 剪贴板初始化完成")
 
-        splash.set_progress(90, "准备主界面")
-
+        # 步骤7: 创建主窗口
+        update_splash_progress(7, 8, "准备主界面")
         w = Window()
 
-        # 完成加载，关闭启动画面
-        splash.finish(w)
-        QTimer.singleShot(100, splash.close)  # 确保关闭
+        # 步骤8: 完成，关闭启动画面
+        update_splash_progress(8, 8, "启动完成")
+        if pyi_splash:
+            pyi_splash.close()
 
         w.show()
-        main_logger.info("🖥️  主窗口显示成功")
-
-        main_logger.info("🎯 应用启动成功，进入事件循环")
         app.exec_()
 
         # Clean up the edit directory on exit
