@@ -1,11 +1,11 @@
 import requests
 from PyQt5.QtCore import pyqtSignal, QThread
 import base64
-HASH_URL = "https://api.github.com/repos/Heartestrella/AuraShell/contents/update_hash.txt"
+HASH_URL = "https://raw.githubusercontent.com/Heartestrella/AuraShell/main/update_hash.txt"
 
 
 class CheckUpdate(QThread):
-    hash = pyqtSignal(bool, str)
+    hash_signal = pyqtSignal(bool, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -17,11 +17,10 @@ class CheckUpdate(QThread):
         try:
             response = requests.get(HASH_URL, timeout=100)
             if response.status_code == 200:
-                file_data = response.json()
-                content = base64.b64decode(
-                    file_data['content']).decode('utf-8')
-                self.hash.emit(True, content)
+                content = response.text.strip()
+                print(content)
+                self.hash_signal.emit(True, content)
             else:
-                self.hash.emit(False, "Cant get hash")
+                self.hash_signal.emit(False, "Cant get hash")
         except Exception as e:
-            self.hash.emit(False, e)
+            self.hash_signal.emit(False, e)

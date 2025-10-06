@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title data-lang-key="title">AuraShell - Win11 风格 SSH 终端</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Sans+JP:wght@300;400;500;700&family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+
         :root {
             --bg-color: #202020;
             --text-color: #f0f0f0;
@@ -50,7 +52,7 @@
             z-index: 1000;
             transition: background-color 0.3s, box-shadow 0.3s;
         }
-        
+
         nav {
             display: flex;
             justify-content: space-between;
@@ -82,6 +84,7 @@
             padding: 5px 0;
             transition: color 0.3s;
         }
+
         .nav-links a::after {
             content: '';
             position: absolute;
@@ -92,13 +95,17 @@
             background-color: var(--primary-color);
             transition: width 0.3s ease;
         }
-        .nav-links a:hover, .nav-links a.active {
+
+        .nav-links a:hover,
+        .nav-links a.active {
             color: var(--primary-color);
         }
-        .nav-links a:hover::after, .nav-links a.active::after {
+
+        .nav-links a:hover::after,
+        .nav-links a.active::after {
             width: 100%;
         }
-        
+
         .language-switcher {
             position: relative;
         }
@@ -121,7 +128,7 @@
             text-align: center;
             min-height: 100vh;
             padding-top: 80px;
-            background: radial-gradient(circle, rgba(0,120,212,0.2), transparent 70%);
+            background: radial-gradient(circle, rgba(0, 120, 212, 0.2), transparent 70%);
         }
 
         .hero-content {
@@ -166,6 +173,7 @@
         .section {
             padding: 100px 0;
         }
+
         .section-title {
             text-align: center;
             font-size: 2.5em;
@@ -173,6 +181,7 @@
             font-weight: 700;
             position: relative;
         }
+
         .section-title::after {
             content: '';
             position: absolute;
@@ -191,6 +200,7 @@
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 30px;
         }
+
         .feature-card {
             background-color: var(--card-bg);
             padding: 30px;
@@ -199,15 +209,18 @@
             text-align: center;
             transition: transform 0.3s, box-shadow 0.3s;
         }
+
         .feature-card:hover {
             transform: translateY(-10px);
             box-shadow: 0 10px 30px var(--shadow-color);
         }
+
         .feature-icon {
             font-size: 3em;
             color: var(--primary-color);
             margin-bottom: 20px;
         }
+
         .feature-card h3 {
             font-size: 1.5em;
             margin-bottom: 15px;
@@ -215,13 +228,15 @@
 
         /* Screenshots Section */
         #screenshots {
-             background-color: var(--card-bg);
+            background-color: var(--card-bg);
         }
+
         .screenshot-gallery {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 20px;
         }
+
         .screenshot-gallery img {
             width: 100%;
             height: auto;
@@ -230,6 +245,7 @@
             transition: transform 0.3s, filter 0.3s;
             cursor: pointer;
         }
+
         .screenshot-gallery img:hover {
             transform: scale(1.05);
             filter: brightness(1.1);
@@ -241,9 +257,11 @@
             text-align: center;
             border-top: 1px solid #444;
         }
+
         .footer-text {
             color: #ccc;
         }
+
         .footer-text a {
             color: var(--primary-color);
             text-decoration: none;
@@ -255,22 +273,38 @@
             transform: translateY(30px);
             transition: opacity 0.6s ease-out, transform 0.6s ease-out;
         }
+
         .animate-on-scroll.is-visible {
             opacity: 1;
             transform: translateY(0);
         }
-        
+
         /* Responsive */
         @media (max-width: 768px) {
-            .nav-links { display: none; } /* Simple hide for small screens, can be replaced by a hamburger menu */
-            .hero h1 { font-size: 2.5em; }
-            .hero p { font-size: 1em; }
-            .section-title { font-size: 2em; }
-            .screenshot-gallery { grid-template-columns: 1fr; }
-        }
+            .nav-links {
+                display: none;
+            }
 
+            /* Simple hide for small screens, can be replaced by a hamburger menu */
+            .hero h1 {
+                font-size: 2.5em;
+            }
+
+            .hero p {
+                font-size: 1em;
+            }
+
+            .section-title {
+                font-size: 2em;
+            }
+
+            .screenshot-gallery {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
+
 <body data-theme="dark">
 
     <!-- Header -->
@@ -302,7 +336,8 @@
         <div class="hero-content animate-on-scroll">
             <h1 data-lang-key="hero_title">AuraShell<span>Win11</span> 风格 SSH 终端</h1>
             <p data-lang-key="hero_subtitle">一个跨平台的SSH客户端, 具有远程文件管理器和集成终端, 提供现代化、优雅且高效的远程管理体验.</p>
-            <a href="https://github.com/Heartestrella/AuraShell/releases" target="_blank" class="cta-button" data-lang-key="hero_cta">立即下载</a>
+            <a href="https://github.com/Heartestrella/AuraShell/releases" target="_blank" class="cta-button"
+                data-lang-key="hero_cta">立即下载</a>
         </div>
     </section>
 
@@ -363,9 +398,12 @@
         <div class="container">
             <h2 class="section-title animate-on-scroll" data-lang-key="screenshots_title">软件截图</h2>
             <div class="screenshot-gallery">
-                <img src="https://github.com/user-attachments/assets/467ac84d-284e-4572-97ea-22109ee92575" alt="Screenshot 1" class="animate-on-scroll" style="transition-delay: 0.1s;">
-                <img src="https://github.com/user-attachments/assets/da427c06-731e-4606-b5f6-1ea3b038301c" alt="Screenshot 2" class="animate-on-scroll" style="transition-delay: 0.2s;">
-                <img src="https://github.com/user-attachments/assets/34e86170-d602-4f6c-8540-358447f2faf9" alt="Screenshot 3" class="animate-on-scroll" style="transition-delay: 0.3s;">
+                <img src="https://github.com/user-attachments/assets/e386c2b1-8283-4362-bd28-207b613cb15f"
+                    alt="Screenshot 1" class="animate-on-scroll" style="transition-delay: 0.1s;">
+                <img src="https://github.com/user-attachments/assets/777c658b-1ac4-4742-9e65-6832b76157cd"
+                    alt="Screenshot 2" class="animate-on-scroll" style="transition-delay: 0.2s;">
+                <img src="https://github.com/user-attachments/assets/2c99f305-65ef-4af2-affe-5b7d0d902d55"
+                    alt="Screenshot 3" class="animate-on-scroll" style="transition-delay: 0.3s;">
             </div>
         </div>
     </section>
@@ -586,4 +624,5 @@
 
     </script>
 </body>
+
 </html>

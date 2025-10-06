@@ -2,12 +2,12 @@
 import sys
 import ctypes
 import time
-from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal, QSize
+from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter, QLabel
 from widgets.editor_widget import EditorWidget
 from qfluentwidgets import (NavigationInterface,  NavigationItemPosition, InfoBar,
-                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget, SplashScreen, Dialog)
+                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget,  Dialog)
 from qframelesswindow import FramelessWindow, StandardTitleBar
 from widgets.setting_page import SettingPage
 from widgets.home_interface import MainInterface
@@ -53,9 +53,6 @@ class Window(FramelessWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.splashScreen = SplashScreen(self.windowIcon(), self)
-        self.splashScreen.setIconSize(QSize(102, 102))
-        self.show()
         if isDebugMode():
             os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = '3354'
             print('Debug mode enabled: http://localhost:' +
@@ -102,17 +99,24 @@ class Window(FramelessWindow):
         self.MainInterface = MainInterface(self)
         self.MainInterface.sessionClicked.connect(self._on_session_selected)
 
-        self.sycn_widget = SycnWidget(self)
-        self.sycn_widget.sync_finished.connect(
+        self.sync_widget = SycnWidget(self)
+        self.sync_widget.setWindowModality(Qt.ApplicationModal)
+        self.sync_widget.setWindowFlags(
+            self.sync_widget.windowFlags() |
+            Qt.Dialog
+        )
+        self.sync_widget.center_on_parent()
+        self.sync_widget.sync_finished.connect(
             lambda status, msg: InfoBar.success(
-                title=msg if status == "success" else self.tr("Error"),
+                title=msg if status == "updated" or status == "created" else self.tr(
+                    "Error"),
                 content="",
                 orient=Qt.Vertical,
                 isClosable=True,
                 position=InfoBarPosition.TOP_RIGHT,
-                duration=5000 if status == "success" else -1,
+                duration=5000 if status == "updated" or status == "created" else -1,
                 parent=self
-            ) if status == "success" else InfoBar.error(
+            ) if status == "updated" or status == "created" else InfoBar.error(
                 title=self.tr("Error"),
                 content=msg,
                 orient=Qt.Vertical,
@@ -122,7 +126,7 @@ class Window(FramelessWindow):
                 parent=self
             )
         )
-        self.sycn_widget.hide()
+        self.sync_widget.hide()
         # self.sessions = Widget(
         #     self.tr('No conversation selected yet'), True, self)
         self.ssh_page = SSHPage()
@@ -150,15 +154,15 @@ class Window(FramelessWindow):
         self.initNavigation()
 
         self.initWindow()
-        self.splashScreen.finish()
         if setting_.read_config()["maximized"]:
             self.showMaximized()
 
         self.checker = CheckUpdate()
-        self.checker.run()
-        self.checker.hash.connect(self.show_hash)
+        self.checker.start()
+        self.checker.hash_signal.connect(self.show_hash)
 
     def show_hash(self, status, hash):
+        print(status, hash)
         if status:
             local_hash = open("update_hash.txt", encoding="utf-8").read()
             if local_hash == hash:
@@ -168,18 +172,18 @@ class Window(FramelessWindow):
                     orient=Qt.Vertical,
                     isClosable=True,
                     position=InfoBarPosition.TOP_RIGHT,
-                    duration=2000,
+                    duration=3000,
                     parent=self
                 )
             else:
                 InfoBar.warning(
                     title=self.tr(f"U should redownload the software"),
                     content=self.tr(
-                        f"Remote hash: {hash},Local hash : {hash}"),
+                        f"Remote hash: {hash},Local hash : {local_hash}"),
                     orient=Qt.Vertical,
                     isClosable=True,
                     position=InfoBarPosition.TOP_RIGHT,
-                    duration=2000,
+                    duration=10000,
                     parent=self
                 )
         else:
@@ -512,17 +516,17 @@ class Window(FramelessWindow):
                 if is_text:
                     self._open_in_internal_editor(
                         local_path, widget_key, remote_path)
-                    self._start_file_watching_if_text(
-                        local_path, widget_key, remote_path)
         else:
             if is_text:
                 self._open_in_internal_editor(
                     local_path, widget_key, remote_path)
-                self._start_file_watching_if_text(
-                    local_path, widget_key, remote_path)
+
             else:
                 print(
                     f"File {local_path} is not a text file (MIME: {mime}), cannot open in editor")
+
+        self._start_file_watching_if_text(
+            local_path, widget_key, remote_path)
 
     def open_media_in_panel(self, local_path: str, widget_key: str):
         if os.path.exists(local_path):
@@ -1041,7 +1045,7 @@ class Window(FramelessWindow):
             routeKey='sync',
             widget=NavigationAvatarWidget(
                 'Sync', resource_path('resource/icons/sync.svg')),
-            onClick=lambda: self.sycn_widget.exec_(),
+            onClick=lambda: self.sync_widget.exec_(),
             position=NavigationItemPosition.BOTTOM,
         )
 

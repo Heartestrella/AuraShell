@@ -1,88 +1,126 @@
+from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PyQt5.QtCore import Qt
 from qfluentwidgets import LineEdit, SubtitleLabel, MessageBoxBase,  PasswordLineEdit, PushButton
 from tools.font_config import font_config
 import requests
 import os
-from requests.adapters import HTTPAdapter
-import ssl
-import zipfile
+import py7zr
 from pathlib import Path
 from PyQt5.QtCore import pyqtSignal
-BASE_URL = "https://sync_setting.beefuny.shop"
+
+BASE_URL = "https://sync.beefuny.shop"
 
 
-class HostnameIgnoreAdapter(HTTPAdapter):
-    def init_poolmanager(self, *args, **kwargs):
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        kwargs['ssl_context'] = ctx
-        return super().init_poolmanager(*args, **kwargs)
+class DownloadThread(QThread):
+    # 信号：下载结果 (status, message)
+    download_finished = pyqtSignal(str, str)
 
+    def __init__(self, username: str, password: str, zip_path: str, parent=None):
+        super().__init__(parent)
+        self.username = username
+        self.password = password
+        self.zip_path = zip_path
 
-def upload_zip(username: str, password: str, zip_path: str):
-    """
-    Upload a ZIP file to the server.
-    Returns dict: {"status": "created/updated", "message": str} 或 {"status": "error", "message": str}
-    """
-    if not os.path.isfile(zip_path):
-        return {"status": "error", "message": f"File not found: {zip_path}"}
+    def run(self):
+        """线程执行函数"""
+        result = self.download_zip()
+        self.download_finished.emit(result["status"], result["message"])
 
-    url = f"{BASE_URL}/upload"
-    s = requests.Session()
-    s.mount("https://", HostnameIgnoreAdapter())
-    try:
-        with open(zip_path, "rb") as f:
-            files = {"zipfile": (os.path.basename(
-                zip_path), f, "application/zip")}
-            data = {"username": username, "password": password}
+    def download_zip(self):
+        """
+        从服务器下载ZIP文件
+        返回: {"status": "success/error", "message": str}
+        """
+        url = f"{BASE_URL}/download"
+        data = {"username": self.username, "password": self.password}
 
-            try:
-                r = s.post(url, data=data, files=files, timeout=10)
-            except requests.exceptions.RequestException as e:
-                return {"status": "error", "message": f"Request failed: {str(e)}"}
-
-            try:
-                result = r.json()
-                return {"status": result.get("status", "error"), "message": str(result)}
-            except Exception:
-                return {"status": "error", "message": r.text}
-
-    except Exception as e:
-        return {"status": "error", "message": f"Unexpected error: {str(e)}"}
-
-
-def download_zip(username: str, password: str, output_path: str):
-    """
-    Download a ZIP file from the server.
-    Returns dict: {"status": "success", "message": saved_path} 或 {"status": "error", "message": str}
-    """
-    url = f"{BASE_URL}/download"
-    payload = {"username": username, "password": password}
-    s = requests.Session()
-    s.mount("https://", HostnameIgnoreAdapter())
-    try:
         try:
-            r = s.post(url, json=payload, timeout=10)
+            response = requests.post(url, json=data, headers={
+                                     'Content-Type': 'application/json'}, timeout=30, stream=True)
+
+            if response.status_code == 200:
+                # 保存文件
+                with open(self.zip_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                return {"status": "success", "message": "Download completed"}
+            else:
+                try:
+                    error_data = response.json()
+                    return {"status": "error", "message": error_data.get("error", response.text)}
+                except ValueError:
+                    return {"status": "error", "message": f"HTTP {response.status_code}: {response.text}"}
+
+        except requests.exceptions.Timeout:
+            return {"status": "error", "message": "Request timeout"}
+        except requests.exceptions.ConnectionError:
+            return {"status": "error", "message": "Connection error"}
         except requests.exceptions.RequestException as e:
             return {"status": "error", "message": f"Request failed: {str(e)}"}
+        except Exception as e:
+            return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
-        content_type = r.headers.get("Content-Type", "")
-        if content_type == "application/zip":
-            try:
-                with open(output_path, "wb") as f:
-                    f.write(r.content)
-                return {"status": "success", "message": output_path}
-            except Exception as e:
-                return {"status": "error", "message": f"Write failed: {str(e)}"}
-        else:
-            try:
-                result = r.json()
-                return {"status": "error", "message": str(result)}
-            except Exception:
-                return {"status": "error", "message": r.text}
 
-    except Exception as e:
-        return {"status": "error", "message": f"Unexpected error: {str(e)}"}
+class UploadThread(QThread):
+    # 信号：上传结果 (status, message)
+    upload_finished = pyqtSignal(str, str)
+
+    def __init__(self, username: str, password: str, zip_path: str, parent=None):
+        super().__init__(parent)
+        self.username = username
+        self.password = password
+        self.zip_path = zip_path
+
+    def run(self):
+        """线程执行函数"""
+        result = self.upload_zip()
+        self.upload_finished.emit(result["status"], result["message"])
+
+    def upload_zip(self):
+        """
+        上传ZIP文件到服务器
+        返回: {"status": "created/updated/error", "message": str}
+        """
+        if not os.path.isfile(self.zip_path):
+            return {"status": "error", "message": f"File not found: {self.zip_path}"}
+
+        url = f"{BASE_URL}/upload"
+
+        try:
+            with open(self.zip_path, "rb") as f:
+                files = {"zipfile": (os.path.basename(
+                    self.zip_path), f, "application/zip")}
+                data = {"username": self.username, "password": self.password}
+
+                try:
+                    response = requests.post(
+                        url, data=data, files=files, timeout=30)
+
+                except requests.exceptions.Timeout:
+                    return {"status": "error", "message": "Request timeout"}
+                except requests.exceptions.ConnectionError as e:
+                    print(e)
+                    return {"status": "error", "message": "Connection error"}
+                except requests.exceptions.RequestException as e:
+                    return {"status": "error", "message": f"Request failed: {str(e)}"}
+
+                # 解析响应
+                if response.status_code == 200 or response.status_code == 201:
+                    try:
+                        result = response.json()
+                        status = result.get("status", "error")
+                        message = result.get("message", str(result))
+                        return {"status": status, "message": message}
+                    except ValueError:
+                        return {"status": "error", "message": "Invalid JSON response"}
+                else:
+                    return {"status": "error", "message": f"HTTP {response.status_code}: {response.text}"}
+
+        except FileNotFoundError:
+            return {"status": "error", "message": f"File not found: {self.zip_path}"}
+        except Exception as e:
+            return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
 
 class SycnWidget(MessageBoxBase):
@@ -126,6 +164,8 @@ class SycnWidget(MessageBoxBase):
 
         self.widget.setMinimumWidth(400)
         self.set_font_recursive(self, self._font)
+        self.upload_thread = None
+        self.download_thread = None
 
     def toggle_mode(self):
         """切换模式"""
@@ -142,47 +182,101 @@ class SycnWidget(MessageBoxBase):
 
     def _compression_to_zip(self, source_dir, zip_path=".config.zip"):
         """Compress the source_dir into a zip file at zip_path"""
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, dirs, files in os.walk(source_dir):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, source_dir)
-                    zipf.write(file_path, arcname)
+        password = self.password.text().strip()
+        with py7zr.SevenZipFile(
+            zip_path,
+            'w',
+            password=password,
+            filters=[{"id": py7zr.FILTER_LZMA2, "preset": 1}],
+            header_encryption=True
+        ) as archive:
+            archive.writeall(source_dir, arcname='')
+
+        # with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        #     for root, dirs, files in os.walk(source_dir):
+        #         for file in files:
+        #             file_path = os.path.join(root, file)
+        #             arcname = os.path.relpath(file_path, source_dir)
+        #             zipf.write(file_path, arcname)
 
     def _sync(self):
         username = self.username.text().strip()
         password = self.password.text().strip()
         if not username or not password:
-            return {"status": "error", "message": "Username and password cannot be empty."}
+            self.sync_finished.emit(
+                "error", "Username and password cannot be empty.")
+            return
 
-        config_dir = Path.home() / ".config"
-        # print(username, password, self.sync_mode, config_dir)
+        config_dir = Path.home() / ".config" / "pyqt-ssh"
+
         if self.sync_mode == "sync_up":
+            # 压缩文件
             self._compression_to_zip(config_dir, ".config.zip")
-            result = upload_zip(username, password, ".config.zip")
-            if os.path.exists(".config.zip"):
-                os.remove(".config.zip")
-            if result["status"] in ["created", "updated"]:
-                self.sync_finished.emit("success", self.tr(
-                    "Settings uploaded successfully!"))
-            else:
-                self.sync_finished.emit("error", self.tr(
-                    f"Upload failed: {result['message']}"))
+
+            # 启动上传线程
+            self.upload_thread = UploadThread(
+                username, password, ".config.zip")
+            self.upload_thread.upload_finished.connect(self.on_upload_finished)
+            self.upload_thread.start()
+
+            # 禁用按钮，防止重复点击
+            self.yesButton.setEnabled(False)
+            self.yesButton.setText(self.tr("Uploading..."))
 
         else:  # sync_dl
-            result = download_zip(username, password, ".config.zip")
-            if result["status"] == "success":
-                try:
-                    with zipfile.ZipFile(".config.zip", 'r') as zipf:
-                        zipf.extractall(config_dir)
-                    self.sync_finished.emit("success", self.tr(
-                        "Settings downloaded and applied successfully! Please restart the application."))
-                except Exception as e:
-                    self.sync_finished.emit("error", self.tr(
-                        f"Extraction failed: {str(e)}"))
-                finally:
-                    if os.path.exists(".config.zip"):
-                        os.remove(".config.zip")
-            else:
-                self.sync_finished.emit("error", self.tr(
-                    f"Download failed: {result['message']}"))
+            # 启动下载线程
+            self.download_thread = DownloadThread(
+                username, password, ".config.zip")
+            self.download_thread.download_finished.connect(
+                self.on_download_finished)
+            self.download_thread.start()
+
+            # 禁用按钮，防止重复点击
+            self.yesButton.setEnabled(False)
+            self.yesButton.setText(self.tr("Downloading..."))
+
+    def on_upload_finished(self, status, message):
+        """上传完成回调"""
+        # 清理临时文件
+        if os.path.exists(".config.zip"):
+            os.remove(".config.zip")
+
+        # 恢复按钮状态
+        self.yesButton.setEnabled(True)
+        self.yesButton.setText(self.tr("Sync"))
+
+        # 发射完成信号
+        self.sync_finished.emit(status, message)
+
+    def on_download_finished(self, status, message):
+        """下载完成回调"""
+        # 恢复按钮状态
+        self.yesButton.setEnabled(True)
+        self.yesButton.setText(self.tr("Sync"))
+        password = self.password.text().strip()
+        if status == "success":
+            # 解压文件
+            try:
+                status = "updated"
+                config_dir = Path.home() / ".config" / "pyqt-ssh"
+                with py7zr.SevenZipFile(".config.zip", 'r', password=password) as archive:
+                    archive.extractall(config_dir)
+                message = "Settings downloaded and applied successfully! Please restart the application."
+            except Exception as e:
+                status = "error"
+                message = f"Extraction failed: {str(e)}"
+            finally:
+                # 清理临时文件
+                if os.path.exists(".config.zip"):
+                    os.remove(".config.zip")
+
+        # 发射完成信号
+        self.sync_finished.emit(status, message)
+
+    def center_on_parent(self):
+        parent_rect = self.parent().frameGeometry()
+        self_rect = self.frameGeometry()
+        self.move(
+            parent_rect.center().x() - self_rect.width() // 2,
+            parent_rect.center().y() - self_rect.height() // 2
+        )
