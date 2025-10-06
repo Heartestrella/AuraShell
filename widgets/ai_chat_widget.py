@@ -84,7 +84,7 @@ class AIBridge(QObject):
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"Failed to read file: {e}"}, ensure_ascii=False)
                 pass
-            def add_file(args:str = None):
+            def write_file(args:str = None):
                 """
                 <write_to_file><path>{文件绝对路径}</path><content>{文件内容}</content></write_to_file>
                 """
@@ -194,9 +194,9 @@ class AIBridge(QObject):
             )
             self.mcp_manager.register_tool_handler(
                 server_name="Linux终端",
-                tool_name="add_file",
-                handler=add_file,
-                description="新增文件",
+                tool_name="write_file",
+                handler=write_file,
+                description="覆盖服务器文件",
                 auto_approve=False
             )
             self.mcp_manager.register_tool_handler(
