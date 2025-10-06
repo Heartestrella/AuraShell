@@ -1483,7 +1483,7 @@ def excepthook(exc_type, exc_value, exc_traceback):
     QMessageBox.critical(None, "程序出错", error_msg)
 
 
-# sys.excepthook = excepthook
+sys.excepthook = excepthook
 
 if __name__ == '__main__':
     try:
