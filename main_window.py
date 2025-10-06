@@ -164,7 +164,8 @@ class Window(FramelessWindow):
     def show_hash(self, status, hash):
         print(status, hash)
         if status:
-            local_hash = open("update_hash.txt", encoding="utf-8").read()
+            local_hash = open(resource_path(
+                "resource/update_hash.txt"), encoding="utf-8").read()
             if local_hash == hash:
                 InfoBar.success(
                     title=self.tr(f"No update needed"),

@@ -1,7 +1,7 @@
 import requests
 from PyQt5.QtCore import pyqtSignal, QThread
 import base64
-HASH_URL = "https://raw.githubusercontent.com/Heartestrella/AuraShell/main/update_hash.txt"
+HASH_URL = "https://raw.githubusercontent.com/Heartestrella/AuraShell/main/resource/update_hash.txt"
 
 
 class CheckUpdate(QThread):
