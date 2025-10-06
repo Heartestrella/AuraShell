@@ -90,10 +90,14 @@ class AIMCPManager:
                 return None
             server_name = server_name_element.text.strip() if server_name_element.text else ""
             tool_name = tool_name_element.text.strip() if tool_name_element.text else ""
-            arguments_text = arguments_element.text.strip() if arguments_element.text else "{}"
+            children = list(arguments_element)
+            if children:
+                arguments_text = "".join(ET.tostring(child, encoding='unicode').strip() for child in children)
+            else:
+                arguments_text = arguments_element.text.strip() if arguments_element.text else "{}"
             try:
                 arguments = json.loads(arguments_text)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError):
                 arguments = arguments_text
             tool_info = self.tools.get(server_name, {}).get(tool_name, {})
             auto_approve = tool_info.get("auto_approve", False)
