@@ -619,13 +619,21 @@ window.loadHistory = function (filename) {
         chat.addUserBubble(userText, imageUrls, messageIndex, i);
       } else if (item.messages.role === 'assistant') {
         const aiBubble = chat.addAIBubble(messageIndex, i);
-        const aiContent = item.messages.content;
+        let aiContent = item.messages.content;
         aiBubble.setHTML(aiContent);
         const result = await backend.processMessage(aiContent);
         if (result) {
           try {
             const toolCall = JSON.parse(result);
             if (toolCall && toolCall.server_name && toolCall.tool_name && toolCall.arguments) {
+              let xml = toolCall._xml_;
+              if (xml) {
+                let newContent = aiContent.replace(xml, '');
+                if (newContent == '') {
+                  newContent = toolCall.server_name + ' -> ' + toolCall.tool_name;
+                }
+                aiBubble.setHTML(newContent);
+              }
               const toolName = `${toolCall.server_name} -> ${toolCall.tool_name}`;
               const toolArgsStr = JSON.stringify(toolCall.arguments, null, 2);
               const systemBubble = chat.addSystemBubble(toolName, toolArgsStr, messageIndex, i);
@@ -774,6 +782,29 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   if (sendButton) {
     sendButton.addEventListener('click', sendMessage);
+  }
+  const imageButton = document.querySelector('#image-button');
+  if (imageButton) {
+    imageButton.addEventListener('click', () => {
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/*';
+      fileInput.multiple = true;
+      fileInput.addEventListener('change', (event) => {
+        const files = event.target.files;
+        if (files.length > 0) {
+          Array.from(files).forEach((file) => {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+              pastedImageDataUrls.push(e.target.result);
+              renderImagePreviews();
+            };
+            reader.readAsDataURL(file);
+          });
+        }
+      });
+      fileInput.click();
+    });
   }
   const newChatButton = document.querySelector('.new-chat-button');
   if (newChatButton) {
