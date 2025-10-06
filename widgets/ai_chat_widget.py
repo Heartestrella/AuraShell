@@ -244,7 +244,7 @@ class AIBridge(QObject):
                 auto_approve=True
             )
         Linux终端()
-        print(self.getSystemPrompt())
+        # print(self.getSystemPrompt())
 
     @pyqtSlot(result=str)
     def getSystemPrompt(self):

@@ -20,7 +20,12 @@ class Session:
             'history': [],
             'console_content': '',
             'host_key': '',
-            'processes_md5': ''
+            'processes_md5': '',
+            'proxy_type': 'None',
+            'proxy_host': '',
+            'proxy_port': 0,
+            'proxy_username': '',
+            'proxy_password': ''
         }
         if session_data:
             for key, default_value in default_values.items():
@@ -44,7 +49,12 @@ class Session:
             'history': self.history,
             'console_content': self.console_content,
             'host_key': self.host_key,
-            'processes_md5': self.processes_md5
+            'processes_md5': self.processes_md5,
+            'proxy_type': self.proxy_type,
+            'proxy_host': self.proxy_host,
+            'proxy_port': self.proxy_port,
+            'proxy_username': self.proxy_username,
+            'proxy_password': self.proxy_password
         }
 
     def add_command(self, command: str):
@@ -101,7 +111,12 @@ class SessionManager:
             'history': [],
             'console_content': '',
             'host_key': '',
-            'processes_md5': ''
+            'processes_md5': '',
+            'proxy_type': 'None',
+            'proxy_host': '',
+            'proxy_port': 0,
+            'proxy_username': '',
+            'proxy_password': ''
         }
         migrated_data = session_data.copy()
         for field, default_value in current_fields.items():
@@ -117,7 +132,9 @@ class SessionManager:
 
     def create_session(self, name: str, host: str, username: str, port: int,
                        auth_type: str, password: str = '', key_path: str = '',
-                       host_key: str = '', processes_md5: str = '') -> Session:
+                       host_key: str = '', processes_md5: str = '',
+                       proxy_type: str = 'None', proxy_host: str = '', proxy_port: int = 0,
+                       proxy_username: str = '', proxy_password: str = '') -> Session:
         existing_names = [s.name for s in self.sessions_cache]
         if name in existing_names:
             raise ValueError(
@@ -136,7 +153,12 @@ class SessionManager:
             'history': [],
             'console_content': f'Welcome to SSH Session: {name}\n{username}@{host}:~$ ',
             'host_key': host_key,
-            'processes_md5': processes_md5
+            'processes_md5': processes_md5,
+            'proxy_type': proxy_type,
+            'proxy_host': proxy_host,
+            'proxy_port': proxy_port,
+            'proxy_username': proxy_username,
+            'proxy_password': proxy_password
         })
         sessions = self.sessions_cache.copy()
         sessions.append(new_session)
