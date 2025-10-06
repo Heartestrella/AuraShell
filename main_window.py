@@ -1517,14 +1517,11 @@ if __name__ == '__main__':
         configer = SCM()
         setup_global_logging()
 
-        # 步骤2: 设置硬件加速
-        update_splash_progress(2, 8, "设置硬件加速")
+        # 步骤2: 设置DPI
+        update_splash_progress(2, 8, "设置高DPI支持")
         QApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-        QApplication.setAttribute(Qt.AA_UseOpenGLES, False)
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-        QApplication.setAttribute(Qt.AA_UseDesktopOpenGL, True)
-        QApplication.setAttribute(Qt.AA_DontCreateNativeWidgetSiblings, True)
 
         app = QApplication(sys.argv)
 
