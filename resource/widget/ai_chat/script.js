@@ -730,6 +730,10 @@ let aiChatApiOptionsBody = {
 };
 window.firstUserMessage = '';
 let backend;
+let lastSystemData = {
+  sshCwd: null,
+  fileManagerCwd: null,
+};
 const chat = new ChatController('.chat-body');
 const chatHistoryContainer = document.querySelector('.chat-history');
 window.loadHistory = function (filename) {
@@ -905,13 +909,27 @@ document.addEventListener('DOMContentLoaded', function () {
           });
         });
       }
-      userMessageContent.push({
-        type: 'text',
-        text: `<附加系统数据>
-<终端工作目录>${sshCwd}</终端工作目录>
-<文件管理器工作目录>${fileManagerCwd}</文件管理器工作目录>
-</附加系统数据>`,
-      });
+      const currentSystemData = { sshCwd, fileManagerCwd };
+      const systemDataMap = {
+        sshCwd: '终端cwd',
+        fileManagerCwd: '文件管理器cwd',
+      };
+      const changedDataXmlParts = [];
+      for (const key in systemDataMap) {
+        if (currentSystemData[key] !== lastSystemData[key]) {
+          const tagName = systemDataMap[key];
+          const value = currentSystemData[key];
+          changedDataXmlParts.push(`<${tagName}>${value}</${tagName}>`);
+        }
+      }
+      if (changedDataXmlParts.length > 0) {
+        const systemDataXml = `<附加系统数据>\n${changedDataXmlParts.join('\n')}\n</附加系统数据>`;
+        userMessageContent.push({
+          type: 'text',
+          text: systemDataXml,
+        });
+        Object.assign(lastSystemData, currentSystemData);
+      }
       const userMessage = {
         role: 'user',
         content: userMessageContent,
@@ -1240,6 +1258,8 @@ async function requestAiChat(onStream, onDone, signal) {
       }
     }
     let response;
+    let retryCount = 0;
+    const maxRetries = 5;
     while (true) {
       if (signal.aborted) {
         throw new DOMException('Request aborted by user', 'AbortError');
@@ -1248,7 +1268,14 @@ async function requestAiChat(onStream, onDone, signal) {
       options.signal = signal;
       response = await fetch(allModels[window.currentModel].api_url + '/chat/completions', options);
       if (response.status === 429) {
-        console.log('Rate limit exceeded (429). Retrying after 1 second...');
+        if (retryCount >= maxRetries) {
+          if (onDone) {
+            onDone(new Error(`Rate limit exceeded (429) after ${maxRetries} attempts.`));
+          }
+          return;
+        }
+        retryCount++;
+        console.log(`Rate limit exceeded (429). Retrying after 1 second... (Attempt ${retryCount}/${maxRetries})`);
         await new Promise((resolve) => setTimeout(resolve, 1000));
         if (signal.aborted) {
           throw new DOMException('Request aborted by user', 'AbortError');
