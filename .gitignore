@@ -7,5 +7,5 @@ _ssh_download/
 /debug
 __pycache__
 build/
-dist/
 .venv/
+dist/
