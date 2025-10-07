@@ -227,6 +227,14 @@ class TerminalBridge(QObject):
     def copyToClipboard(self, text):
         QApplication.clipboard().setText(text)
 
+    @pyqtSlot()
+    def pasteFromClipboard(self):
+        """JS -> Python: paste from clipboard"""
+        clipboard_text = QApplication.clipboard().text()
+        if clipboard_text:
+            self.sendInput(base64.b64encode(
+                clipboard_text.encode('utf-8')).decode('ascii'))
+
 
 class WebTerminal(QWidget):
     """
