@@ -1,6 +1,6 @@
 # coding:utf-8
 import sys
-import ctypes
+
 import time
 from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
@@ -37,6 +37,7 @@ import pyperclip as cb
 
 try:
     import pyi_splash
+    import ctypes
 except ImportError:
     pyi_splash = None
 font_ = font_config()
