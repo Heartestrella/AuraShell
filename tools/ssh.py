@@ -123,47 +123,34 @@ class SSHWorker(QThread):
                             print(f"创建远端目录 {remote_dir}")
                         except Exception as e:
                             print(f"无法创建远端目录 {remote_dir}: {e}")
-
-                    exists_remote_proc = True
-                    try:
-                        st = sftp.stat(self.remote_proc)
-                        print(f"远端 processes 存在: {self.remote_proc}")
-                    except IOError:
-                        exists_remote_proc = False
-                        print(f"远端 processes 不存在: {self.remote_proc}")
-
-                    if exists_remote_proc:
-                        try:
-                            try:
-                                current_mode = st.st_mode
-                                new_mode = current_mode | 0o111
-                                sftp.chmod(self.remote_proc, new_mode)
-                            except Exception:
-                                sftp.chmod(self.remote_proc, 0o755)
-                            print(f"已将远端文件 {self.remote_proc} 设为可执行")
-                        except Exception as e:
-                            print(f"设为可执行失败: {e}")
+                    if not os.path.exists(self.local_proc):
+                        err = f"本地 processes 文件不存在: {self.local_proc}"
+                        print(err)
+                        self.error_occurred.emit(err)
                     else:
-
-                        if not os.path.exists(self.local_proc):
-                            err = f"本地 processes 文件不存在: {self.local_proc}"
-                            print(err)
-                            self.error_occurred.emit(err)
-                        else:
+                        try:
+                            print(f"上传本地 {self.local_proc} 到远端 {self.remote_proc} ...")
+                            with open(self.local_proc, 'rb') as f:
+                                content = f.read()
+                            content = content.replace(b'\r\n', b'\n')
+                            import tempfile
+                            with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.sh') as tmp:
+                                tmp.write(content)
+                                tmp_path = tmp.name
                             try:
-                                print(
-                                    f"上传本地 {self.local_proc} 到远端 {self.remote_proc} ...")
-                                sftp.put(self.local_proc, self.remote_proc)
+                                sftp.put(tmp_path, self.remote_proc)
+                                sftp.chmod(self.remote_proc, 0o755)
+                                print("✅ 上传并设置可执行成功")
+                            finally:
                                 try:
-                                    sftp.chmod(self.remote_proc, 0o755)
+                                    os.unlink(tmp_path)
                                 except Exception:
                                     pass
-                                print("上传并设置可执行成功")
-                            except Exception as e:
-                                tb = traceback.format_exc()
-                                err = f"上传 processes 失败: {e}\n{tb}"
-                                print(err)
-                                self.error_occurred.emit(err)
+                        except Exception as e:
+                            tb = traceback.format_exc()
+                            err = f"上传 processes 失败: {e}\n{tb}"
+                            print(err)
+                            self.error_occurred.emit(err)
                     try:
                         sftp.close()
                     except Exception:
@@ -186,17 +173,21 @@ class SSHWorker(QThread):
                 host_key = self.get_hostkey_fp_hex()
                 self.key_verification.emit(md5, host_key)
                 # print(md5, host_key)
+                script_path = self.remote_proc
+                check_cmd = f"test -x {script_path} && echo 'EXISTS' || echo 'NOT_FOUND'"
+                self.run_command(check_cmd)
                 if self.user == "root":
-                    cmd = f'./.ssh/processes.sh'
-                    print("Running without sudo as root")
+                    cmd = f'{script_path}'
+                    print(f"Running without sudo as root: {cmd}")
                 else:
-                    cmd = f'echo {self.password} | sudo -S ./.ssh/processes.sh'
-                    print("Running with sudo as non-root")
+                    cmd = f'echo {self.password} | sudo -S bash {script_path}'
+                    print(f"Running with sudo as non-root: {cmd}")
                 try:
                     self.run_command(cmd)
-                    print("已启动远端 processes 可执行文件(./.ssh/processes)")
+                    print(f"已启动远端 processes 可执行文件({script_path})")
                 except Exception as e:
                     print(f"启动 processes 失败：{e}")
+                    self.error_occurred.emit(f"启动 processes 失败：{e}")
             self.exec_()
             self._cleanup()
         except socks.ProxyError as e:
@@ -347,13 +338,8 @@ class SSHWorker(QThread):
             self.error_occurred.emit(str(e))
 
     def _process_sys_resource_buffer(self):
-        """
-        Extract the ///Start ... End/// or ///SysInfo ... End/// JSON from _buffer 
-        and emit the sys_resource signal
-        """
         try:
             text = self._buffer.decode(errors='ignore')
-            # print(text)
             pattern = re.compile(r'///(SysInfo|Start)(.*?)End///', re.DOTALL)
             match = pattern.search(text)
             if match:
@@ -365,13 +351,12 @@ class SSHWorker(QThread):
                     else:
                         data = {"type": "info", **data}
                     self.sys_resource.emit(data)
-                except Exception:
-                    pass
-
+                except Exception as e:
+                    print(f"Error processing system resource data: {e}")
                 last_end = match.end()
                 self._buffer = self._buffer[last_end:]
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error in _process_sys_resource_buffer: {e}")
 
     def run_command(self, command=None, add_newline=True):
         """command can be str or bytes; if None, a newline is sent"""

@@ -87,15 +87,7 @@ while true; do
     mem_percent=$(free | awk '/Mem/ {printf("%.1f", $3/$2 * 100)}')
 
     # --- 前 N 个进程 ---
-    processes=$(ps -eo pid,comm,%cpu,%mem --sort=-%cpu \
-        | awk -v top_n="$TOP_N" '
-        NR>1 && $2 !~ /^kworker/ && $2 !~ /^rcu_/ {
-            count++
-            if (count <= top_n) {
-                printf "{\"pid\":%s,\"name\":\"%s\",\"cpu\":%s,\"mem\":%s},",$1,$2,$3,$4
-            }
-        }' \
-        | sed 's/,$//')
+    processes=$(ps -eo pid,comm,%cpu,%mem --sort=-%cpu | awk -v top_n="$TOP_N" 'NR>1 && $2 !~ /^kworker/ && $2 !~ /^rcu_/ {count++; if (count <= top_n) {printf "{\"pid\":%s,\"name\":\"%s\",\"cpu\":%s,\"mem\":%s},",$1,$2,$3,$4}}' | sed 's/,$//')
     processes="[$processes]"
 
     # --- 全部进程 --- (使用改进的方法)
