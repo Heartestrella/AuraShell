@@ -1114,6 +1114,8 @@ class Window(FramelessWindow):
             if watching_dogs:
                 for dog in watching_dogs:
                     dog.stop()
+            if len(self.session_widgets) <= 0:
+                self.switchTo(self.MainInterface)
         except Exception as e:
             InfoBar.error(
                 title=self.tr('Error closing session!'),
@@ -1469,7 +1471,7 @@ def language_code_to_locale(code: str) -> str:
     mapping = {
         "EN": "en_US",
         "CN": "zh_CN",
-        "JP": "ja_JP",
+        "JP": "zh_JP",
         "RU": "ru_RU",
     }
 
@@ -1543,7 +1545,7 @@ if __name__ == '__main__':
         translator = QTranslator()
         translator_1 = FluentTranslator()
         if lang != "en_US":
-            translator.load(resource_path(f"resource/i18n/pssh_{lang}.qm"))
+            translator.load(resource_path(f"resource/i18n/app_{lang}.qm"))
             app.installTranslator(translator)
         app.installTranslator(translator_1)
 
