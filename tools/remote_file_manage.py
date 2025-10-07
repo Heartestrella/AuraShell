@@ -1312,11 +1312,17 @@ class RemoteFileManager(QThread):
             print(f"Exception in check_path_type_list: {e}")
             return {p: self.check_path_type(p) for p in paths}
 
-    def get_default_path(self) -> Optional[str]:
+    def get_default_path(self, default_path: str = None) -> Optional[str]:
         try:
             if self.conn is None:
                 print("SSH 连接未建立")
                 return None
+            if default_path:
+                stdin, stdout, stderr = self.conn.exec_command(
+                    f'if [ -d "{default_path}" ]; then echo "exists"; else echo "not found"; fi')
+                result = stdout.read().decode('utf-8').strip()
+                if result == "exists":
+                    return default_path
             stdin, stdout, stderr = self.conn.exec_command("pwd")
             exit_status = stdout.channel.recv_exit_status()
             path = stdout.read().decode('utf-8').strip()

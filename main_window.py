@@ -688,7 +688,8 @@ class Window(FramelessWindow):
 
             def on_sftp_ready():
                 global home_path
-                home_path = file_manager.get_default_path()
+                home_path = file_manager.get_default_path(
+                    session.file_manager_default_path)
                 path_list = self.parse_linux_path(home_path)
 
                 session_widget.file_bar.send_signal = False
@@ -724,7 +725,7 @@ class Window(FramelessWindow):
                 child_widget = self.session_widgets[widget_key]
                 if hasattr(child_widget, 'ssh_widget'):
                     child_widget.ssh_widget.set_worker(worker)
-                    child_widget._set_file_bar(session.default_path)
+                    child_widget._set_file_bar(session.ssh_default_path)
                 else:
                     print("child_widget does not have an ssh_widget attribute")
             except Exception as e:
