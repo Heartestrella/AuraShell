@@ -394,7 +394,6 @@ class AIBridge(QObject):
         else:
             return json.dumps({"status": "error", "content": "Could not find the file explorer."}, ensure_ascii=False)
 
-
     @pyqtSlot(str)
     def cancelProxiedFetch(self, request_id):
         if request_id in self.active_requests:

@@ -267,28 +267,28 @@ class SystemBubble {
   }
   isDangerousTool(toolName, detail) {
     if (!toolName.toLowerCase().includes('exe_shell')) {
-      return '';
+      return [];
     }
-    const dangerousCommands = ['rm ', 'chmod ', 'mv ', 'killall ', 'kill ', 'mkfs '];
+    const dangerousCommands = ['rm', 'chmod', 'mv', 'killall', 'kill', 'mkfs'].sort((a, b) => b.length - a.length);
     let args = detail;
     try {
       while (typeof args === 'string') {
         args = JSON.parse(args);
       }
     } catch (e) {
-      return '';
+      return [];
     }
     if (typeof args !== 'object' || args === null || typeof args.shell !== 'string') {
-      return '';
+      return [];
     }
     const shellCommand = args.shell;
-    const shellCommandLower = shellCommand.toLowerCase();
-    for (const cmd of dangerousCommands) {
-      if (shellCommandLower.startsWith(cmd)) {
-        return shellCommand.substring(0, cmd.length);
-      }
+    const foundCommands = new Set();
+    const regex = new RegExp(`\\b(${dangerousCommands.join('|')})\\b`, 'gi');
+    let match;
+    while ((match = regex.exec(shellCommand)) !== null) {
+      foundCommands.add(match[0]);
     }
-    return '';
+    return Array.from(foundCommands);
   }
   _prettyPrintXml(xml) {
     const PADDING = '  ';
@@ -333,8 +333,8 @@ class SystemBubble {
   }
   setToolCall(toolName, detail) {
     this.toolNameElement.textContent = toolName;
-    const dangerousCmd = this.isDangerousTool(toolName, detail);
-    if (dangerousCmd) {
+    const dangerousCmds = this.isDangerousTool(toolName, detail);
+    if (dangerousCmds.length > 0) {
       this.toolCardElement.classList.add('dangerous');
       this.toolNameElement.innerHTML = '⚠️ ' + this.toolNameElement.textContent;
       try {
@@ -343,14 +343,23 @@ class SystemBubble {
           args = JSON.parse(args);
         }
         const fullCommand = args.shell;
-        const restOfCommand = fullCommand.substring(dangerousCmd.length);
+        const escapedCmds = dangerousCmds.map((cmd) => cmd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).sort((a, b) => b.length - a.length);
+        const regex = new RegExp(`\\b(${escapedCmds.join('|')})\\b`, 'gi');
+        const parts = fullCommand.split(regex);
         this.detailElement.innerHTML = '';
         this.detailElement.appendChild(document.createTextNode('{\n  "shell": "'));
-        const dangerousSpan = document.createElement('span');
-        dangerousSpan.className = 'dangerous-command';
-        dangerousSpan.textContent = dangerousCmd;
-        this.detailElement.appendChild(dangerousSpan);
-        this.detailElement.appendChild(document.createTextNode(restOfCommand));
+        parts.forEach((part) => {
+          if (part) {
+            if (dangerousCmds.find((cmd) => new RegExp(`^${cmd}$`, 'i').test(part))) {
+              const dangerousSpan = document.createElement('span');
+              dangerousSpan.className = 'dangerous-command';
+              dangerousSpan.textContent = part;
+              this.detailElement.appendChild(dangerousSpan);
+            } else {
+              this.detailElement.appendChild(document.createTextNode(part));
+            }
+          }
+        });
         this.detailElement.appendChild(document.createTextNode('"\n}'));
       } catch (e) {
         this.detailElement.innerHTML = this._formatAndHighlight(detail);
