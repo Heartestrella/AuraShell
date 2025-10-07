@@ -23,4 +23,4 @@ class CheckUpdate(QThread):
             else:
                 self.hash_signal.emit(False, "Cant get hash")
         except Exception as e:
-            self.hash_signal.emit(False, e)
+            self.hash_signal.emit(False, str(e))

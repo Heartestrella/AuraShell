@@ -58,6 +58,9 @@ class SSH_CARD(CardWidget):
 
         self.moreButton.setFixedSize(32, 32)
 
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.showContextMenu)
+
         self.menu = RoundMenu(parent=self)
 
         self.action_open = Action(FIF.FOLDER, self.tr("Open a new session"))
@@ -132,6 +135,11 @@ class SSH_CARD(CardWidget):
     def showMenu(self):
         pos = self.moreButton.mapToGlobal(self.moreButton.rect().bottomRight())
         self.menu.exec(pos)
+
+    def showContextMenu(self, pos):
+        """Shows the context menu at the given position."""
+        global_pos = self.mapToGlobal(pos)
+        self.menu.exec(global_pos)
 
 
 class MainInterface(QWidget):
@@ -252,7 +260,6 @@ class MainInterface(QWidget):
             if not session:
                 print(f"Session ID not found: {session_id}")
                 return
-            print("Edited session ID:", session.id)
             dialog.session_name.setText(session.name)
             dialog.username.setText(session.username)
             dialog.host.setText(session.host)
@@ -264,6 +271,18 @@ class MainInterface(QWidget):
                 dialog.auth_combo.setCurrentIndex(1)
                 dialog._on_auth_changed(1)
                 dialog.key_path.setText(session.key_path)
+
+            # Populate proxy fields
+            proxy_type = getattr(session, 'proxy_type', 'None')
+            proxy_index = dialog.proxy_type_combo.findText(proxy_type)
+            if proxy_index != -1:
+                dialog.proxy_type_combo.setCurrentIndex(proxy_index)
+            dialog.proxy_host.setText(getattr(session, 'proxy_host', ''))
+            dialog.proxy_port.setText(str(getattr(session, 'proxy_port', '')))
+            dialog.proxy_username.setText(getattr(session, 'proxy_username', ''))
+            dialog.proxy_password.setText(getattr(session, 'proxy_password', ''))
+            dialog._on_proxy_type_changed(proxy_index if proxy_index != -1 else 0)
+
         if dialog.exec():
             try:
                 port = int(dialog.port.text()
@@ -279,16 +298,13 @@ class MainInterface(QWidget):
                     'username': dialog.username.text().strip(),
                     'auth_type': 'password' if dialog.auth_combo.currentIndex() == 0 else 'key',
                     'password': dialog.password.text() if dialog.auth_combo.currentIndex() == 0 else '',
-                    'key_path': dialog.key_path.text() if dialog.auth_combo.currentIndex() != 0 else ''
+                    'key_path': dialog.key_path.text() if dialog.auth_combo.currentIndex() != 0 else '',
+                    'proxy_type': dialog.proxy_type_combo.currentText(),
+                    'proxy_host': dialog.proxy_host.text().strip(),
+                    'proxy_port': int(dialog.proxy_port.text()) if dialog.proxy_port.text().isdigit() else 0,
+                    'proxy_username': dialog.proxy_username.text().strip(),
+                    'proxy_password': dialog.proxy_password.text()
                 }
-
-                print("Session Name:", session_data['name'])
-                print("Username:", session_data['username'])
-                print("Host:", session_data['host'])
-                print("Port:", session_data['port'])
-                print("Authentication method:", session_data['auth_type'])
-                print("Password:", session_data['password'])
-                print("Key Path:", session_data['key_path'])
 
                 try:
                     content_mode = self.tr("New")
@@ -303,7 +319,12 @@ class MainInterface(QWidget):
                         port=session_data['port'],
                         auth_type=session_data['auth_type'],
                         password=session_data['password'],
-                        key_path=session_data['key_path']
+                        key_path=session_data['key_path'],
+                        proxy_type=session_data['proxy_type'],
+                        proxy_host=session_data['proxy_host'],
+                        proxy_port=session_data['proxy_port'],
+                        proxy_username=session_data['proxy_username'],
+                        proxy_password=session_data['proxy_password']
                     )
                     self._load_sessions()
                     # self.sessionClicked.emit(new_session.id)
