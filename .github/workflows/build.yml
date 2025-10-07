@@ -15,6 +15,7 @@ on:
 
 jobs:
   build:
+    name: Build for ${{ matrix.platform_name }}
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
