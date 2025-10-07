@@ -23,6 +23,13 @@ class SessionDialog(MessageBoxBase):
         self.key_path = LineEdit()
         self.key_browse_btn = PushButton(self.tr("Browse..."))
         self.key_browse_btn.clicked.connect(self._browse_ssh_key)
+
+        # Proxy settings
+        self.proxy_type_combo = ComboBox()
+        self.proxy_host = LineEdit()
+        self.proxy_port = LineEdit()
+        self.proxy_username = LineEdit()
+        self.proxy_password = PasswordLineEdit()
         # for w in [self.session_name, self.username, self.host, self.port,
         #           self.auth_combo, self.password, self.key_path, self.key_browse_btn]:
         #     if self._font:
@@ -90,6 +97,9 @@ class SessionDialog(MessageBoxBase):
         self.viewLayout.addLayout(password_layout)
         self.viewLayout.addLayout(key_layout)
 
+        # Add proxy layouts
+        self._setup_proxy_ui()
+
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         self.viewLayout.addLayout(button_layout)
@@ -98,6 +108,70 @@ class SessionDialog(MessageBoxBase):
         self._on_auth_changed(0)  # Initialize to password authentication
 
         self.set_font_recursive(self, self._font)
+
+    def _setup_proxy_ui(self):
+        # Proxy Type
+        self.proxy_type_combo.addItems(["None", "HTTP", "SOCKS4", "SOCKS5"])
+        self.proxy_type_combo.currentIndexChanged.connect(
+            self._on_proxy_type_changed)
+        proxy_type_layout = QHBoxLayout()
+        proxy_type_layout.addWidget(QLabel(self.tr("Proxy Type:")))
+        proxy_type_layout.addWidget(self.proxy_type_combo)
+        proxy_type_layout.setStretch(1, 1)
+
+        # Proxy Host
+        self.proxy_host_widget = QWidget()
+        self.proxy_host.setPlaceholderText(self.tr("Proxy server address"))
+        proxy_host_layout = QHBoxLayout(self.proxy_host_widget)
+        proxy_host_layout.setContentsMargins(0, 0, 0, 0)
+        proxy_host_layout.addWidget(QLabel(self.tr("Proxy Host:")))
+        proxy_host_layout.addWidget(self.proxy_host)
+        proxy_host_layout.setStretch(1, 1)
+
+        # Proxy Port
+        self.proxy_port_widget = QWidget()
+        self.proxy_port.setPlaceholderText(self.tr("Proxy server port"))
+        proxy_port_layout = QHBoxLayout(self.proxy_port_widget)
+        proxy_port_layout.setContentsMargins(0, 0, 0, 0)
+        proxy_port_layout.addWidget(QLabel(self.tr("Proxy Port:")))
+        proxy_port_layout.addWidget(self.proxy_port)
+        proxy_port_layout.setStretch(1, 1)
+
+        # Proxy Username
+        self.proxy_username_widget = QWidget()
+        self.proxy_username.setPlaceholderText(self.tr("Optional"))
+        proxy_username_layout = QHBoxLayout(self.proxy_username_widget)
+        proxy_username_layout.setContentsMargins(0, 0, 0, 0)
+        proxy_username_layout.addWidget(QLabel(self.tr("Proxy Username:")))
+        proxy_username_layout.addWidget(self.proxy_username)
+        proxy_username_layout.setStretch(1, 1)
+
+        # Proxy Password
+        self.proxy_password_widget = QWidget()
+        self.proxy_password.setPlaceholderText(self.tr("Optional"))
+        proxy_password_layout = QHBoxLayout(self.proxy_password_widget)
+        proxy_password_layout.setContentsMargins(0, 0, 0, 0)
+        proxy_password_layout.addWidget(QLabel(self.tr("Proxy Password:")))
+        proxy_password_layout.addWidget(self.proxy_password)
+        proxy_password_layout.setStretch(1, 1)
+
+        self.proxy_widgets = [
+            self.proxy_host_widget, self.proxy_port_widget, self.proxy_username_widget, self.proxy_password_widget
+        ]
+
+        self.viewLayout.addLayout(proxy_type_layout)
+        self.viewLayout.addWidget(self.proxy_host_widget)
+        self.viewLayout.addWidget(self.proxy_port_widget)
+        self.viewLayout.addWidget(self.proxy_username_widget)
+        self.viewLayout.addWidget(self.proxy_password_widget)
+
+        self._on_proxy_type_changed(0)
+
+    def _on_proxy_type_changed(self, index):
+        is_proxy_enabled = self.proxy_type_combo.currentText() != "None"
+        for widget in self.proxy_widgets:
+            widget.setVisible(is_proxy_enabled)
+
 
     def set_font_recursive(self, widget: QWidget, font):
         """

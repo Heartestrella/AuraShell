@@ -27,6 +27,7 @@ from tools.icons import My_Icons
 from functools import partial
 from tools.watching_saved import FileWatchThread
 from widgets.side_panel import SidePanelWidget, AutoFitImageLabel
+from widgets.expander_bar import ExpanderBar
 import magic
 import traceback
 from tools.check_update import CheckUpdate
@@ -64,6 +65,7 @@ class Window(FramelessWindow):
             print('Debug mode enabled: http://localhost:' +
                   os.environ['QTWEBENGINE_REMOTE_DEBUGGING'])
         self.icons = My_Icons()
+        self.expander_bar_width = 8
         self.active_transfers = {}
         self.watching_dogs = {}
         self.file_id_to_path = {}
@@ -158,6 +160,10 @@ class Window(FramelessWindow):
 
         self.initLayout()
         self.initNavigation()
+        
+        self.expanderBar = ExpanderBar(self, width=self.expander_bar_width)
+        self.expanderBar.hide()
+        self.expanderBar.clicked.connect(self._expand_side_panel)
 
         self.initWindow()
         if setting_.read_config()["maximized"]:
@@ -1000,7 +1006,16 @@ class Window(FramelessWindow):
         self._resize_timer.start(50)
         if not self.isActiveWindow() or not self.underMouse():
             self.apply_locked_ratio(event)
+        if hasattr(self, 'expanderBar') and self.expanderBar.isVisible():
+            self._position_expander_bar()
         super().resizeEvent(event)
+
+    def eventFilter(self, obj, event):
+        handle = self.mainSplitter.handle(1)
+        if handle and obj == handle:
+            if event.type() == QEvent.MouseButtonRelease:
+                self._save_main_splitter_state()
+        return super().eventFilter(obj, event)
 
     def initLayout(self):
         self.hBoxLayout.setSpacing(0)
@@ -1020,6 +1035,11 @@ class Window(FramelessWindow):
         # Connect signal to save sizes
         self.mainSplitter.splitterMoved.connect(self._on_main_splitter_moved)
 
+        # Install event filter to save state on mouse release
+        handle = self.mainSplitter.handle(1)
+        if handle:
+            handle.installEventFilter(self)
+
         # Style the splitter handle to be thin and subtle
         self.mainSplitter.setStyleSheet("""
             QSplitter::handle {
@@ -1035,16 +1055,12 @@ class Window(FramelessWindow):
 
         self.hBoxLayout.addWidget(self.mainSplitter)
         self.hBoxLayout.setStretchFactor(self.mainSplitter, 1)
+        
+        QTimer.singleShot(100, self._update_expander_visibility)
 
     def initNavigation(self):
-        # self.navigationInterface.setAcrylicEnabled(True)
-
         self.addSubInterface(self.MainInterface, FIF.HOME, self.tr("Home"))
-
         self.navigationInterface.addSeparator()
-
-        # self.addSubInterface(self.sessions, FIF.ALBUM,
-        #                      self.tr("SSH session"), NavigationItemPosition.SCROLL)
 
         self.addSubInterface(self.ssh_page, FIF.ALBUM, self.tr("SSH Session"))
 
@@ -1068,7 +1084,7 @@ class Window(FramelessWindow):
                              self.tr("Setting"), NavigationItemPosition.BOTTOM)
         self.stackWidget.currentChanged.connect(self.onCurrentInterfaceChanged)
         self.stackWidget.setCurrentIndex(0)
-        self.onCurrentInterfaceChanged(0)  # Set initial visibility
+        self.onCurrentInterfaceChanged(0)
 
     def _open_github(self):
         github_url = QUrl("https://github.com/Heartestrella/P-SSH")
@@ -1155,12 +1171,13 @@ class Window(FramelessWindow):
     def onCurrentInterfaceChanged(self, index):
         widget = self.stackWidget.widget(index)
         self.navigationInterface.setCurrentItem(widget.objectName())
-
-        # Show side panel only for SSH page
         if widget == self.ssh_page:
             self.sidePanel.show()
+            QTimer.singleShot(50, self._update_expander_visibility)
         else:
             self.sidePanel.hide()
+            if hasattr(self, 'expanderBar'):
+                self.expanderBar.hide()
 
     def _handle_upload_request(self, widget_key, local_path, remote_path, compression, file_manager):
         """Pre-handles upload requests to determine if UI items should be pre-created."""
@@ -1392,36 +1409,71 @@ class Window(FramelessWindow):
             except Exception as e:
                 print(f"Error updating splitter color for {widget_key}: {e}")
 
+    def _save_main_splitter_state(self):
+        new_sizes = self.mainSplitter.sizes()
+        if len(new_sizes) == 2 and new_sizes[1] <= 10:
+            old_sizes = setting_.read_config().get("splitter_sizes", [0, 0])
+            if len(old_sizes) == 2 and old_sizes[1] > 10:
+                setting_.revise_config("side_panel_last_width", old_sizes[1])
+
+        setting_.revise_config("splitter_sizes", new_sizes)
+
     def _on_main_splitter_moved(self):
-        """
-        When the main splitter is moved, this function saves the new sizes and
-        also forces the active SSH widget to update its internal layout to
-        maintain the fixed width of its left panel.
-        """
-        setting_.revise_config("splitter_sizes", self.mainSplitter.sizes())
         current_widget = self.ssh_page.sshStack.currentWidget()
         if isinstance(current_widget, SSHWidget):
             QTimer.singleShot(10, current_widget.force_set_left_panel_width)
 
+        # Update expander bar visibility
+        self._update_expander_visibility()
+
     def _ensure_side_panel_visible(self):
-        """
-        Ensures the side panel is visible and preserves the active SSH widget's
-        internal splitter position, avoiding race conditions by blocking signals.
-        """
         sizes = self.mainSplitter.sizes()
         if len(sizes) == 2 and sizes[1] == 0:
             self.mainSplitter.blockSignals(True)
-            saved_sizes = setting_.read_config().get("splitter_sizes")
-            if saved_sizes and len(saved_sizes) == 2 and saved_sizes[1] != 0:
-                self.mainSplitter.setSizes([int(s) for s in saved_sizes])
-            else:
-                default_sizes = [self.width() * 0.7, self.width() * 0.3]
-                self.mainSplitter.setSizes([int(s) for s in default_sizes])
+            config = setting_.read_config()
+            last_width = config.get("side_panel_last_width")
+            if not last_width or last_width <= 10:
+                last_width = int(self.width() * 0.3)
+            total_width = sum(sizes)
+            new_sizes = [total_width - last_width, last_width]
+            self.mainSplitter.setSizes(new_sizes)
+            setting_.revise_config("splitter_sizes", new_sizes)
             self.mainSplitter.blockSignals(False)
             current_widget = self.ssh_page.sshStack.currentWidget()
             if isinstance(current_widget, SSHWidget):
                 QTimer.singleShot(
                     10, current_widget.force_set_left_panel_width)
+    
+    def _expand_side_panel(self):
+        self.expanderBar.hide()
+        self._ensure_side_panel_visible()
+    
+    def _update_expander_visibility(self):
+        if self.stackWidget.currentWidget() != self.ssh_page:
+            if hasattr(self, 'expanderBar'):
+                self.expanderBar.hide()
+            return
+        
+        sizes = self.mainSplitter.sizes()
+        if len(sizes) == 2:
+            if sizes[1] == 0:
+                self.expanderBar.show()
+                self._position_expander_bar()
+            else:
+                self.expanderBar.hide()
+    
+    def _position_expander_bar(self):
+        expander_width = self.expander_bar_width
+        window_width = self.width()
+        window_height = self.height()
+        titlebar_height = self.titleBar.height()
+        self.expanderBar.setGeometry(
+            window_width - expander_width,
+            titlebar_height,
+            expander_width,
+            window_height - titlebar_height
+        )
+        self.expanderBar.raise_()
 
     def _set_language(self, lang_code: str):
         translator = QTranslator()
@@ -1444,7 +1496,6 @@ class Window(FramelessWindow):
                     value_1.retranslateUi()
 
     def changeEvent(self, event):
-        # Get the maximized and minimized state
         if event.type() == QEvent.WindowStateChange:
             if self.isMaximized():
                 setting_.revise_config("maximized", True)

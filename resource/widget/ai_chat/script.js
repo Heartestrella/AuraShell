@@ -1,3 +1,53 @@
+const pendingRequests = new Map();
+function generateUniqueId() {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function cleanupRequest(requestId) {
+  const request = pendingRequests.get(requestId);
+  if (request && request.handler) {
+    backend.toolResultReady.disconnect(request.handler);
+  }
+  pendingRequests.delete(requestId);
+}
+
+async function executeMcpTool(serverName, toolName, args) {
+  return new Promise((resolve, reject) => {
+    const requestId = generateUniqueId();
+    const handler = (receivedId, result) => {
+      if (receivedId === requestId) {
+        cleanupRequest(requestId);
+        resolve(result);
+      }
+    };
+    pendingRequests.set(requestId, {
+      handler,
+      serverName,
+      toolName,
+      startTime: Date.now(),
+    });
+    backend.toolResultReady.connect(handler);
+    try {
+      backend.executeMcpTool(serverName, toolName, args, requestId);
+    } catch (error) {
+      cleanupRequest(requestId);
+      reject(error);
+    }
+  });
+}
+
+function getPendingRequests() {
+  const requests = [];
+  for (const [id, info] of pendingRequests) {
+    requests.push({
+      id,
+      tool: `${info.serverName}.${info.toolName}`,
+      duration: Date.now() - info.startTime,
+    });
+  }
+  return requests;
+}
+
 class ChatController {
   constructor(chatBodySelector) {
     this.chatBody = document.querySelector(chatBodySelector);
@@ -217,28 +267,29 @@ class SystemBubble {
   }
   isDangerousTool(toolName, detail) {
     if (!toolName.toLowerCase().includes('exe_shell')) {
-      return '';
+      return [];
     }
-    const dangerousCommands = ['rm ', 'chmod ', 'mv ', 'killall ', 'kill ', 'mkfs '];
-    let args = detail;
+    const dangerousCommands = ['rm', 'chmod', 'mv', 'killall', 'kill', 'mkfs'];
+    let argsXml = detail;
+    let shellCommand = '';
     try {
-      while (typeof args === 'string') {
-        args = JSON.parse(args);
+      argsXml = JSON.parse(detail);
+      const shellMatch = argsXml.match(/<shell>([\s\S]*?)<\/shell>/);
+      if (shellMatch && shellMatch[1]) {
+        shellCommand = shellMatch[1];
+      } else {
+        return [];
       }
     } catch (e) {
-      return '';
+      return [];
     }
-    if (typeof args !== 'object' || args === null || typeof args.shell !== 'string') {
-      return '';
+    const foundCommands = new Set();
+    const regex = new RegExp(`\\b(${dangerousCommands.join('|')})\\b`, 'gi');
+    let match;
+    while ((match = regex.exec(shellCommand)) !== null) {
+      foundCommands.add(match[0].toLowerCase());
     }
-    const shellCommand = args.shell;
-    const shellCommandLower = shellCommand.toLowerCase();
-    for (const cmd of dangerousCommands) {
-      if (shellCommandLower.startsWith(cmd)) {
-        return shellCommand.substring(0, cmd.length);
-      }
-    }
-    return '';
+    return Array.from(foundCommands);
   }
   _prettyPrintXml(xml) {
     const PADDING = '  ';
@@ -283,25 +334,41 @@ class SystemBubble {
   }
   setToolCall(toolName, detail) {
     this.toolNameElement.textContent = toolName;
-    const dangerousCmd = this.isDangerousTool(toolName, detail);
-    if (dangerousCmd) {
+    const dangerousCmds = this.isDangerousTool(toolName, detail);
+    if (toolName.toLowerCase().includes('exe_shell') && dangerousCmds.length > 0) {
       this.toolCardElement.classList.add('dangerous');
       this.toolNameElement.innerHTML = '⚠️ ' + this.toolNameElement.textContent;
       try {
-        let args = detail;
-        while (typeof args === 'string') {
-          args = JSON.parse(args);
+        let argsXml = JSON.parse(detail);
+        const shellMatch = argsXml.match(/<shell>([\s\S]*?)<\/shell>/);
+        const cwdMatch = argsXml.match(/<cwd>([\s\S]*?)<\/cwd>/);
+        if (shellMatch) {
+          const fullCommand = shellMatch[1];
+          const escapedCmds = dangerousCmds.map((cmd) => cmd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+          const regex = new RegExp(`(\\b(?:${escapedCmds.join('|')})\\b)`, 'gi');
+          const parts = fullCommand.split(regex);
+          this.detailElement.innerHTML = '';
+          this.detailElement.appendChild(document.createTextNode('<exe_shell>\n  <shell>'));
+          parts.forEach((part) => {
+            if (part) {
+              if (dangerousCmds.includes(part.toLowerCase())) {
+                const dangerousSpan = document.createElement('span');
+                dangerousSpan.className = 'dangerous-command';
+                dangerousSpan.textContent = part;
+                this.detailElement.appendChild(dangerousSpan);
+              } else {
+                this.detailElement.appendChild(document.createTextNode(part));
+              }
+            }
+          });
+          this.detailElement.appendChild(document.createTextNode('</shell>'));
+          if (cwdMatch) {
+            this.detailElement.appendChild(document.createTextNode(`\n  <cwd>${cwdMatch[1]}</cwd>`));
+          }
+          this.detailElement.appendChild(document.createTextNode('\n</exe_shell>'));
+        } else {
+          this.detailElement.innerHTML = this._formatAndHighlight(detail);
         }
-        const fullCommand = args.shell;
-        const restOfCommand = fullCommand.substring(dangerousCmd.length);
-        this.detailElement.innerHTML = '';
-        this.detailElement.appendChild(document.createTextNode('{\n  "shell": "'));
-        const dangerousSpan = document.createElement('span');
-        dangerousSpan.className = 'dangerous-command';
-        dangerousSpan.textContent = dangerousCmd;
-        this.detailElement.appendChild(dangerousSpan);
-        this.detailElement.appendChild(document.createTextNode(restOfCommand));
-        this.detailElement.appendChild(document.createTextNode('"\n}'));
       } catch (e) {
         this.detailElement.innerHTML = this._formatAndHighlight(detail);
       }
@@ -503,7 +570,7 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
               cancelButtonContainer.style.display = 'flex';
               cancelButton.addEventListener('click', () => controller.abort());
               sendButton.disabled = true;
-              const executionResultStr = await backend.executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments));
+              const executionResultStr = await executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments));
               systemBubble.setResult('approved', executionResultStr);
               let mcpMessages = {
                 role: 'user',
@@ -680,6 +747,10 @@ let aiChatApiOptionsBody = {
 };
 window.firstUserMessage = '';
 let backend;
+let lastSystemData = {
+  sshCwd: null,
+  fileManagerCwd: null,
+};
 const chat = new ChatController('.chat-body');
 const chatHistoryContainer = document.querySelector('.chat-history');
 window.loadHistory = function (filename) {
@@ -855,13 +926,27 @@ document.addEventListener('DOMContentLoaded', function () {
           });
         });
       }
-      userMessageContent.push({
-        type: 'text',
-        text: `<附加系统数据>
-<终端工作目录>${sshCwd}</终端工作目录>
-<文件管理器工作目录>${fileManagerCwd}</文件管理器工作目录>
-</附加系统数据>`,
-      });
+      const currentSystemData = { sshCwd, fileManagerCwd };
+      const systemDataMap = {
+        sshCwd: '终端cwd',
+        fileManagerCwd: '文件管理器cwd',
+      };
+      const changedDataXmlParts = [];
+      for (const key in systemDataMap) {
+        if (currentSystemData[key] !== lastSystemData[key]) {
+          const tagName = systemDataMap[key];
+          const value = currentSystemData[key];
+          changedDataXmlParts.push(`<${tagName}>${value}</${tagName}>`);
+        }
+      }
+      if (changedDataXmlParts.length > 0) {
+        const systemDataXml = `<附加系统数据>\n${changedDataXmlParts.join('\n')}\n</附加系统数据>`;
+        userMessageContent.push({
+          type: 'text',
+          text: systemDataXml,
+        });
+        Object.assign(lastSystemData, currentSystemData);
+      }
       const userMessage = {
         role: 'user',
         content: userMessageContent,
@@ -1190,15 +1275,24 @@ async function requestAiChat(onStream, onDone, signal) {
       }
     }
     let response;
+    let retryCount = 0;
+    const maxRetries = 5;
     while (true) {
       if (signal.aborted) {
         throw new DOMException('Request aborted by user', 'AbortError');
       }
       const options = getRequestAiChatApiOptions();
       options.signal = signal;
-      response = await fetch(allModels[window.currentModel].api_url + '/chat/completions', options);
+      response = await proxiedFetch(allModels[window.currentModel].api_url + '/chat/completions', options);
       if (response.status === 429) {
-        console.log('Rate limit exceeded (429). Retrying after 1 second...');
+        if (retryCount >= maxRetries) {
+          if (onDone) {
+            onDone(new Error(`Rate limit exceeded (429) after ${maxRetries} attempts.`));
+          }
+          return;
+        }
+        retryCount++;
+        console.log(`Rate limit exceeded (429). Retrying after 1 second... (Attempt ${retryCount}/${maxRetries})`);
         await new Promise((resolve) => setTimeout(resolve, 1000));
         if (signal.aborted) {
           throw new DOMException('Request aborted by user', 'AbortError');
@@ -1210,8 +1304,8 @@ async function requestAiChat(onStream, onDone, signal) {
     if (!response.ok) {
       const errorText = await response.text();
       const error = new Error(`${response.status} ${response.statusText}\n${errorText}`);
-      if (onError) {
-        onError(error);
+      if (onDone) {
+        onDone(error);
       }
       return;
     }
@@ -1262,15 +1356,98 @@ async function requestAiChat(onStream, onDone, signal) {
       }
     }
   } catch (error) {
-    if (error.name === 'AbortError') {
-      if (onDone) {
-        onDone(fullContent);
-      }
-    } else {
-      console.error('Fetch Error:', error);
-      if (onError) {
-        onDone('Fetch Error:' + error);
-      }
+    if (onDone) {
+      onDone('Fetch Error:' + error);
     }
   }
+}
+
+async function proxiedFetch(url, options) {
+  const proxySettingsStr = await backend.getSetting('ai_chat_proxy');
+  if (!proxySettingsStr) {
+    return fetch(url, options);
+  }
+  try {
+    const proxySettings = JSON.parse(proxySettingsStr);
+    if (!proxySettings || !proxySettings.protocol || !proxySettings.host || !proxySettings.port) {
+      return fetch(url, options);
+    }
+  } catch (e) {
+    return fetch(url, options);
+  }
+  return new Promise((resolve, reject) => {
+    const requestId = generateUniqueId();
+    let streamController;
+
+    const readableStream = new ReadableStream({
+      start(controller) {
+        streamController = controller;
+      },
+    });
+    const onChunk = (receivedId, chunk) => {
+      if (receivedId === requestId) {
+        streamController.enqueue(new TextEncoder().encode(chunk));
+      }
+    };
+    const onFinish = (receivedId, status, statusText, headersJson) => {
+      if (receivedId === requestId) {
+        cleanup();
+        streamController.close();
+        const headers = new Headers(JSON.parse(headersJson));
+        const mockedResponse = {
+          ok: status >= 200 && status < 300,
+          status: status,
+          statusText: statusText,
+          headers: headers,
+          body: readableStream,
+          text: async () => {
+            const reader = readableStream.getReader();
+            let result = '';
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) return result;
+              result += new TextDecoder().decode(value);
+            }
+          },
+          json: async () => {
+            const text = await mockedResponse.text();
+            return JSON.parse(text);
+          },
+        };
+        resolve(mockedResponse);
+      }
+    };
+    const onFail = (receivedId, errorMsg) => {
+      if (receivedId === requestId) {
+        cleanup();
+        streamController.error(new Error(errorMsg));
+        reject(new Error(errorMsg));
+      }
+    };
+    const onAbort = () => {
+        backend.cancelProxiedFetch(requestId);
+        cleanup();
+        reject(new DOMException('Request aborted by user', 'AbortError'));
+    };
+    const cleanup = () => {
+      if (options.signal) {
+        options.signal.removeEventListener('abort', onAbort);
+      }
+      backend.streamChunkReceived.disconnect(onChunk);
+      backend.streamFinished.disconnect(onFinish);
+      backend.streamFailed.disconnect(onFail);
+    };
+    if (options.signal) {
+        options.signal.addEventListener('abort', onAbort, { once: true });
+    }
+    backend.streamChunkReceived.connect(onChunk);
+    backend.streamFinished.connect(onFinish);
+    backend.streamFailed.connect(onFail);
+    const optionsForBackend = {
+        method: options.method,
+        headers: options.headers,
+        body: options.body,
+    };
+    backend.proxiedFetch(requestId, url, JSON.stringify(optionsForBackend));
+  });
 }

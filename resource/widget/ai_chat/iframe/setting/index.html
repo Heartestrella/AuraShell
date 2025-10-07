@@ -69,6 +69,38 @@
                 </button>
               </div>
             </div>
+
+            <hr>
+            <h2>代理服务器</h2>
+
+            <div class="form-group">
+                <label for="proxy-protocol">协议</label>
+                <select id="proxy-protocol">
+                    <option value="">不启用</option>
+                    <option value="http">HTTP</option>
+                    <option value="socks5">SOCKS5</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="proxy-host">主机</label>
+                <input type="text" id="proxy-host" />
+            </div>
+
+            <div class="form-group">
+                <label for="proxy-port">端口</label>
+                <input type="text" id="proxy-port" />
+            </div>
+
+            <div class="form-group">
+                <label for="proxy-username">用户名 (可选)</label>
+                <input type="text" id="proxy-username" />
+            </div>
+
+            <div class="form-group">
+                <label for="proxy-password">密码 (可选)</label>
+                <input type="text" id="proxy-password" />
+            </div>
           </div>
         </div>
         <div id="tools" class="tab-content"></div>

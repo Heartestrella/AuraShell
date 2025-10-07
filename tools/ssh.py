@@ -7,8 +7,8 @@ from typing import Dict, List
 from PyQt5.QtCore import QThread, QTimer, pyqtSignal
 from tools.atool import resource_path
 import binascii
-
-
+import socks
+import socket
 class SSHWorker(QThread):
     result_ready = pyqtSignal(bytes)
     connected = pyqtSignal(bool, str)
@@ -28,6 +28,11 @@ class SSHWorker(QThread):
         self.password = session_info.password
         self.auth_type = session_info.auth_type
         self.key_path = session_info.key_path
+        self.proxy_type = getattr(session_info, 'proxy_type', 'None')
+        self.proxy_host = getattr(session_info, 'proxy_host', '')
+        self.proxy_port = getattr(session_info, 'proxy_port', 0)
+        self.proxy_username = getattr(session_info, 'proxy_username', '')
+        self.proxy_password = getattr(session_info, 'proxy_password', '')
         # print(f"{self.host}  {self.user}  {self.password}")
         self.conn = None
         self.channel = None
@@ -78,12 +83,15 @@ class SSHWorker(QThread):
         try:
             self.conn = paramiko.SSHClient()
             self.conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            
+            sock = self._create_socket()
+
             if self.auth_type == "password":
                 self.conn.connect(self.host, username=self.user,
-                                  password=self.password, timeout=10, port=self.port)
+                                  password=self.password, timeout=10, port=self.port, sock=sock)
             else:
                 self.conn.connect(self.host, username=self.user,
-                                  key_filename=self.key_path, timeout=10, port=self.port)
+                                  key_filename=self.key_path, timeout=10, port=self.port, sock=sock)
 
             transport = self.conn.get_transport()
             transport.set_keepalive(30)
@@ -91,7 +99,6 @@ class SSHWorker(QThread):
             self.channel.get_pty(term='xterm', width=120, height=30)
             self.channel.invoke_shell()
             self.connected.emit(True, "连接成功")
-
             # ---------- resources handling: ensure ./ .ssh/processes exists & is executable ----------
             if self.for_resources:
                 try:
@@ -159,7 +166,6 @@ class SSHWorker(QThread):
                     print(f"resources pre-check/upload 出错: {e}\n{tb}")
                     self.error_occurred.emit(
                         f"resources pre-check/upload 出错: {e}")
-
             self.timer = QTimer()
             self.stop_timer_sig.connect(self.timer.stop)
             self.timer.timeout.connect(self._check_output)
@@ -180,13 +186,43 @@ class SSHWorker(QThread):
                     print("已启动远端 processes 可执行文件（./.ssh/processes）")
                 except Exception as e:
                     print(f"启动 processes 失败：{e}")
-
             self.exec_()
             self._cleanup()
-
+        except socks.ProxyError as e:
+            error_msg = f"Proxy Error: {e}"
+            self.error_occurred.emit(error_msg)
         except Exception as e:
             tb = traceback.format_exc()
             self.error_occurred.emit(f"{e}\n{tb}")
+
+    def _create_socket(self):
+        if self.proxy_type == 'None' or not self.proxy_host or not self.proxy_port:
+            return None
+        sock = socks.socksocket()
+        sock.settimeout(15)
+        proxy_type_map = {
+            'HTTP': socks.HTTP,
+            'SOCKS4': socks.SOCKS4,
+            'SOCKS5': socks.SOCKS5
+        }
+        proxy_type = proxy_type_map.get(self.proxy_type)
+        if not proxy_type:
+            return None
+        use_remote_dns = self.proxy_type in ['SOCKS4', 'SOCKS5']
+        sock.set_proxy(
+            proxy_type=proxy_type,
+            addr=self.proxy_host,
+            port=self.proxy_port,
+            rdns=use_remote_dns,
+            username=self.proxy_username if self.proxy_username else None,
+            password=self.proxy_password if self.proxy_password else None
+        )
+        try:
+            sock.connect((self.host, self.port))
+            return sock
+        except Exception as e:
+            self.error_occurred.emit(f"Proxy connection failed: {e}")
+            return None
 
     def update_script(self):
         sftp = self.conn.open_sftp()
