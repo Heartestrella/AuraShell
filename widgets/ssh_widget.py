@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (
     QWidget, QStackedWidget, QVBoxLayout, QHBoxLayout, QFrame,
     QLabel, QSizePolicy, QSplitter, QApplication
 )
-from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QTimer, QSize
+from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QTimer, QSize, QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup, pyqtProperty
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPainterPath
 
 from qfluentwidgets import SegmentedWidget, RoundMenu, Action, FluentIcon as FIF, ToolButton, Dialog
@@ -442,6 +442,14 @@ class SSHWidget(QWidget):
         connect_file_explorer()
         self.task_detaile = ProcessMonitor()
         self.net_monitor = NetProcessMonitor()
+
+        self.file_explorer.dataRefreshed.connect(
+            lambda: self._trigger_button_animation("file_explorer"))
+        self.net_monitor.dataRefreshed.connect(
+            lambda: self._trigger_button_animation("net"))
+        self.task_detaile.dataRefreshed.connect(
+            lambda: self._trigger_button_animation("task"))
+
         self.task_detaile.kill_process.connect(self._kill_process)
         self.net_monitor.kill_process.connect(self._kill_process)
         file_manage_layout.addWidget(self.file_bar)
@@ -493,6 +501,49 @@ class SSHWidget(QWidget):
         else:
             initial_color = '#cccccc'
         self.update_splitter_color(initial_color)
+
+    def _trigger_button_animation(self, key: str):
+        if key != self.now_ui:
+            return
+        if key not in self.file_bar.pivot.items:
+            return
+        button = self.file_bar.pivot.items[key]
+        original_style = button.styleSheet()
+        start_color = QColor(Qt.transparent)
+        highlight_color = QColor("#0078d4")
+        highlight_color.setAlpha(80)
+        class StyleHelper(QWidget):
+            def __init__(self, widget, initial_color, original_style):
+                super().__init__()
+                self.widget = widget
+                self._color = initial_color
+                self.original_style = original_style
+            @pyqtProperty(QColor)
+            def backgroundColor(self):
+                return self._color
+            @backgroundColor.setter
+            def backgroundColor(self, color):
+                self._color = color
+                self.widget.setStyleSheet(
+                    f"background-color: {color.name(QColor.HexArgb)};"
+                    f"{self.original_style}"
+                )
+        helper = StyleHelper(button, start_color, original_style)
+        self.animation_group = QSequentialAnimationGroup(self)
+        anim_in = QPropertyAnimation(helper, b'backgroundColor', self)
+        anim_in.setDuration(250)
+        anim_in.setStartValue(start_color)
+        anim_in.setEndValue(highlight_color)
+        anim_in.setEasingCurve(QEasingCurve.InOutQuad)
+        anim_out = QPropertyAnimation(helper, b'backgroundColor', self)
+        anim_out.setDuration(400)
+        anim_out.setStartValue(highlight_color)
+        anim_out.setEndValue(start_color)
+        anim_out.setEasingCurve(QEasingCurve.InOutQuad)
+        self.animation_group.addAnimation(anim_in)
+        self.animation_group.addAnimation(anim_out)
+        self.animation_group.finished.connect(lambda: button.setStyleSheet(original_style))
+        self.animation_group.start()
 
     def _kill_process(self, pid: int):
         if self.file_manager:

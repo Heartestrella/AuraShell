@@ -65,6 +65,7 @@ class NetConnectionModel(QAbstractTableModel):
 class NetProcessMonitor(QWidget):
     # pid
     kill_process = pyqtSignal(int)
+    dataRefreshed = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -350,6 +351,7 @@ class NetProcessMonitor(QWidget):
         """
         self.source_model.updateData(
             self.convert_connections_for_api(process_data))
+        self.dataRefreshed.emit()
 
     def showContextMenu(self, position):
         index = self.table_view.indexAt(position)

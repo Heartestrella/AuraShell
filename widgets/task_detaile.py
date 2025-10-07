@@ -56,6 +56,7 @@ class ProcessTableModel(QAbstractTableModel):
 
 class ProcessMonitor(QWidget):
     kill_process = pyqtSignal(int)
+    dataRefreshed = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -112,6 +113,7 @@ class ProcessMonitor(QWidget):
     def updateProcessData(self, process_data):
         """外部接口：更新进程信息"""
         self.source_model.updateData(process_data)
+        self.dataRefreshed.emit()
 
     def generateSampleData(self):
         """生成模拟数据"""

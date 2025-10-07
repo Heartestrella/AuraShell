@@ -664,6 +664,7 @@ class FileExplorer(QWidget):
     # Source path , Target path , compression
     upload_file = pyqtSignal(object, str, bool)
     refresh_action = pyqtSignal()
+    dataRefreshed = pyqtSignal()
 
     def __init__(self, parent=None, path=None):
         super().__init__(parent)
@@ -820,6 +821,7 @@ class FileExplorer(QWidget):
         else:
             self.details._add_files_to_details_view(files, clear_old)
         self._is_loading = False
+        self.dataRefreshed.emit()
 
     def _add_files_to_icon_view(self, files, clear_old=True):
         self.container.setUpdatesEnabled(False)
