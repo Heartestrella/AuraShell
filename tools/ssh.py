@@ -35,7 +35,7 @@ class SSHWorker(QThread):
         self.proxy_port = getattr(session_info, 'proxy_port', 0)
         self.proxy_username = getattr(session_info, 'proxy_username', '')
         self.proxy_password = getattr(session_info, 'proxy_password', '')
-        self.default_path = session_info.default_path
+        self.ssh_default_path = session_info.ssh_default_path
         # print(f"{self.host}  {self.user}  {self.password}")
         self.conn = None
         self.channel = None
@@ -171,7 +171,7 @@ class SSHWorker(QThread):
                     self.error_occurred.emit(
                         f"resources pre-check/upload 出错: {e}")
             else:
-                cd_folder: str = self.default_path.replace("\\", "/")
+                cd_folder: str = self.ssh_default_path.replace("\\", "/")
                 if "/" in cd_folder:
                     self.run_command(f"cd {cd_folder}")
             self.timer = QTimer()

@@ -9,3 +9,4 @@ __pycache__
 build/
 .venv/
 dist/
+qfluentwidgets_config.json

@@ -9,6 +9,9 @@ from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, 
 from widgets.editor_widget import EditorWidget
 from qfluentwidgets import (NavigationInterface,  NavigationItemPosition, InfoBar,
                             isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget,  Dialog)
+from qfluentwidgets.common.config import qconfig
+import platformdirs
+from pathlib import Path
 from qframelesswindow import FramelessWindow, StandardTitleBar
 from widgets.setting_page import SettingPage
 from widgets.home_interface import MainInterface
@@ -76,6 +79,7 @@ class Window(FramelessWindow):
         self.expander_bar_width = 8
         self.active_transfers = {}
         self.watching_dogs = {}
+        self.last_session_click_time = {}
         self.file_id_to_path = {}
         self._download_debounce_timer = QTimer(self)
         self._download_debounce_timer.setSingleShot(True)
@@ -685,7 +689,8 @@ class Window(FramelessWindow):
 
             def on_sftp_ready():
                 global home_path
-                home_path = file_manager.get_default_path()
+                home_path = file_manager.get_default_path(
+                    session.file_manager_default_path)
                 path_list = self.parse_linux_path(home_path)
 
                 session_widget.file_bar.send_signal = False
@@ -721,7 +726,7 @@ class Window(FramelessWindow):
                 child_widget = self.session_widgets[widget_key]
                 if hasattr(child_widget, 'ssh_widget'):
                     child_widget.ssh_widget.set_worker(worker)
-                    child_widget._set_file_bar(session.default_path)
+                    child_widget._set_file_bar(session.ssh_default_path)
                 else:
                     print("child_widget does not have an ssh_widget attribute")
             except Exception as e:
@@ -939,6 +944,26 @@ class Window(FramelessWindow):
 
     def _on_session_selected(self, session_id=None, session_name=None):
         """Handling session selection"""
+        now = time.time()
+        debounce_key = None
+        session = None
+        if session_id:
+            debounce_key = session_id
+            session = self.sessionmanager.get_session(session_id=session_id)
+        elif session_name:
+            name = session_name.rsplit(" - ", 1)[0]
+            session = self.sessionmanager.get_session_by_name(name)
+            if session:
+                debounce_key = session.id
+        if not session:
+            print("Warning: _on_session_selected called with no valid session identifier.")
+            return
+        if debounce_key:
+            last_click_time = self.last_session_click_time.get(debounce_key, 0)
+            if (now - last_click_time) < 1.0:  # 1 second debounce time
+                print(f"Debouncing click for session: {debounce_key}")
+                return
+            self.last_session_click_time[debounce_key] = now
 
         def _connect_file_explorer_signals(self, widget, widget_key):
             # 文件操作
@@ -962,12 +987,6 @@ class Window(FramelessWindow):
                 self.open_in_explorer
             )
             self.windowResized.connect(widget.on_main_window_resized)
-        if session_name:
-            name = session_name.rsplit(" - ", 1)[0]
-            session = self.sessionmanager.get_session_by_name(name)
-
-        if session_id:
-            session = self.sessionmanager.get_session(session_id=session_id)
 
         name = session.name
 
@@ -1574,6 +1593,8 @@ def update_splash_progress(step, total_steps=10, message=""):
 
 
 if __name__ == '__main__':
+    config_path = "qfluentwidgets_config.json"
+    qconfig.load(config_path)
     try:
         # 步骤1: 初始化日志
         update_splash_progress(1, 8, "初始化日志系统")

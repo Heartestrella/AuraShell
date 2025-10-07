@@ -264,7 +264,9 @@ class MainInterface(QWidget):
             dialog.username.setText(session.username)
             dialog.host.setText(session.host)
             dialog.port.setText(str(session.port))
-            dialog.default_path.setText(session.default_path)
+            dialog.ssh_default_path.setText(session.ssh_default_path)
+            dialog.file_manager_default_path.setText(
+                session.file_manager_default_path)
             if session.auth_type == "password":
                 dialog._on_auth_changed(0)
                 dialog.password.setText(session.password)
@@ -308,7 +310,8 @@ class MainInterface(QWidget):
                     'proxy_port': int(dialog.proxy_port.text()) if dialog.proxy_port.text().isdigit() else 0,
                     'proxy_username': dialog.proxy_username.text().strip(),
                     'proxy_password': dialog.proxy_password.text(),
-                    "default_path": dialog.default_path.text()
+                    "ssh_default_path": dialog.ssh_default_path.text(),
+                    "file_manager_default_path": dialog.file_manager_default_path.text()
                 }
 
                 try:
@@ -330,7 +333,8 @@ class MainInterface(QWidget):
                         proxy_port=session_data['proxy_port'],
                         proxy_username=session_data['proxy_username'],
                         proxy_password=session_data['proxy_password'],
-                        default_path=session_data["default_path"]
+                        ssh_default_path=session_data["ssh_default_path"],
+                        file_manager_default_path=session_data["file_manager_default_path"]
                     )
                     self._load_sessions()
                     # self.sessionClicked.emit(new_session.id)

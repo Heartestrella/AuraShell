@@ -19,7 +19,8 @@ class SessionDialog(MessageBoxBase):
         self.host = LineEdit()
         self.port = LineEdit()
         self.auth_combo = ComboBox()
-        self.default_path = LineEdit()
+        self.ssh_default_path = LineEdit()
+        self.file_manager_default_path = LineEdit()
         self.password = PasswordLineEdit()
         self.key_path = LineEdit()
         self.key_browse_btn = PushButton(self.tr("Browse..."))
@@ -72,13 +73,19 @@ class SessionDialog(MessageBoxBase):
         auth_layout.addWidget(self.auth_combo)
         auth_layout.setStretch(1, 1)
 
-        # Set Default path
-        self.default_path.setPlaceholderText(
-            self.tr("After connecting to the software, it will default to this directory."))
-        default_path_layout = QHBoxLayout()
-        default_path_layout.addWidget(QLabel(self.tr("Default path:")))
-        default_path_layout.addWidget(self.default_path)
-        default_path_layout.setStretch(1, 1)
+        # Set SSH Default path
+        self.ssh_default_path.setPlaceholderText(self.tr("After connecting to the software, you will enter the SSH directory by default."))
+        ssh_default_path_layout = QHBoxLayout()
+        ssh_default_path_layout.addWidget(QLabel(self.tr("SSH Default Path:")))
+        ssh_default_path_layout.addWidget(self.ssh_default_path)
+        ssh_default_path_layout.setStretch(1, 1)
+
+        # Set File Manager Default path
+        self.file_manager_default_path.setPlaceholderText(self.tr("After connecting the software, you will enter the file manager directory by default."))
+        file_manager_default_path_layout = QHBoxLayout()
+        file_manager_default_path_layout.addWidget(QLabel(self.tr("File Manager Default Path:")))
+        file_manager_default_path_layout.addWidget(self.file_manager_default_path)
+        file_manager_default_path_layout.setStretch(1, 1)
 
         # Password
         self.password.setPlaceholderText(self.tr("Enter password"))
@@ -102,7 +109,8 @@ class SessionDialog(MessageBoxBase):
         self.viewLayout.addLayout(username_layout)
         self.viewLayout.addLayout(host_layout)
         self.viewLayout.addLayout(port_layout)
-        self.viewLayout.addLayout(default_path_layout)
+        self.viewLayout.addLayout(ssh_default_path_layout)
+        self.viewLayout.addLayout(file_manager_default_path_layout)
         self.viewLayout.addLayout(auth_layout)
         self.viewLayout.addLayout(password_layout)
         self.viewLayout.addLayout(key_layout)
