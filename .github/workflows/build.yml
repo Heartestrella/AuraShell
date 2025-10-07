@@ -24,6 +24,13 @@ jobs:
             artifact_name: AuraShell.exe
             build_name: AuraShell.exe
             separator: ';'
+            build_type: file
+          - os: windows-latest
+            platform_name: Windows-Folder
+            artifact_name: AuraShell-Windows.zip
+            build_name: main_window
+            separator: ';'
+            build_type: folder
           - os: ubuntu-latest
             platform_name: Linux
             artifact_name: AuraShell-Linux
@@ -82,9 +89,15 @@ jobs:
           pip install pyinstaller
 
       - name: 编译打包 (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.build_type == 'file'
         run: |
           python -m PyInstaller AuraShell.spec
+
+      - name: 编译打包 (Windows - Folder)
+        if: runner.os == 'Windows' && matrix.build_type == 'folder'
+        run: |
+          python -m PyInstaller --noconfirm --icon "resource/icons/icon.ico" -w --add-data "resource;resource" .\main_window.py
+          powershell -Command "Compress-Archive -Path 'dist\main_window\*' -DestinationPath 'dist\AuraShell-Windows.zip' -Force"
 
       - name: 编译打包 (Linux)
         if: runner.os == 'Linux'
