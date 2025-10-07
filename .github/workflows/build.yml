@@ -90,7 +90,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           python -m PyInstaller --icon "resource/icons/icon.ico" -w -F --add-data "resource:resource" --name "AuraShell-Linux" ./main_window.py
-          chmod +x "dist/AuraShell-Linux""
+          chmod +x "dist/AuraShell-Linux"
 
       - name: 编译打包 (macOS)
         if: runner.os == 'macOS'
