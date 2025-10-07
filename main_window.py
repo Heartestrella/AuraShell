@@ -33,6 +33,8 @@ import traceback
 from tools.check_update import CheckUpdate
 import sys
 import os
+import pyperclip as cb
+
 try:
     import pyi_splash
 except ImportError:
@@ -160,7 +162,7 @@ class Window(FramelessWindow):
 
         self.initLayout()
         self.initNavigation()
-        
+
         self.expanderBar = ExpanderBar(self, width=self.expander_bar_width)
         self.expanderBar.hide()
         self.expanderBar.clicked.connect(self._expand_side_panel)
@@ -789,7 +791,8 @@ class Window(FramelessWindow):
         elif action_type == "copy_path":
             paths_to_copy = full_path if isinstance(
                 full_path, list) else [full_path]
-            clipboard.setText('\n'.join(paths_to_copy))
+            text_to_copy = '\n'.join(path for path in paths_to_copy)
+            cb.copy(text_to_copy)
         elif action_type == "download":
             # Debounce download requests
             if widget_key not in self._pending_download_paths:
@@ -1055,7 +1058,7 @@ class Window(FramelessWindow):
 
         self.hBoxLayout.addWidget(self.mainSplitter)
         self.hBoxLayout.setStretchFactor(self.mainSplitter, 1)
-        
+
         QTimer.singleShot(100, self._update_expander_visibility)
 
     def initNavigation(self):
@@ -1443,17 +1446,17 @@ class Window(FramelessWindow):
             if isinstance(current_widget, SSHWidget):
                 QTimer.singleShot(
                     10, current_widget.force_set_left_panel_width)
-    
+
     def _expand_side_panel(self):
         self.expanderBar.hide()
         self._ensure_side_panel_visible()
-    
+
     def _update_expander_visibility(self):
         if self.stackWidget.currentWidget() != self.ssh_page:
             if hasattr(self, 'expanderBar'):
                 self.expanderBar.hide()
             return
-        
+
         sizes = self.mainSplitter.sizes()
         if len(sizes) == 2:
             if sizes[1] == 0:
@@ -1461,7 +1464,7 @@ class Window(FramelessWindow):
                 self._position_expander_bar()
             else:
                 self.expanderBar.hide()
-    
+
     def _position_expander_bar(self):
         expander_width = self.expander_bar_width
         window_width = self.width()
@@ -1602,7 +1605,6 @@ if __name__ == '__main__':
 
         # 步骤6: 初始化组件
         update_splash_progress(6, 8, "初始化组件")
-        clipboard = app.clipboard()
 
         # 步骤7: 创建主窗口
         update_splash_progress(7, 8, "准备主界面")
