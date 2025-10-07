@@ -41,7 +41,8 @@ class SCM:
             "editor_auto_save_on_focus_lost": False,
             "splitter_sizes": [500, 500],
             "splitter_lr_left_width": 300,
-            "bg_theme_color": None
+            "bg_theme_color": None,
+            "side_panel_last_width": 300
         }
         self.config_path = config_dir / "setting-config.json"
         if not os.path.exists(self.config_path):
