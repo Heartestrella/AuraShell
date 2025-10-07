@@ -7,6 +7,11 @@ const refreshModelsBtn = document.getElementById('refresh-models-btn');
 const addConfigBtn = document.getElementById('add-config-btn');
 const editConfigBtn = document.getElementById('edit-config-btn');
 const deleteConfigBtn = document.getElementById('delete-config-btn');
+const proxyProtocolSelect = document.getElementById('proxy-protocol');
+const proxyHostInput = document.getElementById('proxy-host');
+const proxyPortInput = document.getElementById('proxy-port');
+const proxyUsernameInput = document.getElementById('proxy-username');
+const proxyPasswordInput = document.getElementById('proxy-password');
 const modal = document.getElementById('custom-modal');
 const modalTitle = document.getElementById('modal-title');
 const modalText = document.getElementById('modal-text');
@@ -14,6 +19,7 @@ const modalInput = document.getElementById('modal-input');
 const modalConfirmBtn = document.getElementById('modal-confirm-btn');
 const modalCancelBtn = document.getElementById('modal-cancel-btn');
 let modelsData = {};
+let settingsData = {};
 window.getmodelsData = function () {
   return modelsData;
 };
@@ -35,9 +41,38 @@ const updateModelDataFromInputs = () => {
     modelsData[selectedModelName].model_name = modelNameInput.value;
   }
 };
+const updateProxyDataFromInputs = () => {
+    if (!settingsData.proxy) {
+        settingsData.proxy = {};
+    }
+    settingsData.proxy = {
+        protocol: proxyProtocolSelect.value,
+        host: proxyHostInput.value,
+        port: proxyPortInput.value,
+        username: proxyUsernameInput.value,
+        password: proxyPasswordInput.value,
+    };
+    if (window.backend) {
+        window.backend.saveSetting('ai_chat_proxy', JSON.stringify(settingsData.proxy));
+    }
+};
 window.initializeWithBackend = async (backendObject) => {
+  window.backend = backendObject;
   let backend = backendObject;
   modelsData = JSON.parse(await backend.getModels());
+  try {
+    const proxySettings = await backend.getSetting('ai_chat_proxy');
+    if (proxySettings) {
+        settingsData.proxy = JSON.parse(proxySettings);
+        proxyProtocolSelect.value = settingsData.proxy.protocol || '';
+        proxyHostInput.value = settingsData.proxy.host || '';
+        proxyPortInput.value = settingsData.proxy.port || '';
+        proxyUsernameInput.value = settingsData.proxy.username || '';
+        proxyPasswordInput.value = settingsData.proxy.password || '';
+    }
+  } catch (e) {
+    console.error("Could not load proxy settings", e);
+  }
   configFileSelect.innerHTML = '';
   for (const modelName in modelsData) {
     if (Object.hasOwnProperty.call(modelsData, modelName)) {
@@ -50,6 +85,11 @@ window.initializeWithBackend = async (backendObject) => {
   baseUrlInput.addEventListener('input', updateModelDataFromInputs);
   apiKeyInput.addEventListener('input', updateModelDataFromInputs);
   modelNameInput.addEventListener('input', updateModelDataFromInputs);
+  proxyProtocolSelect.addEventListener('change', updateProxyDataFromInputs);
+  proxyHostInput.addEventListener('input', updateProxyDataFromInputs);
+  proxyPortInput.addEventListener('input', updateProxyDataFromInputs);
+  proxyUsernameInput.addEventListener('input', updateProxyDataFromInputs);
+  proxyPasswordInput.addEventListener('input', updateProxyDataFromInputs);
   configFileSelect.addEventListener('change', updateFormFields);
   const currentModelName = parent.window.currentModel;
   if (currentModelName && configFileSelect.querySelector(`option[value="${currentModelName}"]`)) {
