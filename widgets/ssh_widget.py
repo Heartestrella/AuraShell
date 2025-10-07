@@ -1,9 +1,9 @@
 from PyQt5.QtWidgets import (
     QWidget, QStackedWidget, QVBoxLayout, QHBoxLayout, QFrame,
-    QLabel, QSizePolicy, QSplitter, QApplication
+    QLabel, QSizePolicy, QSplitter, QApplication, QGraphicsDropShadowEffect
 )
-from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QTimer, QSize, QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup, pyqtProperty
-from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPainterPath
+from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QTimer, QSize, QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup, pyqtProperty, QParallelAnimationGroup
+from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPainterPath, QLinearGradient
 
 from qfluentwidgets import SegmentedWidget, RoundMenu, Action, FluentIcon as FIF, ToolButton, Dialog
 from widgets.system_info_dialog import SystemInfoDialog
@@ -504,55 +504,68 @@ class SSHWidget(QWidget):
         self.update_splitter_color(initial_color)
 
     def _trigger_button_animation(self, key: str):
-        if key != self.now_ui or key not in self.file_bar.pivot.items:
-            return
-        button = self.file_bar.pivot.items[key]
-        if key in self.button_animations:
-            animation_group, original_style, helper = self.button_animations[key]
-            animation_group.stop()
-            button.setStyleSheet(original_style)
-            del self.button_animations[key]
-        original_style = button.styleSheet()
-        start_color = QColor(Qt.transparent)
-        highlight_color = QColor("#0078d4")
-        highlight_color.setAlpha(80)
-        class StyleHelper(QWidget):
-            def __init__(self, widget, initial_color, original_style):
-                super().__init__()
-                self.widget = widget
-                self._color = initial_color
-                self.original_style = original_style
-            @pyqtProperty(QColor)
-            def backgroundColor(self):
-                return self._color
-            @backgroundColor.setter
-            def backgroundColor(self, color):
-                self._color = color
-                self.widget.setStyleSheet(
-                    f"background-color: {color.name(QColor.HexArgb)};"
-                    f"{self.original_style}"
-                )
-        helper = StyleHelper(button, start_color, original_style)
-        animation_group = QSequentialAnimationGroup(self)
-        anim_in = QPropertyAnimation(helper, b'backgroundColor', self)
-        anim_in.setDuration(250)
-        anim_in.setStartValue(start_color)
-        anim_in.setEndValue(highlight_color)
-        anim_in.setEasingCurve(QEasingCurve.InOutQuad)
-        anim_out = QPropertyAnimation(helper, b'backgroundColor', self)
-        anim_out.setDuration(400)
-        anim_out.setStartValue(highlight_color)
-        anim_out.setEndValue(start_color)
-        anim_out.setEasingCurve(QEasingCurve.InOutQuad)
-        animation_group.addAnimation(anim_in)
-        animation_group.addAnimation(anim_out)
-        def on_finished():
-            button.setStyleSheet(original_style)
+            if key != self.now_ui or key not in self.file_bar.pivot.items:
+                return
+            button = self.file_bar.pivot.items[key]
             if key in self.button_animations:
+                animation, original_style, helper = self.button_animations[key]
+                animation.stop()
+                button.setStyleSheet(original_style)
                 del self.button_animations[key]
-        animation_group.finished.connect(on_finished)
-        self.button_animations[key] = (animation_group, original_style, helper)
-        animation_group.start()
+            original_style = button.styleSheet()
+            gradient_color1 = QColor("#00aaff")
+            gradient_color1.setAlpha(180)
+            gradient_color2 = QColor("#aa00ff")
+            gradient_color2.setAlpha(180)
+            class GradientHelper(QWidget):
+                def __init__(self, widget, original_style, color1, color2):
+                    super().__init__()
+                    self.widget = widget
+                    self.original_style = original_style
+                    self.color1 = color1
+                    self.color2 = color2
+                    self._offset = -0.6
+                @pyqtProperty(float)
+                def offset(self):
+                    return self._offset
+                @offset.setter
+                def offset(self, value):
+                    self._offset = value
+                    total_width = 0.6
+                    solid_width = 0.2
+                    fade_width = (total_width - solid_width) / 1.5
+                    p1 = self._offset
+                    p2 = p1 + fade_width
+                    p3 = p2 + solid_width
+                    p4 = p3 + fade_width
+                    stops = [max(0, min(1, p)) for p in [p1, p2, p3, p4]]
+                    if stops[0] >= 1 or stops[3] <= 0:
+                        self.widget.setStyleSheet(self.original_style)
+                        return
+                    gradient_str = (
+                        f"qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+                        f"stop: {stops[0]} transparent, "
+                        f"stop: {stops[1]} {self.color1.name(QColor.HexArgb)}, "
+                        f"stop: {stops[2]} {self.color2.name(QColor.HexArgb)}, "
+                        f"stop: {stops[3]} transparent)"
+                    )
+                    self.widget.setStyleSheet(
+                        f"background: {gradient_str};"
+                        f"{self.original_style}"
+                    )
+            helper = GradientHelper(button, original_style, gradient_color1, gradient_color2)
+            animation = QPropertyAnimation(helper, b'offset', self)
+            animation.setDuration(1200)
+            animation.setStartValue(-0.6)
+            animation.setEndValue(1.0)
+            animation.setEasingCurve(QEasingCurve.Linear)
+            def on_finished():
+                button.setStyleSheet(original_style)
+                if key in self.button_animations:
+                    del self.button_animations[key]
+            animation.finished.connect(on_finished)
+            self.button_animations[key] = (animation, original_style, helper)
+            animation.start()
 
     def _kill_process(self, pid: int):
         if self.file_manager:
