@@ -68,3 +68,4 @@ wrapt==1.17.3
 py7zr
 PySocks
 pyperclip
+platformdirs>=4.2.2

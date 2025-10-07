@@ -9,6 +9,9 @@ from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, 
 from widgets.editor_widget import EditorWidget
 from qfluentwidgets import (NavigationInterface,  NavigationItemPosition, InfoBar,
                             isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget,  Dialog)
+from qfluentwidgets.common.config import qconfig
+import platformdirs
+from pathlib import Path
 from qframelesswindow import FramelessWindow, StandardTitleBar
 from widgets.setting_page import SettingPage
 from widgets.home_interface import MainInterface
@@ -1574,6 +1577,8 @@ def update_splash_progress(step, total_steps=10, message=""):
 
 
 if __name__ == '__main__':
+    config_path = "qfluentwidgets_config.json"
+    qconfig.load(config_path)
     try:
         # 步骤1: 初始化日志
         update_splash_progress(1, 8, "初始化日志系统")
