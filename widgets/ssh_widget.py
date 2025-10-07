@@ -484,7 +484,7 @@ class SSHWidget(QWidget):
         self.rsplitter.splitterMoved.connect(self.on_splitter_moved)
         self.rsplitter.splitterMoved.connect(self.resize_timer.start)
 
-        QTimer.singleShot(50, self.force_set_left_panel_width)
+        QTimer.singleShot(150, self.force_set_left_panel_width)
 
         splitter_tb_ratio = config.get("splitter_tb_ratio", [0.7, 0.3])
         if len(splitter_tb_ratio) == 2:
@@ -901,15 +901,10 @@ class SSHWidget(QWidget):
         This ensures the left panel width is maintained during parent resizes.
         """
         config = CONFIGER.read_config()
-        # Use a reasonable default width if not set
-        left_width = config.get("splitter_lr_left_width", 280)
-
+        left_width = config.get("splitter_lr_left_width", 300)
         total_width = self.splitter_lr.width()
-
-        # Only apply if the total width is larger than the desired fixed width
         if total_width > left_width:
             right_width = total_width - left_width
-            # Temporarily block signals to avoid a feedback loop with on_splitter_moved
             self.splitter_lr.blockSignals(True)
             self.splitter_lr.setSizes([left_width, right_width])
             self.splitter_lr.blockSignals(False)
