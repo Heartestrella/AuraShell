@@ -264,6 +264,7 @@ class MainInterface(QWidget):
             dialog.username.setText(session.username)
             dialog.host.setText(session.host)
             dialog.port.setText(str(session.port))
+            dialog.default_path.setText(session.default_path)
             if session.auth_type == "password":
                 dialog._on_auth_changed(0)
                 dialog.password.setText(session.password)
@@ -279,9 +280,12 @@ class MainInterface(QWidget):
                 dialog.proxy_type_combo.setCurrentIndex(proxy_index)
             dialog.proxy_host.setText(getattr(session, 'proxy_host', ''))
             dialog.proxy_port.setText(str(getattr(session, 'proxy_port', '')))
-            dialog.proxy_username.setText(getattr(session, 'proxy_username', ''))
-            dialog.proxy_password.setText(getattr(session, 'proxy_password', ''))
-            dialog._on_proxy_type_changed(proxy_index if proxy_index != -1 else 0)
+            dialog.proxy_username.setText(
+                getattr(session, 'proxy_username', ''))
+            dialog.proxy_password.setText(
+                getattr(session, 'proxy_password', ''))
+            dialog._on_proxy_type_changed(
+                proxy_index if proxy_index != -1 else 0)
 
         if dialog.exec():
             try:
@@ -303,7 +307,8 @@ class MainInterface(QWidget):
                     'proxy_host': dialog.proxy_host.text().strip(),
                     'proxy_port': int(dialog.proxy_port.text()) if dialog.proxy_port.text().isdigit() else 0,
                     'proxy_username': dialog.proxy_username.text().strip(),
-                    'proxy_password': dialog.proxy_password.text()
+                    'proxy_password': dialog.proxy_password.text(),
+                    "default_path": dialog.default_path.text()
                 }
 
                 try:
@@ -324,7 +329,8 @@ class MainInterface(QWidget):
                         proxy_host=session_data['proxy_host'],
                         proxy_port=session_data['proxy_port'],
                         proxy_username=session_data['proxy_username'],
-                        proxy_password=session_data['proxy_password']
+                        proxy_password=session_data['proxy_password'],
+                        default_path=session_data["default_path"]
                     )
                     self._load_sessions()
                     # self.sessionClicked.emit(new_session.id)

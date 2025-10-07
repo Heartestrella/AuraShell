@@ -9,6 +9,8 @@ from tools.atool import resource_path
 import binascii
 import socks
 import socket
+
+
 class SSHWorker(QThread):
     result_ready = pyqtSignal(bytes)
     connected = pyqtSignal(bool, str)
@@ -33,6 +35,7 @@ class SSHWorker(QThread):
         self.proxy_port = getattr(session_info, 'proxy_port', 0)
         self.proxy_username = getattr(session_info, 'proxy_username', '')
         self.proxy_password = getattr(session_info, 'proxy_password', '')
+        self.default_path = session_info.default_path
         # print(f"{self.host}  {self.user}  {self.password}")
         self.conn = None
         self.channel = None
@@ -83,7 +86,7 @@ class SSHWorker(QThread):
         try:
             self.conn = paramiko.SSHClient()
             self.conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            
+
             sock = self._create_socket()
 
             if self.auth_type == "password":
@@ -99,6 +102,7 @@ class SSHWorker(QThread):
             self.channel.get_pty(term='xterm', width=120, height=30)
             self.channel.invoke_shell()
             self.connected.emit(True, "连接成功")
+
             # ---------- resources handling: ensure ./ .ssh/processes exists & is executable ----------
             if self.for_resources:
                 try:
@@ -166,6 +170,10 @@ class SSHWorker(QThread):
                     print(f"resources pre-check/upload 出错: {e}\n{tb}")
                     self.error_occurred.emit(
                         f"resources pre-check/upload 出错: {e}")
+            else:
+                cd_folder: str = self.default_path.replace("\\", "/")
+                if "/" in cd_folder:
+                    self.run_command(f"cd {cd_folder}")
             self.timer = QTimer()
             self.stop_timer_sig.connect(self.timer.stop)
             self.timer.timeout.connect(self._check_output)
@@ -303,14 +311,14 @@ class SSHWorker(QThread):
         try:
             if not self.channel:
                 return
-            
+
             # 检查SSH连接是否仍然活跃
             if self.conn and self.conn.get_transport():
                 if not self.conn.get_transport().is_active():
                     self.error_occurred.emit("SSH连接已断开")
                     self.quit()
                     return
-            
+
             if self.channel.recv_ready():
                 chunk = self.channel.recv(4096)  # bytes
                 self.result_ready.emit(chunk)
@@ -450,7 +458,8 @@ class SSHWorker(QThread):
     def execute_command_and_capture(self, command: str):
         import uuid
         if self.is_capturing:
-            self.error_occurred.emit("Another command capture is already in progress.")
+            self.error_occurred.emit(
+                "Another command capture is already in progress.")
             return
         unique_id = str(uuid.uuid4())
         self.start_marker = f"START_CMD_MARKER_{unique_id}"
@@ -471,7 +480,8 @@ class SSHWorker(QThread):
             start_idx = self.capture_buffer.rfind(start_bytes)
             if start_idx == -1:
                 return
-            content_after_start = self.capture_buffer[start_idx + len(start_bytes):]
+            content_after_start = self.capture_buffer[start_idx + len(
+                start_bytes):]
             end_idx = content_after_start.find(end_bytes)
             if end_idx == -1:
                 return
@@ -491,14 +501,15 @@ class SSHWorker(QThread):
                 last_line = lines[-1].strip()
                 if (not last_line or
                     b'EXIT_CODE' in last_line or
-                    b'$' in last_line and b'#' in last_line):
+                        b'$' in last_line and b'#' in last_line):
                     actual_content_bytes = b'\n'.join(lines[:-1])
             actual_content_bytes = actual_content_bytes.rstrip(b'\r\n \t')
             exit_code = int(exit_code_match.group(1).decode())
             output_str = actual_content_bytes.decode('utf-8', errors='replace')
             output_str = re.sub(r'\x1b\[[0-9;]*m', '', output_str)
             output_str = re.sub(r'\x1b\[\??[0-9;]*[a-zA-Z]', '', output_str)
-            output_str = re.sub(r'\x1b\][^\x07\x1b]*[\x07\x1b]', '', output_str)
+            output_str = re.sub(
+                r'\x1b\][^\x07\x1b]*[\x07\x1b]', '', output_str)
             output_str = re.sub(r'\x1b[PX^_][^\x1b]*\x1b\\', '', output_str)
             self.command_output_ready.emit(output_str, exit_code)
             self.is_capturing = False

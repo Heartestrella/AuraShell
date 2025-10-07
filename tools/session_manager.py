@@ -25,7 +25,8 @@ class Session:
             'proxy_host': '',
             'proxy_port': 0,
             'proxy_username': '',
-            'proxy_password': ''
+            'proxy_password': '',
+            "default_path": ""
         }
         if session_data:
             for key, default_value in default_values.items():
@@ -54,7 +55,8 @@ class Session:
             'proxy_host': self.proxy_host,
             'proxy_port': self.proxy_port,
             'proxy_username': self.proxy_username,
-            'proxy_password': self.proxy_password
+            'proxy_password': self.proxy_password,
+            "default_path": self.default_path
         }
 
     def add_command(self, command: str):
@@ -116,7 +118,8 @@ class SessionManager:
             'proxy_host': '',
             'proxy_port': 0,
             'proxy_username': '',
-            'proxy_password': ''
+            'proxy_password': '',
+            "default_path": ""
         }
         migrated_data = session_data.copy()
         for field, default_value in current_fields.items():
@@ -134,7 +137,7 @@ class SessionManager:
                        auth_type: str, password: str = '', key_path: str = '',
                        host_key: str = '', processes_md5: str = '',
                        proxy_type: str = 'None', proxy_host: str = '', proxy_port: int = 0,
-                       proxy_username: str = '', proxy_password: str = '') -> Session:
+                       proxy_username: str = '', proxy_password: str = '', default_path: str = '') -> Session:
         existing_names = [s.name for s in self.sessions_cache]
         if name in existing_names:
             raise ValueError(
@@ -158,7 +161,8 @@ class SessionManager:
             'proxy_host': proxy_host,
             'proxy_port': proxy_port,
             'proxy_username': proxy_username,
-            'proxy_password': proxy_password
+            'proxy_password': proxy_password,
+            "default_path": default_path
         })
         sessions = self.sessions_cache.copy()
         sessions.append(new_session)

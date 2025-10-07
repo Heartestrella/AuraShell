@@ -19,6 +19,7 @@ class SessionDialog(MessageBoxBase):
         self.host = LineEdit()
         self.port = LineEdit()
         self.auth_combo = ComboBox()
+        self.default_path = LineEdit()
         self.password = PasswordLineEdit()
         self.key_path = LineEdit()
         self.key_browse_btn = PushButton(self.tr("Browse..."))
@@ -71,6 +72,14 @@ class SessionDialog(MessageBoxBase):
         auth_layout.addWidget(self.auth_combo)
         auth_layout.setStretch(1, 1)
 
+        # Set Default path
+        self.default_path.setPlaceholderText(
+            self.tr("After connecting to the software, it will default to this directory."))
+        default_path_layout = QHBoxLayout()
+        default_path_layout.addWidget(QLabel(self.tr("Default path:")))
+        default_path_layout.addWidget(self.default_path)
+        default_path_layout.setStretch(1, 1)
+
         # Password
         self.password.setPlaceholderText(self.tr("Enter password"))
         self.password.setEchoMode(LineEdit.Password)
@@ -93,6 +102,7 @@ class SessionDialog(MessageBoxBase):
         self.viewLayout.addLayout(username_layout)
         self.viewLayout.addLayout(host_layout)
         self.viewLayout.addLayout(port_layout)
+        self.viewLayout.addLayout(default_path_layout)
         self.viewLayout.addLayout(auth_layout)
         self.viewLayout.addLayout(password_layout)
         self.viewLayout.addLayout(key_layout)
@@ -171,7 +181,6 @@ class SessionDialog(MessageBoxBase):
         is_proxy_enabled = self.proxy_type_combo.currentText() != "None"
         for widget in self.proxy_widgets:
             widget.setVisible(is_proxy_enabled)
-
 
     def set_font_recursive(self, widget: QWidget, font):
         """

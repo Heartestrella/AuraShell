@@ -36,8 +36,12 @@ import os
 import pyperclip as cb
 
 try:
-    import pyi_splash
     import ctypes
+except:
+    ctypes = None
+
+try:
+    import pyi_splash
 except ImportError:
     pyi_splash = None
 font_ = font_config()
@@ -716,6 +720,7 @@ class Window(FramelessWindow):
                 child_widget = self.session_widgets[widget_key]
                 if hasattr(child_widget, 'ssh_widget'):
                     child_widget.ssh_widget.set_worker(worker)
+                    child_widget._set_file_bar(session.default_path)
                 else:
                     print("child_widget does not have an ssh_widget attribute")
             except Exception as e:
