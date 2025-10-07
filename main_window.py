@@ -79,6 +79,7 @@ class Window(FramelessWindow):
         self.expander_bar_width = 8
         self.active_transfers = {}
         self.watching_dogs = {}
+        self.last_session_click_time = {}
         self.file_id_to_path = {}
         self._download_debounce_timer = QTimer(self)
         self._download_debounce_timer.setSingleShot(True)
@@ -943,6 +944,26 @@ class Window(FramelessWindow):
 
     def _on_session_selected(self, session_id=None, session_name=None):
         """Handling session selection"""
+        now = time.time()
+        debounce_key = None
+        session = None
+        if session_id:
+            debounce_key = session_id
+            session = self.sessionmanager.get_session(session_id=session_id)
+        elif session_name:
+            name = session_name.rsplit(" - ", 1)[0]
+            session = self.sessionmanager.get_session_by_name(name)
+            if session:
+                debounce_key = session.id
+        if not session:
+            print("Warning: _on_session_selected called with no valid session identifier.")
+            return
+        if debounce_key:
+            last_click_time = self.last_session_click_time.get(debounce_key, 0)
+            if (now - last_click_time) < 1.0:  # 1 second debounce time
+                print(f"Debouncing click for session: {debounce_key}")
+                return
+            self.last_session_click_time[debounce_key] = now
 
         def _connect_file_explorer_signals(self, widget, widget_key):
             # 文件操作
@@ -966,12 +987,6 @@ class Window(FramelessWindow):
                 self.open_in_explorer
             )
             self.windowResized.connect(widget.on_main_window_resized)
-        if session_name:
-            name = session_name.rsplit(" - ", 1)[0]
-            session = self.sessionmanager.get_session_by_name(name)
-
-        if session_id:
-            session = self.sessionmanager.get_session(session_id=session_id)
 
         name = session.name
 

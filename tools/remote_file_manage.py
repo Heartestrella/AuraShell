@@ -4,6 +4,8 @@ from tools.transfer_worker import TransferWorker
 from tools.setting_config import SCM
 import paramiko
 import traceback
+import socks
+import socket
 from typing import Dict, List, Optional
 import stat
 import os
@@ -58,6 +60,11 @@ class RemoteFileManager(QThread):
         self.port = session_info.port
         self.auth_type = session_info.auth_type
         self.key_path = session_info.key_path
+        self.proxy_type = getattr(session_info, 'proxy_type', 'None')
+        self.proxy_host = getattr(session_info, 'proxy_host', '')
+        self.proxy_port = getattr(session_info, 'proxy_port', 0)
+        self.proxy_username = getattr(session_info, 'proxy_username', '')
+        self.proxy_password = getattr(session_info, 'proxy_password', '')
 
         self.conn = None
         self.sftp = None
@@ -87,10 +94,39 @@ class RemoteFileManager(QThread):
     # ---------------------------
     # Main thread loop
     # ---------------------------
+    def _create_socket(self):
+        if self.proxy_type == 'None' or not self.proxy_host or not self.proxy_port:
+            return None
+        sock = socks.socksocket()
+        sock.settimeout(15)
+        proxy_type_map = {
+            'HTTP': socks.HTTP,
+            'SOCKS4': socks.SOCKS4,
+            'SOCKS5': socks.SOCKS5
+        }
+        proxy_type = proxy_type_map.get(self.proxy_type)
+        if not proxy_type:
+            return None
+        use_remote_dns = self.proxy_type in ['SOCKS4', 'SOCKS5']
+        sock.set_proxy(
+            proxy_type=proxy_type,
+            addr=self.proxy_host,
+            port=self.proxy_port,
+            rdns=use_remote_dns,
+            username=self.proxy_username if self.proxy_username else None,
+            password=self.proxy_password if self.proxy_password else None
+        )
+        try:
+            sock.connect((self.host, self.port))
+            return sock
+        except Exception as e:
+            raise e
+
     def _create_ssh_connection(self):
         """Helper function to create and configure an SSH connection."""
         conn = paramiko.SSHClient()
         conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        sock = self._create_socket()
         if self.auth_type == "password":
             conn.connect(
                 self.host,
@@ -98,7 +134,8 @@ class RemoteFileManager(QThread):
                 username=self.user,
                 password=self.password,
                 timeout=30,
-                banner_timeout=30
+                banner_timeout=30,
+                sock=sock
             )
         else:
             conn.connect(
@@ -107,7 +144,8 @@ class RemoteFileManager(QThread):
                 username=self.user,
                 key_filename=self.key_path,
                 timeout=30,
-                banner_timeout=30
+                banner_timeout=30,
+                sock=sock
             )
         return conn
 
