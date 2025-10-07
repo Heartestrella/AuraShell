@@ -97,7 +97,7 @@ jobs:
       - name: 编译打包 (Windows - Folder)
         if: runner.os == 'Windows' && matrix.build_type == 'folder'
         run: |
-          python -m PyInstaller --noconfirm --icon "resource/icons/icon.ico" -w --add-data "resource;resource" .\main_window.py
+          python -m PyInstaller --noconfirm --icon "resource/icons/icon.ico" -w --add-data "resource;resource" --hidden-import="tzdata" --hidden-import="scipy.special._cdflib" .\main_window.py
           powershell -Command "Compress-Archive -Path 'dist\main_window\*' -DestinationPath 'dist\AuraShell-Windows.zip' -Force"
 
       - name: 编译打包 (Linux)
