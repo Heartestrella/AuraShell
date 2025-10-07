@@ -6,7 +6,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[('resource', 'resource')],
-    hiddenimports=[],
+    hiddenimports=['tzdata', 'scipy.special._cdflib'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -15,7 +15,6 @@ a = Analysis(
     optimize=0,
 )
 pyz = PYZ(a.pure)
-
 splash = Splash(
     'resource\\splash.png',
     binaries=a.binaries,
@@ -29,15 +28,18 @@ splash = Splash(
 exe = EXE(
     pyz,
     a.scripts,
-    [],
+    a.binaries,
+    a.datas,
     splash,
     splash.binaries,
-    exclude_binaries=True,
+    [],
     name='AuraShell',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -45,13 +47,4 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['resource\\icons\\icon.ico'],
-)
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='AuraShell',
 )
