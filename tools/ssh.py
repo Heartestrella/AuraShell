@@ -353,6 +353,8 @@ class SSHWorker(QThread):
                     self.sys_resource.emit(data)
                 except Exception as e:
                     print(f"Error processing system resource data: {e}")
+                    print("--- Failing payload ---")
+                    print(repr(payload.strip()))
                 last_end = match.end()
                 self._buffer = self._buffer[last_end:]
         except Exception as e:
