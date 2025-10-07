@@ -9,7 +9,8 @@ from tools.atool import resource_path
 import binascii
 import socks
 import socket
-
+import uuid
+import time
 
 class SSHWorker(QThread):
     result_ready = pyqtSignal(bytes)
@@ -53,6 +54,9 @@ class SSHWorker(QThread):
         self.capture_buffer = b""
         self.start_marker = ""
         self.end_marker = ""
+        self.command_completed = False
+        self.completion_timer = None
+        self.last_output_time = None
 
     def get_hostkey_fp_hex(self) -> str:
         try:
@@ -271,7 +275,12 @@ class SSHWorker(QThread):
                 self.stop_timer_sig.emit()
         except Exception:
             pass
-
+        try:
+            if hasattr(self, "completion_timer") and self.completion_timer:
+                self.completion_timer.stop()
+                self.completion_timer = None
+        except Exception:
+            pass
         try:
             if self.channel:
                 self.channel.close()
@@ -279,7 +288,6 @@ class SSHWorker(QThread):
             pass
         try:
             if self.conn:
-                # 关闭连接前先关闭keepalive
                 transport = self.conn.get_transport()
                 if transport:
                     transport.set_keepalive(0)
@@ -311,16 +319,13 @@ class SSHWorker(QThread):
         try:
             if not self.channel:
                 return
-
-            # 检查SSH连接是否仍然活跃
             if self.conn and self.conn.get_transport():
                 if not self.conn.get_transport().is_active():
                     self.error_occurred.emit("SSH连接已断开")
                     self.quit()
                     return
-
             if self.channel.recv_ready():
-                chunk = self.channel.recv(4096)  # bytes
+                chunk = self.channel.recv(4096)
                 self.result_ready.emit(chunk)
                 if self.is_capturing:
                     self.capture_buffer += chunk
@@ -328,7 +333,6 @@ class SSHWorker(QThread):
                 elif self.for_resources:
                     self._buffer += chunk
                     self._process_sys_resource_buffer()
-
             if self.channel.closed or self.channel.exit_status_ready():
                 while self.channel.recv_ready():
                     chunk = self.channel.recv(4096)
@@ -456,25 +460,28 @@ class SSHWorker(QThread):
             return False
 
     def execute_command_and_capture(self, command: str):
-        import uuid
         if self.is_capturing:
-            self.error_occurred.emit(
-                "Another command capture is already in progress.")
+            self.error_occurred.emit("Another command capture is already in progress.")
             return
         unique_id = str(uuid.uuid4())
         self.start_marker = f"START_CMD_MARKER_{unique_id}"
         self.end_marker = f"END_CMD_MARKER_{unique_id}"
         self.is_capturing = True
         self.capture_buffer = b""
-        wrapped_command = (
-            f'echo "{self.start_marker}"\n'
-            f'{command}\n'
-            f'EXIT_CODE=$?; echo "{self.end_marker}:$EXIT_CODE"\n'
-        )
+        self.command_completed = False
+        self.last_output_time = time.time()
+        wrapped_command = f'echo "{self.start_marker}"\n{command}\n'
         self.run_command(wrapped_command, add_newline=False)
+        if self.completion_timer:
+            self.completion_timer.stop()
+        self.completion_timer = QTimer(self)
+        self.completion_timer.timeout.connect(self._check_interactive_completion)
+        self.completion_timer.start(500)
 
     def _process_capture_buffer(self):
         try:
+            if len(self.capture_buffer) > 0:
+                self.last_output_time = time.time()
             start_bytes = self.start_marker.encode()
             end_bytes = self.end_marker.encode()
             start_idx = self.capture_buffer.rfind(start_bytes)
@@ -512,16 +519,43 @@ class SSHWorker(QThread):
                 r'\x1b\][^\x07\x1b]*[\x07\x1b]', '', output_str)
             output_str = re.sub(r'\x1b[PX^_][^\x1b]*\x1b\\', '', output_str)
             self.command_output_ready.emit(output_str, exit_code)
-            self.is_capturing = False
-            self.capture_buffer = b""
-            self.start_marker = ""
-            self.end_marker = ""
+            self._reset_capture_state()
         except Exception as e:
             self.error_occurred.emit(f"Error processing command output: {e}")
-            self.is_capturing = False
-            self.capture_buffer = b""
-            self.start_marker = ""
-            self.end_marker = ""
+            self._reset_capture_state()
+    
+    def _reset_capture_state(self):
+        self.is_capturing = False
+        self.capture_buffer = b""
+        self.start_marker = ""
+        self.end_marker = ""
+        self.command_completed = False
+        if self.completion_timer:
+            self.completion_timer.stop()
+            self.completion_timer = None
+    
+    def _check_interactive_completion(self):
+        try:
+            if not self.is_capturing or self.command_completed:
+                return
+            text = self.capture_buffer.decode('utf-8', errors='ignore').strip()
+            lines = text.splitlines()
+            if not lines:
+                return
+            last_line = re.sub(r'\x1b\[[0-9;?]*[a-zA-Z]', '', lines[-1]).strip()
+            prompt_patterns = [
+                r'(?:\([^\)]+\)\s)?\S+@\S+:.*[\$#]\s*$',
+                r'\[\S+@\S+\s+\S+\][\$#]\s*$',
+            ]
+            for pattern in prompt_patterns:
+                if re.search(pattern, last_line):
+                    self.command_completed = True
+                    if self.completion_timer:
+                        self.completion_timer.stop()
+                    self.run_command(f'EXIT_CODE=$?; echo "{self.end_marker}:$EXIT_CODE"')
+                    return
+        except Exception as e:
+            print(f"Error checking interactive completion: {e}")
 
     def execute_silent_command(self, command: str, timeout=15):
         if not self.is_connection_active():
