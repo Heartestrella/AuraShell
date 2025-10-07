@@ -1,7 +1,6 @@
 import requests
 from PyQt5.QtCore import pyqtSignal, QThread
-import base64
-HASH_URL = "https://raw.githubusercontent.com/Heartestrella/AuraShell/main/resource/update_hash.txt"
+import time
 
 
 class CheckUpdate(QThread):
@@ -15,7 +14,9 @@ class CheckUpdate(QThread):
 
     def check(self):
         try:
-            response = requests.get(HASH_URL, timeout=100)
+            timestamp = int(time.time())
+            url = f"https://raw.githubusercontent.com/Heartestrella/AuraShell/main/resource/update_hash.txt?t={timestamp}"
+            response = requests.get(url, timeout=100)
             if response.status_code == 200:
                 content = response.text.strip()
                 print(content)
