@@ -140,6 +140,7 @@ class SSHWidget(QWidget):
 
     def __init__(self, name: str,  parent=None, font_name=None, user_name=None):
         super().__init__(parent=parent)
+        self.button_animations = {}
         self.file_manager = None
         config = CONFIGER.read_config()
         use_ai = config.get("aigc_open", False)
@@ -503,11 +504,14 @@ class SSHWidget(QWidget):
         self.update_splitter_color(initial_color)
 
     def _trigger_button_animation(self, key: str):
-        if key != self.now_ui:
-            return
-        if key not in self.file_bar.pivot.items:
+        if key != self.now_ui or key not in self.file_bar.pivot.items:
             return
         button = self.file_bar.pivot.items[key]
+        if key in self.button_animations:
+            animation_group, original_style, helper = self.button_animations[key]
+            animation_group.stop()
+            button.setStyleSheet(original_style)
+            del self.button_animations[key]
         original_style = button.styleSheet()
         start_color = QColor(Qt.transparent)
         highlight_color = QColor("#0078d4")
@@ -529,7 +533,7 @@ class SSHWidget(QWidget):
                     f"{self.original_style}"
                 )
         helper = StyleHelper(button, start_color, original_style)
-        self.animation_group = QSequentialAnimationGroup(self)
+        animation_group = QSequentialAnimationGroup(self)
         anim_in = QPropertyAnimation(helper, b'backgroundColor', self)
         anim_in.setDuration(250)
         anim_in.setStartValue(start_color)
@@ -540,10 +544,15 @@ class SSHWidget(QWidget):
         anim_out.setStartValue(highlight_color)
         anim_out.setEndValue(start_color)
         anim_out.setEasingCurve(QEasingCurve.InOutQuad)
-        self.animation_group.addAnimation(anim_in)
-        self.animation_group.addAnimation(anim_out)
-        self.animation_group.finished.connect(lambda: button.setStyleSheet(original_style))
-        self.animation_group.start()
+        animation_group.addAnimation(anim_in)
+        animation_group.addAnimation(anim_out)
+        def on_finished():
+            button.setStyleSheet(original_style)
+            if key in self.button_animations:
+                del self.button_animations[key]
+        animation_group.finished.connect(on_finished)
+        self.button_animations[key] = (animation_group, original_style, helper)
+        animation_group.start()
 
     def _kill_process(self, pid: int):
         if self.file_manager:
