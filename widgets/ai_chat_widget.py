@@ -61,19 +61,10 @@ class AIBridge(QObject):
                     exit_code[0] = code
                     if loop.isRunning():
                         loop.quit()
-                timeout_timer = QTimer()
-                timeout_timer.setSingleShot(True)
-                timeout_timer.timeout.connect(loop.quit)
-                def reset_timeout(chunk_bytes):
-                    timeout_timer.start(30000)
-                worker.result_ready.connect(reset_timeout)
                 worker.command_output_ready.connect(on_output_ready)
                 active_widget.execute_command_and_capture(full_command)
-                timeout_timer.start(30000)
                 loop.exec_()
-                timeout_timer.stop()
                 try:
-                    worker.result_ready.disconnect(reset_timeout)
                     worker.command_output_ready.disconnect(on_output_ready)
                 except TypeError:
                     pass
