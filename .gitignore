@@ -8,3 +8,4 @@ _ssh_download/
 __pycache__
 build/
 .venv/
+dist/

@@ -1,4 +1,5 @@
 # coding:utf-8
+import file_init
 import sys
 
 import time
