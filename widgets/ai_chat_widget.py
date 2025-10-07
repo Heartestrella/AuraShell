@@ -41,10 +41,8 @@ class AIBridge(QObject):
     def _register_tool_handlers(self):
 
         def Linux终端():
-            def exe_shell(shell: str = '', cwd: str = '.'):
-                command = "cd " + cwd + ";" + shell
-                if not command:
-                    return json.dumps({"status": "error", "content": "No command provided."}, ensure_ascii=False)
+            def _internal_execute_shell(command: str, cwd: str = '.'):
+                full_command = "cd " + cwd + ";" + command
                 if not self.main_window:
                     return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
                 active_widget = self.main_window.get_active_ssh_widget()
@@ -70,7 +68,7 @@ class AIBridge(QObject):
                     timeout_timer.start(30000)
                 worker.result_ready.connect(reset_timeout)
                 worker.command_output_ready.connect(on_output_ready)
-                active_widget.execute_command_and_capture(command)
+                active_widget.execute_command_and_capture(full_command)
                 timeout_timer.start(30000)
                 loop.exec_()
                 timeout_timer.stop()
@@ -81,6 +79,22 @@ class AIBridge(QObject):
                     pass
                 output_str = "".join(output)
                 return output_str
+            def exe_shell(args: str = ''):
+                """
+                <exe_shell><shell>{要执行的命令}</shell><cwd>{工作目录}</cwd></exe_shell>
+                """
+                if not args:
+                    return json.dumps({"status": "error", "content": "No arguments provided."}, ensure_ascii=False)
+                try:
+                    shell_match = re.search(r'<shell>([\s\S]*?)</shell>', args, re.DOTALL)
+                    if not shell_match:
+                        return json.dumps({"status": "error", "content": "Missing or invalid <shell> tag."}, ensure_ascii=False)
+                    shell = shell_match.group(1)
+                    cwd_match = re.search(r'<cwd>(.*?)</cwd>', args, re.DOTALL)
+                    cwd = cwd_match.group(1).strip() if cwd_match else '.'
+                    return _internal_execute_shell(shell, cwd)
+                except Exception as e:
+                    return json.dumps({"status": "error", "content": f"An unexpected error occurred: {e}"}, ensure_ascii=False)
             def read_file(file_path: str = None, show_line: bool = False):
                 if not file_path:
                     return json.dumps({"status": "error", "content": "No file path provided."}, ensure_ascii=False)
@@ -88,10 +102,9 @@ class AIBridge(QObject):
                     command = f"cat {file_path}"
                     if show_line:
                         command = f"awk '{{print NR\"|\" $0}}' {file_path}"
-                    return exe_shell(command)
+                    return _internal_execute_shell(command)
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"Failed to read file: {e}"}, ensure_ascii=False)
-                pass
             def write_file(args:str = None):
                 """
                 <write_to_file><path>{文件绝对路径}</path><content>{文件内容}</content></write_to_file>
@@ -118,7 +131,7 @@ class AIBridge(QObject):
                         content = content[:-1]
                     encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
                     command = f"echo '{encoded_content}' | base64 --decode > {file_path}"
-                    r = exe_shell(command)
+                    r = _internal_execute_shell(command)
                     if r == '':
                         active_widget = self.main_window.get_active_ssh_widget()
                         if active_widget:
@@ -191,7 +204,7 @@ class AIBridge(QObject):
                     new_full_content = "".join(new_lines)
                     encoded_content = base64.b64encode(new_full_content.encode('utf-8')).decode('utf-8')
                     command = f"echo '{encoded_content}' | base64 --decode > {file_path}"
-                    r = exe_shell(command)
+                    r = _internal_execute_shell(command)
                     if r == '':
                         active_widget = self.main_window.get_active_ssh_widget()
                         if active_widget:

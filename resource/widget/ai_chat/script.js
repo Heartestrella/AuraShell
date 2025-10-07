@@ -269,24 +269,25 @@ class SystemBubble {
     if (!toolName.toLowerCase().includes('exe_shell')) {
       return [];
     }
-    const dangerousCommands = ['rm', 'chmod', 'mv', 'killall', 'kill', 'mkfs'].sort((a, b) => b.length - a.length);
-    let args = detail;
+    const dangerousCommands = ['rm', 'chmod', 'mv', 'killall', 'kill', 'mkfs'];
+    let argsXml = detail;
+    let shellCommand = '';
     try {
-      while (typeof args === 'string') {
-        args = JSON.parse(args);
+      argsXml = JSON.parse(detail);
+      const shellMatch = argsXml.match(/<shell>([\s\S]*?)<\/shell>/);
+      if (shellMatch && shellMatch[1]) {
+        shellCommand = shellMatch[1];
+      } else {
+        return [];
       }
     } catch (e) {
       return [];
     }
-    if (typeof args !== 'object' || args === null || typeof args.shell !== 'string') {
-      return [];
-    }
-    const shellCommand = args.shell;
     const foundCommands = new Set();
     const regex = new RegExp(`\\b(${dangerousCommands.join('|')})\\b`, 'gi');
     let match;
     while ((match = regex.exec(shellCommand)) !== null) {
-      foundCommands.add(match[0]);
+      foundCommands.add(match[0].toLowerCase());
     }
     return Array.from(foundCommands);
   }
@@ -334,33 +335,40 @@ class SystemBubble {
   setToolCall(toolName, detail) {
     this.toolNameElement.textContent = toolName;
     const dangerousCmds = this.isDangerousTool(toolName, detail);
-    if (dangerousCmds.length > 0) {
+    if (toolName.toLowerCase().includes('exe_shell') && dangerousCmds.length > 0) {
       this.toolCardElement.classList.add('dangerous');
       this.toolNameElement.innerHTML = '⚠️ ' + this.toolNameElement.textContent;
       try {
-        let args = detail;
-        while (typeof args === 'string') {
-          args = JSON.parse(args);
-        }
-        const fullCommand = args.shell;
-        const escapedCmds = dangerousCmds.map((cmd) => cmd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).sort((a, b) => b.length - a.length);
-        const regex = new RegExp(`\\b(${escapedCmds.join('|')})\\b`, 'gi');
-        const parts = fullCommand.split(regex);
-        this.detailElement.innerHTML = '';
-        this.detailElement.appendChild(document.createTextNode('{\n  "shell": "'));
-        parts.forEach((part) => {
-          if (part) {
-            if (dangerousCmds.find((cmd) => new RegExp(`^${cmd}$`, 'i').test(part))) {
-              const dangerousSpan = document.createElement('span');
-              dangerousSpan.className = 'dangerous-command';
-              dangerousSpan.textContent = part;
-              this.detailElement.appendChild(dangerousSpan);
-            } else {
-              this.detailElement.appendChild(document.createTextNode(part));
+        let argsXml = JSON.parse(detail);
+        const shellMatch = argsXml.match(/<shell>([\s\S]*?)<\/shell>/);
+        const cwdMatch = argsXml.match(/<cwd>([\s\S]*?)<\/cwd>/);
+        if (shellMatch) {
+          const fullCommand = shellMatch[1];
+          const escapedCmds = dangerousCmds.map((cmd) => cmd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+          const regex = new RegExp(`(\\b(?:${escapedCmds.join('|')})\\b)`, 'gi');
+          const parts = fullCommand.split(regex);
+          this.detailElement.innerHTML = '';
+          this.detailElement.appendChild(document.createTextNode('<exe_shell>\n  <shell>'));
+          parts.forEach((part) => {
+            if (part) {
+              if (dangerousCmds.includes(part.toLowerCase())) {
+                const dangerousSpan = document.createElement('span');
+                dangerousSpan.className = 'dangerous-command';
+                dangerousSpan.textContent = part;
+                this.detailElement.appendChild(dangerousSpan);
+              } else {
+                this.detailElement.appendChild(document.createTextNode(part));
+              }
             }
+          });
+          this.detailElement.appendChild(document.createTextNode('</shell>'));
+          if (cwdMatch) {
+            this.detailElement.appendChild(document.createTextNode(`\n  <cwd>${cwdMatch[1]}</cwd>`));
           }
-        });
-        this.detailElement.appendChild(document.createTextNode('"\n}'));
+          this.detailElement.appendChild(document.createTextNode('\n</exe_shell>'));
+        } else {
+          this.detailElement.innerHTML = this._formatAndHighlight(detail);
+        }
       } catch (e) {
         this.detailElement.innerHTML = this._formatAndHighlight(detail);
       }
