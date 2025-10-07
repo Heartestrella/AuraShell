@@ -18,7 +18,6 @@ jobs:
     name: Build for ${{ matrix.platform_name }}
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
         include:
           - os: windows-latest
             platform_name: Windows
@@ -29,7 +28,7 @@ jobs:
           - os: windows-latest
             platform_name: Windows-Folder
             artifact_name: AuraShell-Windows.zip
-            build_name: main_window
+            build_name: AuraShell
             separator: ';'
             build_type: folder
           - os: ubuntu-latest
@@ -97,8 +96,8 @@ jobs:
       - name: 编译打包 (Windows - Folder)
         if: runner.os == 'Windows' && matrix.build_type == 'folder'
         run: |
-          python -m PyInstaller --noconfirm --icon "resource/icons/icon.ico" -w --add-data "resource;resource" .\main_window.py
-          powershell -Command "Compress-Archive -Path 'dist\main_window\*' -DestinationPath 'dist\AuraShell-Windows.zip' -Force"
+          python -m PyInstaller --noconfirm --name "${{ matrix.build_name }}" --icon "resource/icons/icon.ico" -w --add-data "resource;resource" .\main_window.py
+          powershell -Command "Compress-Archive -Path 'dist\${{ matrix.build_name }}\*' -DestinationPath 'dist\AuraShell-Windows.zip' -Force"
 
       - name: 编译打包 (Linux)
         if: runner.os == 'Linux'
