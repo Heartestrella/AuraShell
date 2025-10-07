@@ -191,7 +191,7 @@ class SSHWorker(QThread):
                     print("Running with sudo as non-root")
                 try:
                     self.run_command(cmd)
-                    print("已启动远端 processes 可执行文件（./.ssh/processes）")
+                    print("已启动远端 processes 可执行文件(./.ssh/processes)")
                 except Exception as e:
                     print(f"启动 processes 失败：{e}")
             self.exec_()
@@ -522,3 +522,17 @@ class SSHWorker(QThread):
             self.capture_buffer = b""
             self.start_marker = ""
             self.end_marker = ""
+
+    def execute_silent_command(self, command: str, timeout=15):
+        if not self.is_connection_active():
+            return None, "SSH connection is not active.", -1
+        try:
+            if not self.conn:
+                return None, "SSH main connection is not available.", -1
+            stdin, stdout, stderr = self.conn.exec_command(command, timeout=timeout)
+            exit_code = stdout.channel.recv_exit_status()
+            output = stdout.read().decode('utf-8', errors='ignore')
+            error = stderr.read().decode('utf-8', errors='ignore')
+            return output, error, exit_code
+        except Exception as e:
+            return None, str(e), -1

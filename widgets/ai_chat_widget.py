@@ -41,7 +41,7 @@ class AIBridge(QObject):
     def _register_tool_handlers(self):
 
         def Linux终端():
-            def _internal_execute_shell(command: str, cwd: str = '.'):
+            def _internal_execute_interactive_shell(command: str, cwd: str = '.'):
                 full_command = "cd " + cwd + ";" + command
                 if not self.main_window:
                     return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
@@ -70,6 +70,32 @@ class AIBridge(QObject):
                     pass
                 output_str = "".join(output)
                 return output_str
+
+            def _internal_execute_silent_shell(command: str, cwd: str = '.'):
+                full_command = "cd " + cwd + "; " + command if cwd != '.' else command
+                if not self.main_window:
+                    return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
+
+                active_widget = self.main_window.get_active_ssh_widget()
+                if not active_widget:
+                    return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
+
+                worker = None
+                if hasattr(active_widget, 'ssh_widget') and hasattr(active_widget.ssh_widget, 'bridge'):
+                    worker = active_widget.ssh_widget.bridge.worker
+
+                if not worker:
+                    return json.dumps({"status": "error", "content": "Could not find the SSH worker for the active session."}, ensure_ascii=False)
+
+                if not hasattr(worker, 'execute_silent_command'):
+                    return json.dumps({"status": "error", "content": "SSH worker does not have 'execute_silent_command' method."}, ensure_ascii=False)
+
+                output, error, exit_code = worker.execute_silent_command(full_command)
+
+                if exit_code == 0:
+                    return output
+                else:
+                    return json.dumps({"status": "error", "content": error, "exit_code": exit_code}, ensure_ascii=False)
             def exe_shell(args: str = ''):
                 """
                 <exe_shell><shell>{要执行的命令}</shell><cwd>{工作目录}</cwd></exe_shell>
@@ -83,7 +109,7 @@ class AIBridge(QObject):
                     shell = shell_match.group(1)
                     cwd_match = re.search(r'<cwd>(.*?)</cwd>', args, re.DOTALL)
                     cwd = cwd_match.group(1).strip() if cwd_match else '.'
-                    return _internal_execute_shell(shell, cwd)
+                    return _internal_execute_interactive_shell(shell, cwd)
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"An unexpected error occurred: {e}"}, ensure_ascii=False)
             def read_file(file_path: str = None, show_line: bool = False):
@@ -93,7 +119,7 @@ class AIBridge(QObject):
                     command = f"cat {file_path}"
                     if show_line:
                         command = f"awk '{{print NR\"|\" $0}}' {file_path}"
-                    return _internal_execute_shell(command)
+                    return _internal_execute_silent_shell(command)
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"Failed to read file: {e}"}, ensure_ascii=False)
             def write_file(args:str = None):
@@ -122,7 +148,7 @@ class AIBridge(QObject):
                         content = content[:-1]
                     encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
                     command = f"echo '{encoded_content}' | base64 --decode > {file_path}"
-                    r = _internal_execute_shell(command)
+                    r = _internal_execute_silent_shell(command)
                     if r == '':
                         active_widget = self.main_window.get_active_ssh_widget()
                         if active_widget:
@@ -195,7 +221,7 @@ class AIBridge(QObject):
                     new_full_content = "".join(new_lines)
                     encoded_content = base64.b64encode(new_full_content.encode('utf-8')).decode('utf-8')
                     command = f"echo '{encoded_content}' | base64 --decode > {file_path}"
-                    r = _internal_execute_shell(command)
+                    r = _internal_execute_silent_shell(command)
                     if r == '':
                         active_widget = self.main_window.get_active_ssh_widget()
                         if active_widget:
