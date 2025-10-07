@@ -42,19 +42,19 @@ const updateModelDataFromInputs = () => {
   }
 };
 const updateProxyDataFromInputs = () => {
-    if (!settingsData.proxy) {
-        settingsData.proxy = {};
-    }
-    settingsData.proxy = {
-        protocol: proxyProtocolSelect.value,
-        host: proxyHostInput.value,
-        port: proxyPortInput.value,
-        username: proxyUsernameInput.value,
-        password: proxyPasswordInput.value,
-    };
-    if (window.backend) {
-        window.backend.saveSetting('ai_chat_proxy', JSON.stringify(settingsData.proxy));
-    }
+  if (!settingsData.proxy) {
+    settingsData.proxy = {};
+  }
+  settingsData.proxy = {
+    protocol: proxyProtocolSelect.value,
+    host: proxyHostInput.value,
+    port: proxyPortInput.value,
+    username: proxyUsernameInput.value,
+    password: proxyPasswordInput.value,
+  };
+  if (window.backend) {
+    window.backend.saveSetting('ai_chat_proxy', JSON.stringify(settingsData.proxy));
+  }
 };
 window.initializeWithBackend = async (backendObject) => {
   window.backend = backendObject;
@@ -63,15 +63,15 @@ window.initializeWithBackend = async (backendObject) => {
   try {
     const proxySettings = await backend.getSetting('ai_chat_proxy');
     if (proxySettings) {
-        settingsData.proxy = JSON.parse(proxySettings);
-        proxyProtocolSelect.value = settingsData.proxy.protocol || '';
-        proxyHostInput.value = settingsData.proxy.host || '';
-        proxyPortInput.value = settingsData.proxy.port || '';
-        proxyUsernameInput.value = settingsData.proxy.username || '';
-        proxyPasswordInput.value = settingsData.proxy.password || '';
+      settingsData.proxy = JSON.parse(proxySettings);
+      proxyProtocolSelect.value = settingsData.proxy.protocol || '';
+      proxyHostInput.value = settingsData.proxy.host || '';
+      proxyPortInput.value = settingsData.proxy.port || '';
+      proxyUsernameInput.value = settingsData.proxy.username || '';
+      proxyPasswordInput.value = settingsData.proxy.password || '';
     }
   } catch (e) {
-    console.error("Could not load proxy settings", e);
+    console.error('Could not load proxy settings', e);
   }
   configFileSelect.innerHTML = '';
   for (const modelName in modelsData) {
@@ -133,7 +133,7 @@ const fetchModels = async () => {
     return;
   }
   try {
-    const response = await fetch(new URL(baseUrl + '/models'), {
+    const response = await parent.proxiedFetch(new URL(baseUrl + '/models'), {
       headers: {
         Authorization: `Bearer ${apiKey}`,
       },

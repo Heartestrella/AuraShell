@@ -1266,7 +1266,7 @@ async function requestAiChat(onStream, onDone, signal) {
       }
       const options = getRequestAiChatApiOptions();
       options.signal = signal;
-      response = await fetch(allModels[window.currentModel].api_url + '/chat/completions', options);
+      response = await proxiedFetch(allModels[window.currentModel].api_url + '/chat/completions', options);
       if (response.status === 429) {
         if (retryCount >= maxRetries) {
           if (onDone) {
@@ -1343,4 +1343,94 @@ async function requestAiChat(onStream, onDone, signal) {
       onDone('Fetch Error:' + error);
     }
   }
+}
+
+async function proxiedFetch(url, options) {
+  const proxySettingsStr = await backend.getSetting('ai_chat_proxy');
+  if (!proxySettingsStr) {
+    return fetch(url, options);
+  }
+  try {
+    const proxySettings = JSON.parse(proxySettingsStr);
+    if (!proxySettings || !proxySettings.protocol || !proxySettings.host || !proxySettings.port) {
+      return fetch(url, options);
+    }
+  } catch (e) {
+    return fetch(url, options);
+  }
+  return new Promise((resolve, reject) => {
+    const requestId = generateUniqueId();
+    let streamController;
+
+    const readableStream = new ReadableStream({
+      start(controller) {
+        streamController = controller;
+      },
+    });
+    const onChunk = (receivedId, chunk) => {
+      if (receivedId === requestId) {
+        streamController.enqueue(new TextEncoder().encode(chunk));
+      }
+    };
+    const onFinish = (receivedId, status, statusText, headersJson) => {
+      if (receivedId === requestId) {
+        cleanup();
+        streamController.close();
+        const headers = new Headers(JSON.parse(headersJson));
+        const mockedResponse = {
+          ok: status >= 200 && status < 300,
+          status: status,
+          statusText: statusText,
+          headers: headers,
+          body: readableStream,
+          text: async () => {
+            const reader = readableStream.getReader();
+            let result = '';
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) return result;
+              result += new TextDecoder().decode(value);
+            }
+          },
+          json: async () => {
+            const text = await mockedResponse.text();
+            return JSON.parse(text);
+          },
+        };
+        resolve(mockedResponse);
+      }
+    };
+    const onFail = (receivedId, errorMsg) => {
+      if (receivedId === requestId) {
+        cleanup();
+        streamController.error(new Error(errorMsg));
+        reject(new Error(errorMsg));
+      }
+    };
+    const onAbort = () => {
+        backend.cancelProxiedFetch(requestId);
+        cleanup();
+        reject(new DOMException('Request aborted by user', 'AbortError'));
+    };
+    const cleanup = () => {
+      if (options.signal) {
+        options.signal.removeEventListener('abort', onAbort);
+      }
+      backend.streamChunkReceived.disconnect(onChunk);
+      backend.streamFinished.disconnect(onFinish);
+      backend.streamFailed.disconnect(onFail);
+    };
+    if (options.signal) {
+        options.signal.addEventListener('abort', onAbort, { once: true });
+    }
+    backend.streamChunkReceived.connect(onChunk);
+    backend.streamFinished.connect(onFinish);
+    backend.streamFailed.connect(onFail);
+    const optionsForBackend = {
+        method: options.method,
+        headers: options.headers,
+        body: options.body,
+    };
+    backend.proxiedFetch(requestId, url, JSON.stringify(optionsForBackend));
+  });
 }

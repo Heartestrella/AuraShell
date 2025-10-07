@@ -13,6 +13,8 @@ import base64
 import re
 import typing
 import time
+import requests
+import threading
 
 if typing.TYPE_CHECKING:
     from main_window import Window
@@ -22,6 +24,9 @@ CONFIGER = SCM()
 
 class AIBridge(QObject):
     toolResultReady = pyqtSignal(str, str)
+    streamChunkReceived = pyqtSignal(str, str)
+    streamFinished = pyqtSignal(str, int, str, str)
+    streamFailed = pyqtSignal(str, str)
     
     def __init__(self, parent=None, main_window: 'Window' = None):
         super().__init__(parent)
@@ -29,7 +34,8 @@ class AIBridge(QObject):
         self.model_manager = AIModelManager()
         self.mcp_manager = AIMCPManager()
         self.history_manager = AIHistoryManager()
-        self.pending_tool_calls = {} 
+        self.pending_tool_calls = {}
+        self.active_requests = {}
         self._register_tool_handlers()
 
     def _register_tool_handlers(self):
@@ -388,6 +394,59 @@ class AIBridge(QObject):
         else:
             return json.dumps({"status": "error", "content": "Could not find the file explorer."}, ensure_ascii=False)
 
+
+    @pyqtSlot(str)
+    def cancelProxiedFetch(self, request_id):
+        if request_id in self.active_requests:
+            self.active_requests[request_id]['cancelled'] = True
+
+    @pyqtSlot(str, str, str)
+    def proxiedFetch(self, request_id, url, options_json):
+        self.active_requests[request_id] = {'cancelled': False}
+
+        def run():
+            try:
+                options = json.loads(options_json)
+                proxy_config_str = self.getSetting("ai_chat_proxy")
+                proxies = {}
+                if proxy_config_str:
+                    proxy_config = json.loads(proxy_config_str)
+                    protocol = proxy_config.get("protocol")
+                    host = proxy_config.get("host")
+                    port = proxy_config.get("port")
+                    username = proxy_config.get("username")
+                    password = proxy_config.get("password")
+                    if protocol and host and port:
+                        auth = ""
+                        if username and password:
+                            auth = f"{username}:{password}@"
+                        proxy_url = f"{protocol}://{auth}{host}:{port}"
+                        if protocol.startswith('socks'):
+                            proxy_scheme = 'socks5h' if protocol == 'socks5' else protocol
+                            proxy_url = f"{proxy_scheme}://{auth}{host}:{port}"
+                            proxies = {"http": proxy_url, "https": proxy_url}
+                        else:
+                            proxies = {"http": proxy_url, "https": proxy_url}
+                headers = options.get('headers', {})
+                body = options.get('body', None)
+                method = options.get('method', 'GET')
+                with requests.request(method, url, headers=headers, data=body, stream=True, proxies=proxies, timeout=300) as r:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if self.active_requests.get(request_id, {}).get('cancelled'):
+                            break
+                        if chunk:
+                            self.streamChunkReceived.emit(request_id, chunk.decode('utf-8', errors='ignore'))
+                    if not self.active_requests.get(request_id, {}).get('cancelled'):
+                        response_headers = dict(r.headers)
+                        self.streamFinished.emit(request_id, r.status_code, r.reason, json.dumps(response_headers))
+            except Exception as e:
+                if not self.active_requests.get(request_id, {}).get('cancelled'):
+                    self.streamFailed.emit(request_id, str(e))
+            finally:
+                if request_id in self.active_requests:
+                    del self.active_requests[request_id]
+        thread = threading.Thread(target=run)
+        thread.start()
 
 class AiChatWidget(QWidget):
     def __init__(self, parent=None, main_window: 'Window' = None):
