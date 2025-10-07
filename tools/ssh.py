@@ -105,7 +105,6 @@ class SSHWorker(QThread):
             self.channel = transport.open_session()
             self.channel.get_pty(term='xterm', width=120, height=30)
             self.channel.invoke_shell()
-            self.connected.emit(True, "连接成功")
 
             # ---------- resources handling: ensure ./ .ssh/processes exists & is executable ----------
             if self.for_resources:
