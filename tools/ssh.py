@@ -457,39 +457,54 @@ class SSHWorker(QThread):
         self.end_marker = f"END_CMD_MARKER_{unique_id}"
         self.is_capturing = True
         self.capture_buffer = b""
-        wrapped_command = f'echo "{self.start_marker}"; {command}; echo "{self.end_marker}:$?"\n'
+        wrapped_command = (
+            f'echo "{self.start_marker}"\n'
+            f'{command}\n'
+            f'EXIT_CODE=$?; echo "{self.end_marker}:$EXIT_CODE"\n'
+        )
         self.run_command(wrapped_command, add_newline=False)
 
     def _process_capture_buffer(self):
         try:
             start_bytes = self.start_marker.encode()
             end_bytes = self.end_marker.encode()
-            if end_bytes in self.capture_buffer:
-                parts = self.capture_buffer.split(start_bytes)
-                if len(parts) < 2:
-                    return
-                content_after_last_start = parts[-1]
-                end_pos = content_after_last_start.find(end_bytes)
-                if end_pos != -1:
-                    actual_content_bytes = content_after_last_start[:end_pos]
-                    exit_code_part = content_after_last_start[end_pos + len(end_bytes):].strip()
-                    if actual_content_bytes.startswith(b'\r\n'):
-                        actual_content_bytes = actual_content_bytes[2:]
-                    elif actual_content_bytes.startswith(b'\n'):
-                        actual_content_bytes = actual_content_bytes[1:]
-                    exit_code = -1
-                    try:
-                        exit_code_str = exit_code_part.split(b':')[-1].strip().decode()
-                        if exit_code_str:
-                            exit_code = int(exit_code_str)
-                    except (ValueError, IndexError):
-                        pass
-                    output_str = actual_content_bytes.decode('utf-8', errors='replace')
-                    self.command_output_ready.emit(output_str, exit_code)
-                    self.is_capturing = False
-                    self.capture_buffer = b""
-                    self.start_marker = ""
-                    self.end_marker = ""
+            start_idx = self.capture_buffer.rfind(start_bytes)
+            if start_idx == -1:
+                return
+            content_after_start = self.capture_buffer[start_idx + len(start_bytes):]
+            end_idx = content_after_start.find(end_bytes)
+            if end_idx == -1:
+                return
+            exit_code_part = content_after_start[end_idx + len(end_bytes):]
+            exit_code_match = re.search(rb':(\d+)[\r\n]', exit_code_part)
+            if not exit_code_match:
+                return
+            actual_content_bytes = content_after_start[:end_idx]
+            if actual_content_bytes.startswith(b'\r\n'):
+                actual_content_bytes = actual_content_bytes[2:]
+            elif actual_content_bytes.startswith(b'\n'):
+                actual_content_bytes = actual_content_bytes[1:]
+            elif actual_content_bytes.startswith(b'\r'):
+                actual_content_bytes = actual_content_bytes[1:]
+            lines = actual_content_bytes.split(b'\n')
+            if len(lines) > 1:
+                last_line = lines[-1].strip()
+                if (not last_line or
+                    b'EXIT_CODE' in last_line or
+                    b'$' in last_line and b'#' in last_line):
+                    actual_content_bytes = b'\n'.join(lines[:-1])
+            actual_content_bytes = actual_content_bytes.rstrip(b'\r\n \t')
+            exit_code = int(exit_code_match.group(1).decode())
+            output_str = actual_content_bytes.decode('utf-8', errors='replace')
+            output_str = re.sub(r'\x1b\[[0-9;]*m', '', output_str)
+            output_str = re.sub(r'\x1b\[\??[0-9;]*[a-zA-Z]', '', output_str)
+            output_str = re.sub(r'\x1b\][^\x07\x1b]*[\x07\x1b]', '', output_str)
+            output_str = re.sub(r'\x1b[PX^_][^\x1b]*\x1b\\', '', output_str)
+            self.command_output_ready.emit(output_str, exit_code)
+            self.is_capturing = False
+            self.capture_buffer = b""
+            self.start_marker = ""
+            self.end_marker = ""
         except Exception as e:
             self.error_occurred.emit(f"Error processing command output: {e}")
             self.is_capturing = False
