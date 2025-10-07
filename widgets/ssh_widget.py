@@ -6,6 +6,7 @@ from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QTimer, QSize
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPainterPath
 
 from qfluentwidgets import SegmentedWidget, RoundMenu, Action, FluentIcon as FIF, ToolButton, Dialog
+from widgets.system_info_dialog import SystemInfoDialog
 
 from tools.setting_config import SCM
 from tools.llm_helper import LLMHelper
@@ -786,17 +787,12 @@ class SSHWidget(QWidget):
         self.resize_timer.start()
 
     def _sys_info_dialog(self):
-        print("Show system info dialog")
-        # print(self.sys_info_msg)
         if self.sys_info_msg:
-            w = Dialog(self.tr("System Info"), self.sys_info_msg, self)
-            w.cancelButton.setText(self.tr("Copy all"))
-            w.yesButton.setText(self.tr("Got it"))
-            if w.exec():
-                return
-            else:
-                clipboard = QApplication.clipboard()
-                clipboard.setText(self.sys_info_msg)
+            dialog = SystemInfoDialog( self.tr("System Information"), self.sys_info_msg, self )
+            dialog.exec()
+        else:
+            dialog = SystemInfoDialog( self.tr("System Information"), "", self )
+            dialog.exec()
 
     def cleanup(self):
         self.ssh_widget.cleanup()
