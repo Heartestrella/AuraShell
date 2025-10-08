@@ -1202,13 +1202,15 @@ document.addEventListener('click', (e) => {
   }
 });
 function getAiChatApiOptionsBody() {
-  aiChatApiOptionsBody.model = window.currentModel;
+  aiChatApiOptionsBody.model = window.getCurrentModelData().model_name;
   return aiChatApiOptionsBody;
 }
 function getRequestAiChatApiOptions() {
+  let key = getCurrentModelData().key;
   return {
     method: 'POST',
     headers: {
+      'Authorization': `Bearer ${key}`,
       'User-Agent': 'RooCode/99999.99.9',
       Accept: 'application/json',
       'Accept-Encoding': 'br, gzip, deflate',
