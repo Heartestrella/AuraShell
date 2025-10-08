@@ -139,3 +139,45 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  auto-release:
+    needs: build
+    if: github.repository == 'XiaoYingYo/AuraShell' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 生成时间戳标签
+        id: timestamp
+        run: |
+          echo "tag=v$(date +'%Y.%m.%d.%H%M%S')" >> $GITHUB_OUTPUT
+          echo "release_name=Release $(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+
+      - name: 创建并推送标签
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.timestamp.outputs.tag }}
+          git push origin ${{ steps.timestamp.outputs.tag }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 创建自动发布
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.timestamp.outputs.tag }}
+          name: ${{ steps.timestamp.outputs.release_name }}
+          files: |
+            artifacts/**/AuraShell*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
