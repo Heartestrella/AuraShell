@@ -42,7 +42,8 @@ class SCM:
             "splitter_sizes": [500, 500],
             "splitter_lr_left_width": 300,
             "bg_theme_color": None,
-            "side_panel_last_width": 300
+            "side_panel_last_width": 300,
+            "page_animation": "slide_fade"
         }
         self.config_path = config_dir / "setting-config.json"
         if not os.path.exists(self.config_path):
