@@ -15,7 +15,7 @@ class CheckUpdate(QThread):
     def check(self):
         try:
             timestamp = int(time.time())
-            url = f"https://raw.githubusercontent.com/Heartestrella/AuraShell/main/resource/update_hash.txt?t={timestamp}"
+            url = f"https://ghfast.top/https://raw.githubusercontent.com/Heartestrella/AuraShell/main/resource/update_hash.txt?t={timestamp}"
             response = requests.get(url, timeout=100)
             if response.status_code == 200:
                 content = response.text.strip()
