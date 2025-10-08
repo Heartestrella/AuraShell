@@ -149,11 +149,11 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 生成时间戳标签
+      - name: 生成时间标签
         id: timestamp
         run: |
-          echo "tag=v$(date +'%Y.%m.%d.%H%M%S')" >> $GITHUB_OUTPUT
-          echo "release_name=Release $(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+          echo "tag=v$(TZ='Asia/Shanghai' date +'%Y.%m.%d.%H%M%S')" >> $GITHUB_OUTPUT
+          echo "release_name=$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
 
       - name: 创建并推送标签
         run: |
