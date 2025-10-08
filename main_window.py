@@ -1125,7 +1125,7 @@ class Window(FramelessWindow):
 
     def initWindow(self):
         self.titleBar.setAttribute(Qt.WA_StyledBackground)
-
+        self.setWindowFlags(Qt.FramelessWindowHint)
         desktop = QApplication.desktop().availableGeometry()
         w, h = desktop.width(), desktop.height()
         self.move(w//2 - self.width()//2, h//2 - self.height()//2)
@@ -1540,6 +1540,19 @@ class Window(FramelessWindow):
             for key, value_1 in value_.items():
                 if key != "widget":
                     value_1.retranslateUi()
+
+    def nativeEvent(self, eventType, message):
+        if sys.platform == "win32" and eventType == "windows_generic_MSG":
+            try:
+                from ctypes import windll, cast, POINTER
+                from ctypes.wintypes import MSG, LPRECT
+                msg = cast(int(message), POINTER(MSG)).contents
+                if msg.message == 0x0083:
+                    if msg.wParam:
+                        return True, 0
+            except Exception as e:
+                pass
+        return super().nativeEvent(eventType, message)
 
     def changeEvent(self, event):
         if event.type() == QEvent.WindowStateChange:
