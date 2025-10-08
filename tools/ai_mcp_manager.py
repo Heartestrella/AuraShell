@@ -2,6 +2,7 @@ import xml.etree.ElementTree as ET
 import json
 import re
 import inspect
+import html
 from typing import Optional, Dict, Any, Callable
 
 class AIMCPManager:
@@ -81,8 +82,9 @@ class AIMCPManager:
         if not match:
             return None
         xml_content = match.group(0)
+        sanitized_xml_content = re.sub(r'&(?!amp;|lt;|gt;|quot;|apos;)', '&amp;', xml_content)
         try:
-            root = ET.fromstring(xml_content)
+            root = ET.fromstring(sanitized_xml_content)
             server_name_element = root.find('server_name')
             tool_name_element = root.find('tool_name')
             arguments_element = root.find('arguments')
@@ -93,8 +95,10 @@ class AIMCPManager:
             children = list(arguments_element)
             if children:
                 arguments_text = "".join(ET.tostring(child, encoding='unicode').strip() for child in children)
+                arguments_text = html.unescape(arguments_text)
             else:
                 arguments_text = arguments_element.text.strip() if arguments_element.text else "{}"
+                arguments_text = html.unescape(arguments_text)
             try:
                 arguments = json.loads(arguments_text)
             except (json.JSONDecodeError, TypeError):
@@ -108,7 +112,9 @@ class AIMCPManager:
                 "auto_approve": auto_approve,
                 "_xml_": xml_content
             }
-        except ET.ParseError:
+        except ET.ParseError as e:
+            print("结构解析错误:", e)
+            print("原文:", sanitized_xml_content)
             return None
         except Exception:
             return None
