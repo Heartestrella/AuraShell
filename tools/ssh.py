@@ -9,7 +9,8 @@ from tools.atool import resource_path
 import binascii
 import socks
 import socket
-
+import uuid
+import time
 
 class SSHWorker(QThread):
     result_ready = pyqtSignal(bytes)
@@ -53,6 +54,9 @@ class SSHWorker(QThread):
         self.capture_buffer = b""
         self.start_marker = ""
         self.end_marker = ""
+        self.command_completed = False
+        self.completion_timer = None
+        self.last_output_time = None
 
     def get_hostkey_fp_hex(self) -> str:
         try:
@@ -101,7 +105,6 @@ class SSHWorker(QThread):
             self.channel = transport.open_session()
             self.channel.get_pty(term='xterm', width=120, height=30)
             self.channel.invoke_shell()
-            self.connected.emit(True, "连接成功")
 
             # ---------- resources handling: ensure ./ .ssh/processes exists & is executable ----------
             if self.for_resources:
@@ -120,47 +123,34 @@ class SSHWorker(QThread):
                             print(f"创建远端目录 {remote_dir}")
                         except Exception as e:
                             print(f"无法创建远端目录 {remote_dir}: {e}")
-
-                    exists_remote_proc = True
-                    try:
-                        st = sftp.stat(self.remote_proc)
-                        print(f"远端 processes 存在: {self.remote_proc}")
-                    except IOError:
-                        exists_remote_proc = False
-                        print(f"远端 processes 不存在: {self.remote_proc}")
-
-                    if exists_remote_proc:
-                        try:
-                            try:
-                                current_mode = st.st_mode
-                                new_mode = current_mode | 0o111
-                                sftp.chmod(self.remote_proc, new_mode)
-                            except Exception:
-                                sftp.chmod(self.remote_proc, 0o755)
-                            print(f"已将远端文件 {self.remote_proc} 设为可执行")
-                        except Exception as e:
-                            print(f"设为可执行失败: {e}")
+                    if not os.path.exists(self.local_proc):
+                        err = f"本地 processes 文件不存在: {self.local_proc}"
+                        print(err)
+                        self.error_occurred.emit(err)
                     else:
-
-                        if not os.path.exists(self.local_proc):
-                            err = f"本地 processes 文件不存在: {self.local_proc}"
-                            print(err)
-                            self.error_occurred.emit(err)
-                        else:
+                        try:
+                            print(f"上传本地 {self.local_proc} 到远端 {self.remote_proc} ...")
+                            with open(self.local_proc, 'rb') as f:
+                                content = f.read()
+                            content = content.replace(b'\r\n', b'\n')
+                            import tempfile
+                            with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.sh') as tmp:
+                                tmp.write(content)
+                                tmp_path = tmp.name
                             try:
-                                print(
-                                    f"上传本地 {self.local_proc} 到远端 {self.remote_proc} ...")
-                                sftp.put(self.local_proc, self.remote_proc)
+                                sftp.put(tmp_path, self.remote_proc)
+                                sftp.chmod(self.remote_proc, 0o755)
+                                print("✅ 上传并设置可执行成功")
+                            finally:
                                 try:
-                                    sftp.chmod(self.remote_proc, 0o755)
+                                    os.unlink(tmp_path)
                                 except Exception:
                                     pass
-                                print("上传并设置可执行成功")
-                            except Exception as e:
-                                tb = traceback.format_exc()
-                                err = f"上传 processes 失败: {e}\n{tb}"
-                                print(err)
-                                self.error_occurred.emit(err)
+                        except Exception as e:
+                            tb = traceback.format_exc()
+                            err = f"上传 processes 失败: {e}\n{tb}"
+                            print(err)
+                            self.error_occurred.emit(err)
                     try:
                         sftp.close()
                     except Exception:
@@ -183,17 +173,21 @@ class SSHWorker(QThread):
                 host_key = self.get_hostkey_fp_hex()
                 self.key_verification.emit(md5, host_key)
                 # print(md5, host_key)
+                script_path = self.remote_proc
+                check_cmd = f"test -x {script_path} && echo 'EXISTS' || echo 'NOT_FOUND'"
+                self.run_command(check_cmd)
                 if self.user == "root":
-                    cmd = f'./.ssh/processes.sh'
-                    print("Running without sudo as root")
+                    cmd = f'{script_path}'
+                    print(f"Running without sudo as root: {cmd}")
                 else:
-                    cmd = f'echo {self.password} | sudo -S ./.ssh/processes.sh'
-                    print("Running with sudo as non-root")
+                    cmd = f'echo {self.password} | sudo -S bash {script_path}'
+                    print(f"Running with sudo as non-root: {cmd}")
                 try:
                     self.run_command(cmd)
-                    print("已启动远端 processes 可执行文件（./.ssh/processes）")
+                    print(f"已启动远端 processes 可执行文件({script_path})")
                 except Exception as e:
                     print(f"启动 processes 失败：{e}")
+                    self.error_occurred.emit(f"启动 processes 失败：{e}")
             self.exec_()
             self._cleanup()
         except socks.ProxyError as e:
@@ -271,7 +265,12 @@ class SSHWorker(QThread):
                 self.stop_timer_sig.emit()
         except Exception:
             pass
-
+        try:
+            if hasattr(self, "completion_timer") and self.completion_timer:
+                self.completion_timer.stop()
+                self.completion_timer = None
+        except Exception:
+            pass
         try:
             if self.channel:
                 self.channel.close()
@@ -279,7 +278,6 @@ class SSHWorker(QThread):
             pass
         try:
             if self.conn:
-                # 关闭连接前先关闭keepalive
                 transport = self.conn.get_transport()
                 if transport:
                     transport.set_keepalive(0)
@@ -311,16 +309,13 @@ class SSHWorker(QThread):
         try:
             if not self.channel:
                 return
-
-            # 检查SSH连接是否仍然活跃
             if self.conn and self.conn.get_transport():
                 if not self.conn.get_transport().is_active():
                     self.error_occurred.emit("SSH连接已断开")
                     self.quit()
                     return
-
             if self.channel.recv_ready():
-                chunk = self.channel.recv(4096)  # bytes
+                chunk = self.channel.recv(4096)
                 self.result_ready.emit(chunk)
                 if self.is_capturing:
                     self.capture_buffer += chunk
@@ -328,7 +323,6 @@ class SSHWorker(QThread):
                 elif self.for_resources:
                     self._buffer += chunk
                     self._process_sys_resource_buffer()
-
             if self.channel.closed or self.channel.exit_status_ready():
                 while self.channel.recv_ready():
                     chunk = self.channel.recv(4096)
@@ -344,13 +338,8 @@ class SSHWorker(QThread):
             self.error_occurred.emit(str(e))
 
     def _process_sys_resource_buffer(self):
-        """
-        Extract the ///Start ... End/// or ///SysInfo ... End/// JSON from _buffer 
-        and emit the sys_resource signal
-        """
         try:
             text = self._buffer.decode(errors='ignore')
-            # print(text)
             pattern = re.compile(r'///(SysInfo|Start)(.*?)End///', re.DOTALL)
             match = pattern.search(text)
             if match:
@@ -362,13 +351,14 @@ class SSHWorker(QThread):
                     else:
                         data = {"type": "info", **data}
                     self.sys_resource.emit(data)
-                except Exception:
-                    pass
-
+                except Exception as e:
+                    print(f"Error processing system resource data: {e}")
+                    print("--- Failing payload ---")
+                    print(repr(payload.strip()))
                 last_end = match.end()
                 self._buffer = self._buffer[last_end:]
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error in _process_sys_resource_buffer: {e}")
 
     def run_command(self, command=None, add_newline=True):
         """command can be str or bytes; if None, a newline is sent"""
@@ -456,25 +446,28 @@ class SSHWorker(QThread):
             return False
 
     def execute_command_and_capture(self, command: str):
-        import uuid
         if self.is_capturing:
-            self.error_occurred.emit(
-                "Another command capture is already in progress.")
+            self.error_occurred.emit("Another command capture is already in progress.")
             return
         unique_id = str(uuid.uuid4())
         self.start_marker = f"START_CMD_MARKER_{unique_id}"
         self.end_marker = f"END_CMD_MARKER_{unique_id}"
         self.is_capturing = True
         self.capture_buffer = b""
-        wrapped_command = (
-            f'echo "{self.start_marker}"\n'
-            f'{command}\n'
-            f'EXIT_CODE=$?; echo "{self.end_marker}:$EXIT_CODE"\n'
-        )
+        self.command_completed = False
+        self.last_output_time = time.time()
+        wrapped_command = f'echo "{self.start_marker}"\n{command}\n'
         self.run_command(wrapped_command, add_newline=False)
+        if self.completion_timer:
+            self.completion_timer.stop()
+        self.completion_timer = QTimer(self)
+        self.completion_timer.timeout.connect(self._check_interactive_completion)
+        self.completion_timer.start(500)
 
     def _process_capture_buffer(self):
         try:
+            if len(self.capture_buffer) > 0:
+                self.last_output_time = time.time()
             start_bytes = self.start_marker.encode()
             end_bytes = self.end_marker.encode()
             start_idx = self.capture_buffer.rfind(start_bytes)
@@ -512,13 +505,54 @@ class SSHWorker(QThread):
                 r'\x1b\][^\x07\x1b]*[\x07\x1b]', '', output_str)
             output_str = re.sub(r'\x1b[PX^_][^\x1b]*\x1b\\', '', output_str)
             self.command_output_ready.emit(output_str, exit_code)
-            self.is_capturing = False
-            self.capture_buffer = b""
-            self.start_marker = ""
-            self.end_marker = ""
+            self._reset_capture_state()
         except Exception as e:
             self.error_occurred.emit(f"Error processing command output: {e}")
-            self.is_capturing = False
-            self.capture_buffer = b""
-            self.start_marker = ""
-            self.end_marker = ""
+            self._reset_capture_state()
+    
+    def _reset_capture_state(self):
+        self.is_capturing = False
+        self.capture_buffer = b""
+        self.start_marker = ""
+        self.end_marker = ""
+        self.command_completed = False
+        if self.completion_timer:
+            self.completion_timer.stop()
+            self.completion_timer = None
+    
+    def _check_interactive_completion(self):
+        try:
+            if not self.is_capturing or self.command_completed:
+                return
+            text = self.capture_buffer.decode('utf-8', errors='ignore').strip()
+            lines = text.splitlines()
+            if not lines:
+                return
+            last_line = re.sub(r'\x1b\[[0-9;?]*[a-zA-Z]', '', lines[-1]).strip()
+            prompt_patterns = [
+                r'(?:\([^\)]+\)\s)?\S+@\S+:.*[\$#]\s*$',
+                r'\[\S+@\S+\s+\S+\][\$#]\s*$',
+            ]
+            for pattern in prompt_patterns:
+                if re.search(pattern, last_line):
+                    self.command_completed = True
+                    if self.completion_timer:
+                        self.completion_timer.stop()
+                    self.run_command(f'EXIT_CODE=$?; echo "{self.end_marker}:$EXIT_CODE"')
+                    return
+        except Exception as e:
+            print(f"Error checking interactive completion: {e}")
+
+    def execute_silent_command(self, command: str, timeout=15):
+        if not self.is_connection_active():
+            return None, "SSH connection is not active.", -1
+        try:
+            if not self.conn:
+                return None, "SSH main connection is not available.", -1
+            stdin, stdout, stderr = self.conn.exec_command(command, timeout=timeout)
+            exit_code = stdout.channel.recv_exit_status()
+            output = stdout.read().decode('utf-8', errors='ignore')
+            error = stderr.read().decode('utf-8', errors='ignore')
+            return output, error, exit_code
+        except Exception as e:
+            return None, str(e), -1

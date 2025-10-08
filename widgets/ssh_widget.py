@@ -1,11 +1,12 @@
 from PyQt5.QtWidgets import (
     QWidget, QStackedWidget, QVBoxLayout, QHBoxLayout, QFrame,
-    QLabel, QSizePolicy, QSplitter, QApplication
+    QLabel, QSizePolicy, QSplitter, QApplication, QGraphicsDropShadowEffect
 )
-from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QTimer, QSize
-from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPainterPath
+from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QTimer, QSize, QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup, pyqtProperty, QParallelAnimationGroup
+from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPainterPath, QLinearGradient
 
 from qfluentwidgets import SegmentedWidget, RoundMenu, Action, FluentIcon as FIF, ToolButton, Dialog
+from widgets.system_info_dialog import SystemInfoDialog
 
 from tools.setting_config import SCM
 from tools.llm_helper import LLMHelper
@@ -139,6 +140,7 @@ class SSHWidget(QWidget):
 
     def __init__(self, name: str,  parent=None, font_name=None, user_name=None):
         super().__init__(parent=parent)
+        self.button_animations = {}
         self.file_manager = None
         config = CONFIGER.read_config()
         use_ai = config.get("aigc_open", False)
@@ -441,6 +443,14 @@ class SSHWidget(QWidget):
         connect_file_explorer()
         self.task_detaile = ProcessMonitor()
         self.net_monitor = NetProcessMonitor()
+
+        self.file_explorer.dataRefreshed.connect(
+            lambda: self._trigger_button_animation("file_explorer"))
+        self.net_monitor.dataRefreshed.connect(
+            lambda: self._trigger_button_animation("net"))
+        self.task_detaile.dataRefreshed.connect(
+            lambda: self._trigger_button_animation("task"))
+
         self.task_detaile.kill_process.connect(self._kill_process)
         self.net_monitor.kill_process.connect(self._kill_process)
         file_manage_layout.addWidget(self.file_bar)
@@ -475,7 +485,7 @@ class SSHWidget(QWidget):
         self.rsplitter.splitterMoved.connect(self.on_splitter_moved)
         self.rsplitter.splitterMoved.connect(self.resize_timer.start)
 
-        QTimer.singleShot(50, self.force_set_left_panel_width)
+        QTimer.singleShot(150, self.force_set_left_panel_width)
 
         splitter_tb_ratio = config.get("splitter_tb_ratio", [0.7, 0.3])
         if len(splitter_tb_ratio) == 2:
@@ -492,6 +502,70 @@ class SSHWidget(QWidget):
         else:
             initial_color = '#cccccc'
         self.update_splitter_color(initial_color)
+
+    def _trigger_button_animation(self, key: str):
+            if key != self.now_ui or key not in self.file_bar.pivot.items:
+                return
+            button = self.file_bar.pivot.items[key]
+            if key in self.button_animations:
+                animation, original_style, helper = self.button_animations[key]
+                animation.stop()
+                button.setStyleSheet(original_style)
+                del self.button_animations[key]
+            original_style = button.styleSheet()
+            gradient_color1 = QColor("#00aaff")
+            gradient_color1.setAlpha(180)
+            gradient_color2 = QColor("#aa00ff")
+            gradient_color2.setAlpha(180)
+            class GradientHelper(QWidget):
+                def __init__(self, widget, original_style, color1, color2):
+                    super().__init__()
+                    self.widget = widget
+                    self.original_style = original_style
+                    self.color1 = color1
+                    self.color2 = color2
+                    self._offset = -0.6
+                @pyqtProperty(float)
+                def offset(self):
+                    return self._offset
+                @offset.setter
+                def offset(self, value):
+                    self._offset = value
+                    total_width = 0.6
+                    solid_width = 0.2
+                    fade_width = (total_width - solid_width) / 1.5
+                    p1 = self._offset
+                    p2 = p1 + fade_width
+                    p3 = p2 + solid_width
+                    p4 = p3 + fade_width
+                    stops = [max(0, min(1, p)) for p in [p1, p2, p3, p4]]
+                    if stops[0] >= 1 or stops[3] <= 0:
+                        self.widget.setStyleSheet(self.original_style)
+                        return
+                    gradient_str = (
+                        f"qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+                        f"stop: {stops[0]} transparent, "
+                        f"stop: {stops[1]} {self.color1.name(QColor.HexArgb)}, "
+                        f"stop: {stops[2]} {self.color2.name(QColor.HexArgb)}, "
+                        f"stop: {stops[3]} transparent)"
+                    )
+                    self.widget.setStyleSheet(
+                        f"background: {gradient_str};"
+                        f"{self.original_style}"
+                    )
+            helper = GradientHelper(button, original_style, gradient_color1, gradient_color2)
+            animation = QPropertyAnimation(helper, b'offset', self)
+            animation.setDuration(1200)
+            animation.setStartValue(-0.6)
+            animation.setEndValue(1.0)
+            animation.setEasingCurve(QEasingCurve.Linear)
+            def on_finished():
+                button.setStyleSheet(original_style)
+                if key in self.button_animations:
+                    del self.button_animations[key]
+            animation.finished.connect(on_finished)
+            self.button_animations[key] = (animation, original_style, helper)
+            animation.start()
 
     def _kill_process(self, pid: int):
         if self.file_manager:
@@ -786,17 +860,12 @@ class SSHWidget(QWidget):
         self.resize_timer.start()
 
     def _sys_info_dialog(self):
-        print("Show system info dialog")
-        # print(self.sys_info_msg)
         if self.sys_info_msg:
-            w = Dialog(self.tr("System Info"), self.sys_info_msg, self)
-            w.cancelButton.setText(self.tr("Copy all"))
-            w.yesButton.setText(self.tr("Got it"))
-            if w.exec():
-                return
-            else:
-                clipboard = QApplication.clipboard()
-                clipboard.setText(self.sys_info_msg)
+            dialog = SystemInfoDialog( self.tr("System Information"), self.sys_info_msg, self )
+            dialog.exec()
+        else:
+            dialog = SystemInfoDialog( self.tr("System Information"), "", self )
+            dialog.exec()
 
     def cleanup(self):
         self.ssh_widget.cleanup()
@@ -854,15 +923,10 @@ class SSHWidget(QWidget):
         This ensures the left panel width is maintained during parent resizes.
         """
         config = CONFIGER.read_config()
-        # Use a reasonable default width if not set
-        left_width = config.get("splitter_lr_left_width", 280)
-
+        left_width = config.get("splitter_lr_left_width", 300)
         total_width = self.splitter_lr.width()
-
-        # Only apply if the total width is larger than the desired fixed width
         if total_width > left_width:
             right_width = total_width - left_width
-            # Temporarily block signals to avoid a feedback loop with on_splitter_moved
             self.splitter_lr.blockSignals(True)
             self.splitter_lr.setSizes([left_width, right_width])
             self.splitter_lr.blockSignals(False)

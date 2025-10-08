@@ -102,19 +102,46 @@
     .xterm .xterm-text-layer {
         /* default no shadow; JS may set style on .xterm-text-layer to add shadow */
     }
+    #context-menu {
+        display: none;
+        position: absolute;
+        z-index: 1000;
+        background-color: #2b2b2b;
+        border: 1px solid #444;
+        border-radius: 5px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        min-width: 150px;
+        padding: 5px 0;
+    }
+    .menu-item {
+        padding: 8px 15px;
+        color: #d0d0d0;
+        cursor: pointer;
+        font-family: sans-serif;
+        font-size: 14px;
+    }
+    .menu-item:hover {
+        background-color: #3c3c3c;
+    }
+    .menu-item.disabled {
+        color: #666;
+        cursor: default;
+        background-color: transparent;
+    }
   </style>
 </head>
 <body>
   <div id="terminal"></div>
+  <div id="context-menu">
+    <div class="menu-item" id="menu-copy">复制</div>
+    <div class="menu-item" id="menu-paste">粘贴</div>
+  </div>
 
   <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.2.0/lib/xterm.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.js"></script>
 
   <script>
-  document.addEventListener('contextmenu', function(e) {
-e.preventDefault();
-});
 // Prevent all drag operations
 document.addEventListener('dragenter', e => e.preventDefault());
 document.addEventListener('dragover', e => e.preventDefault());
@@ -126,6 +153,9 @@ document.addEventListener('drop', e => e.preventDefault());
 
     new QWebChannel(qt.webChannelTransport, function(channel) {
       var bridge = channel.objects.bridge;
+      const contextMenu = document.getElementById('context-menu');
+      const menuCopy = document.getElementById('menu-copy');
+      const menuPaste = document.getElementById('menu-paste');
 
       // create terminal with initial theme (transparent background; fg from Python)
       var term = new window.Terminal({
@@ -141,15 +171,27 @@ document.addEventListener('drop', e => e.preventDefault());
         fontFamily: '{{font_family}}, monospace'  // 设置终端字体
       });
       term.attachCustomKeyEventHandler(function(e) {
-if (e.ctrlKey && e.shiftKey && e.code === 'KeyC') {
-    const selection = term.getSelection();
-    if (selection && bridge && bridge.copyToClipboard) {
-        bridge.copyToClipboard(selection); // 调用 Python
-    }
-    return false; // 阻止默认行为
-}
-return true;
-});
+        if (e.ctrlKey && !e.shiftKey && e.code === 'KeyC') {
+            const selection = term.getSelection();
+            if (selection) {
+                if (bridge && bridge.copyToClipboard) {
+                    bridge.copyToClipboard(selection);
+                }
+                return false;
+            }
+            return true;
+        }
+        if (e.ctrlKey && !e.shiftKey && e.code === 'KeyV') {
+            if (bridge && bridge.pasteFromClipboard) {
+                bridge.pasteFromClipboard();
+            }
+            return false;
+        }
+        if (e.ctrlKey && e.shiftKey && (e.code === 'KeyV' || e.code === 'KeyC')) {
+            return false;
+        }
+        return true;
+      });
 
 
       // fit addon creation (robust to various UMD exports)
@@ -232,14 +274,38 @@ return btoa(binary);
         }
       });
 
-      // 添加选择监听
-      term.onSelectionChange(function() {
-        const selection = term.getSelection();
-        if (selection) {
-            console.log('Selected text:', selection);
-            // 可以在这里处理选中的文本
-        }
+      document.addEventListener('contextmenu', function(e) {
+          e.preventDefault();
+          const selection = term.getSelection();
+          if (selection) {
+              menuCopy.classList.remove('disabled');
+          } else {
+              menuCopy.classList.add('disabled');
+          }
+          contextMenu.style.top = `${e.clientY}px`;
+          contextMenu.style.left = `${e.clientX}px`;
+          contextMenu.style.display = 'block';
       });
+
+      document.addEventListener('click', function(e) {
+          if (contextMenu.style.display === 'block') {
+              contextMenu.style.display = 'none';
+          }
+      });
+
+      menuCopy.addEventListener('click', function() {
+          const selection = term.getSelection();
+          if (selection && bridge && bridge.copyToClipboard) {
+              bridge.copyToClipboard(selection);
+          }
+      });
+
+      menuPaste.addEventListener('click', function() {
+          if (bridge && bridge.pasteFromClipboard) {
+              bridge.pasteFromClipboard();
+          }
+      });
+
 
       // sizing: fit + notify backend of cols/rows
       window.notifySize = function() {

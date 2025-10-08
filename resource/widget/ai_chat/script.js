@@ -1083,7 +1083,53 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   updateAIBubbleMaxWidth();
   window.addEventListener('resize', updateAIBubbleMaxWidth);
+  setupWebSocket();
 });
+function setupWebSocket() {
+  const onlineStatusElement = document.getElementById('online-status');
+  const statusIcon = onlineStatusElement.querySelector('.icon');
+  const statusText = onlineStatusElement.querySelector('.status-text');
+  const wsUrl = 'wss://aurashell-aichatapi.esmondelliott9043.workers.dev/';
+  let ws;
+  let pingInterval;
+  function connect() {
+    ws = new WebSocket(wsUrl);
+    ws.onopen = () => {
+      statusIcon.classList.remove('error-icon');
+      statusIcon.classList.add('success-icon');
+      if (pingInterval) clearInterval(pingInterval);
+      pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: 'ping', id: Date.now() }));
+        }
+      }, 30000);
+    };
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.action === 'updateUserCount') {
+          const data = JSON.parse(message.data);
+          statusText.textContent = `在线用户数量:${data.userCount}`;
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
+    };
+    ws.onclose = () => {
+      clearInterval(pingInterval);
+      onlineStatusElement.title = '与在线状态服务器断开连接，正在尝试重新连接...';
+      statusIcon.classList.remove('success-icon');
+      statusIcon.classList.add('error-icon');
+      statusText.textContent = '已断开';
+      setTimeout(connect, 1000);
+    };
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      ws.close();
+    };
+  }
+  connect();
+}
 const modelSelectTrigger = document.getElementById('model-select-trigger');
 const currentModelNameSpan = document.getElementById('current-model-name');
 const modelSelectPopup = document.getElementById('model-select-popup');
@@ -1425,9 +1471,9 @@ async function proxiedFetch(url, options) {
       }
     };
     const onAbort = () => {
-        backend.cancelProxiedFetch(requestId);
-        cleanup();
-        reject(new DOMException('Request aborted by user', 'AbortError'));
+      backend.cancelProxiedFetch(requestId);
+      cleanup();
+      reject(new DOMException('Request aborted by user', 'AbortError'));
     };
     const cleanup = () => {
       if (options.signal) {
@@ -1438,15 +1484,15 @@ async function proxiedFetch(url, options) {
       backend.streamFailed.disconnect(onFail);
     };
     if (options.signal) {
-        options.signal.addEventListener('abort', onAbort, { once: true });
+      options.signal.addEventListener('abort', onAbort, { once: true });
     }
     backend.streamChunkReceived.connect(onChunk);
     backend.streamFinished.connect(onFinish);
     backend.streamFailed.connect(onFail);
     const optionsForBackend = {
-        method: options.method,
-        headers: options.headers,
-        body: options.body,
+      method: options.method,
+      headers: options.headers,
+      body: options.body,
     };
     backend.proxiedFetch(requestId, url, JSON.stringify(optionsForBackend));
   });
