@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, 
 from widgets.editor_widget import EditorWidget
 from qfluentwidgets import (NavigationInterface,  NavigationItemPosition, InfoBar,
                             isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget,  Dialog)
+from tools.animation_manager import PageTransitionAnimator
 from qfluentwidgets.common.config import qconfig
 import platformdirs
 from pathlib import Path
@@ -87,6 +88,9 @@ class Window(FramelessWindow):
         self._download_debounce_timer.timeout.connect(
             self._process_pending_downloads)
         self._pending_download_paths = {}
+        
+        self.page_animator = PageTransitionAnimator(duration=500)
+        self._animation_in_progress = False
 
         self._resize_timer = QTimer(self)
         self._resize_timer.setSingleShot(True)
@@ -1191,11 +1195,27 @@ class Window(FramelessWindow):
             self.setStyleSheet(f.read())
 
     def switchTo(self, widget, window_tittle=None):
-        self.stackWidget.setCurrentWidget(widget)
-        if window_tittle:
-            self.setWindowTitle(window_tittle)
-        elif widget.objectName():
-            self.setWindowTitle(widget.objectName())
+        if self._animation_in_progress:
+            return
+        current_widget = self.stackWidget.currentWidget()
+        if current_widget == widget:
+            return
+        direction = "left"
+        if widget == self.MainInterface:
+            direction = "right"
+        self._animation_in_progress = True
+        def on_animation_finished():
+            self.stackWidget.setCurrentWidget(widget)
+            self._animation_in_progress = False
+            if window_tittle:
+                self.setWindowTitle(window_tittle)
+            elif widget.objectName():
+                self.setWindowTitle(widget.objectName())
+            if widget == self.ssh_page:
+                current_ssh_widget = self.ssh_page.sshStack.currentWidget()
+                if isinstance(current_ssh_widget, SSHWidget):
+                    QTimer.singleShot(150, current_ssh_widget.force_set_left_panel_width)
+        self.page_animator.slide_fade_transition( from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished )
 
     def onCurrentInterfaceChanged(self, index):
         widget = self.stackWidget.widget(index)
@@ -1451,8 +1471,6 @@ class Window(FramelessWindow):
         current_widget = self.ssh_page.sshStack.currentWidget()
         if isinstance(current_widget, SSHWidget):
             QTimer.singleShot(10, current_widget.force_set_left_panel_width)
-
-        # Update expander bar visibility
         self._update_expander_visibility()
 
     def _ensure_side_panel_visible(self):
@@ -1470,8 +1488,7 @@ class Window(FramelessWindow):
             self.mainSplitter.blockSignals(False)
             current_widget = self.ssh_page.sshStack.currentWidget()
             if isinstance(current_widget, SSHWidget):
-                QTimer.singleShot(
-                    10, current_widget.force_set_left_panel_width)
+                QTimer.singleShot(10, current_widget.force_set_left_panel_width)
 
     def _expand_side_panel(self):
         self.expanderBar.hide()
