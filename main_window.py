@@ -1126,16 +1126,6 @@ class Window(FramelessWindow):
     def initWindow(self):
         self.titleBar.setAttribute(Qt.WA_StyledBackground)
         self.setWindowFlags(Qt.FramelessWindowHint)
-        # if sys.platform == "win32" and ctypes:
-        #     try:
-        #         from ctypes import windll, c_int, byref
-        #         hwnd = int(self.winId())
-        #         DWMWA_NCRENDERING_POLICY = 2
-        #         DWMNCRP_DISABLED = 1
-        #         windll.dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY, byref(c_int(DWMNCRP_DISABLED)), 4)
-        #         windll.dwmapi.DwmExtendFrameIntoClientArea(hwnd, byref(c_int(-1)))
-        #     except Exception as e:
-        #         pass
         desktop = QApplication.desktop().availableGeometry()
         w, h = desktop.width(), desktop.height()
         self.move(w//2 - self.width()//2, h//2 - self.height()//2)
