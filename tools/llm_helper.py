@@ -1,7 +1,6 @@
-
 from openai import OpenAI
 from tools.setting_config import SCM
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 import json
 
 configer = SCM()
@@ -26,9 +25,11 @@ class LLMHelper(QThread):
         super().__init__()
         self.loading_settings()
         self.client = None
-        self.is_running = False
+        self.is_running = False  # 初始化标记为 False
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.requests_timeout)
         self.current_messages = []
-        self.system_prompt = self.tr('''
+        self.system_prompt = '''
 You are a professional SSH assistant. Generate corresponding SSH commands based on terminal output and user requirements.
 
 Please return in strict JSON format:
@@ -50,8 +51,7 @@ Input format:
 }
 
 Please note that there may be multi-turn Q&A information. Pay attention to whether the context is related. Only answer the content of the latest text. The previous text may contain helpful auxiliary information. The assistant field corresponds to your previous answer.
-''')
-
+'''
         self.history_messages_max_length = config.get(
             "aigc_history_max_length", 10)
         self.recent_commands = []
@@ -61,20 +61,30 @@ Please note that there may be multi-turn Q&A information. Pay attention to wheth
         else:
             print("LLM client initialization failed")
 
+    def requests_timeout(self):
+        """ 请求超时处理 """
+        if self.is_running:  # 确保只在请求处理中执行
+            self.error_signal.emit(self.tr("Requests timeout"))
+            self.finished_signal.emit()
+            self.is_running = False  # 重置标志
+            self.timer.stop()  # 停止定时器
+
     def run(self):
         if not self.client or not self.current_messages:
             self.error_signal.emit(
                 self.tr("Client not initialized or no message content"))
+            self.is_running = False  # 确保结束时重置标志
             return
 
         try:
+            self.is_running = True  # 设置为运行中
             buffer = ""
             buffer_size = 0
             max_buffer_size = 50
 
             messages = self._build_messages()
             print(messages)
-            # print("Model Name:", MODEL_NAME.get(MODEL))
+
             response = self.client.chat.completions.create(
                 model=MODEL_NAME.get(self.MODEL),
                 messages=messages,
@@ -92,8 +102,7 @@ Please note that there may be multi-turn Q&A information. Pay attention to wheth
                     buffer += content
                     buffer_size += len(content)
 
-                    if (buffer_size >= max_buffer_size or
-                            content in ['\n', '。', '!', '?', '；', '.']):
+                    if buffer_size >= max_buffer_size or content in ['\n', '。', '!', '?', '；', '.']:
                         self.result_signal.emit(buffer)
                         buffer = ""
                         buffer_size = 0
@@ -108,14 +117,11 @@ Please note that there may be multi-turn Q&A information. Pay attention to wheth
         except Exception as e:
             self.error_signal.emit(self.tr(f"API request failed: {str(e)}"))
         finally:
-            self.is_running = False
+            self.is_running = False  # 请求完成后标志恢复为 False
+            self.finished_signal.emit()  # 触发完成信号
 
     def send_request(self, terminal_output, user_input, use_compact_history=True):
-        """
-        发送请求：
-          - use_compact_history=True 时，调用 _compact_history_for_send 来节省 tokens
-          - 注意：recent_commands 保持原样（用于本地保存或后续展示）
-        """
+        """发送请求"""
         if self.is_running:
             self.error_signal.emit(
                 self.tr("Previous request is still processing"))
@@ -131,7 +137,6 @@ Please note that there may be multi-turn Q&A information. Pay attention to wheth
             self.current_messages = self._compact_history_for_send(
                 terminal_output, user_input)
         else:
-            # 不压缩，直接 system + recent_commands + current user
             msgs = [{"role": "system", "content": self.system_prompt}]
             for msg in self.recent_commands:
                 if msg.get("role") != "system":
@@ -139,7 +144,7 @@ Please note that there may be multi-turn Q&A information. Pay attention to wheth
             msgs.append({"role": "user", "content": user_message})
             self.current_messages = msgs
 
-        self.is_running = True
+        self.is_running = True  # 启动新的请求
         self.start()
         return True
 
@@ -159,17 +164,15 @@ Please note that there may be multi-turn Q&A information. Pay attention to wheth
             self.recent_commands = [self.recent_commands[0]] + \
                 self.recent_commands[-(self.history_messages_max_length-1):]
 
-    def init_client(self, ):
+    def init_client(self):
         try:
             if not self.API_KEY:
                 self.error_signal.emit(self.tr("API key is empty"))
                 return False
 
-            self.client = OpenAI(
-                api_key=self.API_KEY,
-                base_url=MODEL_URL.get(self.MODEL, None)
-            )
-            print("Model : ", MODEL_URL.get(self.MODEL, None))
+            self.client = OpenAI(api_key=self.API_KEY,
+                                 base_url=MODEL_URL.get(self.MODEL, None))
+            print("Model:", MODEL_URL.get(self.MODEL, None))
             return True
 
         except Exception as e:
@@ -178,6 +181,7 @@ Please note that there may be multi-turn Q&A information. Pay attention to wheth
             return False
 
     def stop(self):
+        """停止正在运行的任务"""
         self.is_running = False
         self.wait()
 
@@ -189,15 +193,7 @@ Please note that there may be multi-turn Q&A information. Pay attention to wheth
             return None
 
     def _compact_history_for_send(self, latest_terminal: str, latest_user_input: str):
-        """
-        构建 compact 的 messages 列表以发送给模型，策略：
-         - 保留 system prompt（始终）
-         - 对于历史 user 条目：保留 user_input 文本，但把 terminal 字段清空或置为简短占位
-         - 对于历史 assistant 条目：如果能解析为 JSON，则只保留 explanation 字段（或少量元信息）
-           否则保留原文本（但可考虑截断）
-         - 最后追加当前 user（带上 latest_terminal 与 latest_user_input）
-        这样可以显著减少 tokens 用量而保留上下文要点。
-        """
+        """压缩历史记录以减少 token 使用"""
         messages = [{"role": "system", "content": self.system_prompt}]
 
         # 遍历 recent_commands（它是按时间顺序追加的：user/assistant/...）
@@ -215,14 +211,12 @@ Please note that there may be multi-turn Q&A information. Pay attention to wheth
                     messages.append({"role": "user", "content": json.dumps(
                         compact_user, ensure_ascii=False)})
                 else:
-                    # content 不是 json（回退），只保留原文的前 N 字（防止过大）
                     short = content if len(content) <= 200 else content[-200:]
                     messages.append({"role": "user", "content": short})
 
             elif role == "assistant":
                 parsed = self._safe_load_json(content)
                 if isinstance(parsed, dict):
-                    # 只保留 explanation 字段（通常较短且有意义）
                     expl = parsed.get("explanation", "")
                     if expl:
                         compact_assistant = {"command": [
@@ -230,15 +224,12 @@ Please note that there may be multi-turn Q&A information. Pay attention to wheth
                         messages.append({"role": "assistant", "content": json.dumps(
                             compact_assistant, ensure_ascii=False)})
                     else:
-                        # 若没有 explanation，则保留少量文本
                         messages.append({"role": "assistant", "content": ""})
                 else:
-                    # 非 JSON：截断保留最后一段（若太长）
                     short = content if len(content) <= 200 else content[-200:]
                     messages.append({"role": "assistant", "content": short})
 
             else:
-                # 其他 role（如 system），直接附上（但 system 一般只有第一个）
                 messages.append({"role": role, "content": content})
 
         # 最后追加当前 user（带上最新的 terminal 内容）

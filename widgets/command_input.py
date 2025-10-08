@@ -16,7 +16,7 @@ class OneSuggestionPopup(QFrame):
 
         self.setMinimumSize(150, 50)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
-        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(self.windowFlags() | Qt.Tool)
         self.setFocusPolicy(Qt.NoFocus)
 
         self.setObjectName("one_sugg_popup")
@@ -391,6 +391,7 @@ class CommandInput(TextEdit):
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
             self.hide_history()
+            self.timer.stop()
             self.suggestionpopup.hide()
             return
 
@@ -456,6 +457,7 @@ class CommandInput(TextEdit):
             or new_focus is self
             or self.isAncestorOf(new_focus)
         ):
+            self.timer.stop()
             self.hide_history()
             self.suggestionpopup.hide()
         super().focusOutEvent(event)
@@ -562,6 +564,7 @@ class CommandInput(TextEdit):
         text = self.toPlainText()
         parent_widget = self.find_parent_with_llm()
         self.timer.start(300)
+        parent_widget.llm.timer.start(15000)
         if parent_widget:
             parent_widget.llm.send_request(
                 parent_widget.ssh_widget.terminal_texts, text)

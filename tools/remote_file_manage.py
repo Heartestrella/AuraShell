@@ -1,11 +1,10 @@
 # remote_file_manage.py
-from PyQt5.QtCore import pyqtSignal, QThread, QMutex, QWaitCondition, QThreadPool
+from PyQt5.QtCore import pyqtSignal, QThread, QMutex, QWaitCondition, QThreadPool, QTimer, QEventLoop
 from tools.transfer_worker import TransferWorker
 from tools.setting_config import SCM
 import paramiko
 import traceback
 import socks
-import socket
 from typing import Dict, List, Optional
 import stat
 import os
@@ -65,7 +64,8 @@ class RemoteFileManager(QThread):
         self.proxy_port = getattr(session_info, 'proxy_port', 0)
         self.proxy_username = getattr(session_info, 'proxy_username', '')
         self.proxy_password = getattr(session_info, 'proxy_password', '')
-
+        self.heart_timer = QTimer()
+        self.heart_timer.timeout.connect(self.keep_heartbeat)
         self.conn = None
         self.sftp = None
         self.upload_conn = None
@@ -147,10 +147,12 @@ class RemoteFileManager(QThread):
                 banner_timeout=30,
                 sock=sock
             )
+        self.heart_timer.start(5000)
+        return conn
 
+    def keep_heartbeat(self):
         transport = self.conn.get_transport()
         transport.set_keepalive(30)
-        return conn
 
     def run(self):
         try:
@@ -735,10 +737,10 @@ class RemoteFileManager(QThread):
 
                 # common executable-related MIME strings
                 if ("executable" in mime_out
-                        or "x-executable" in mime_out
-                        or mime_out.startswith("application/x-sharedlib")
-                        or "x-mach-binary" in mime_out
-                        or "pe" in mime_out  # covers various PE-like mimes
+                            or "x-executable" in mime_out
+                            or mime_out.startswith("application/x-sharedlib")
+                            or "x-mach-binary" in mime_out
+                            or "pe" in mime_out  # covers various PE-like mimes
                         ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
@@ -1624,7 +1626,6 @@ class RemoteFileManager(QThread):
             error_msg = ""
 
             # 创建同步等待机制
-            from PyQt5.QtCore import QEventLoop, QTimer
             loop = QEventLoop()
 
             def delete_callback(s, e):
