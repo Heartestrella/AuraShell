@@ -1,5 +1,5 @@
 # coding:utf-8
-import file_init
+from pathlib import Path
 import sys
 
 import time
@@ -11,8 +11,6 @@ from qfluentwidgets import (NavigationInterface,  NavigationItemPosition, InfoBa
                             isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget,  Dialog)
 from tools.animation_manager import PageTransitionAnimator
 from qfluentwidgets.common.config import qconfig
-import platformdirs
-from pathlib import Path
 from qframelesswindow import FramelessWindow, StandardTitleBar
 from widgets.setting_page import SettingPage
 from widgets.home_interface import MainInterface
@@ -88,7 +86,7 @@ class Window(FramelessWindow):
         self._download_debounce_timer.timeout.connect(
             self._process_pending_downloads)
         self._pending_download_paths = {}
-        
+
         self.page_animator = PageTransitionAnimator(duration=500)
         self._animation_in_progress = False
 
@@ -960,7 +958,8 @@ class Window(FramelessWindow):
             if session:
                 debounce_key = session.id
         if not session:
-            print("Warning: _on_session_selected called with no valid session identifier.")
+            print(
+                "Warning: _on_session_selected called with no valid session identifier.")
             return
         if debounce_key:
             last_click_time = self.last_session_click_time.get(debounce_key, 0)
@@ -1204,6 +1203,7 @@ class Window(FramelessWindow):
         if widget == self.MainInterface:
             direction = "right"
         self._animation_in_progress = True
+
         def on_animation_finished():
             self.stackWidget.setCurrentWidget(widget)
             self._animation_in_progress = False
@@ -1214,8 +1214,10 @@ class Window(FramelessWindow):
             if widget == self.ssh_page:
                 current_ssh_widget = self.ssh_page.sshStack.currentWidget()
                 if isinstance(current_ssh_widget, SSHWidget):
-                    QTimer.singleShot(150, current_ssh_widget.force_set_left_panel_width)
-        self.page_animator.slide_fade_transition( from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished )
+                    QTimer.singleShot(
+                        150, current_ssh_widget.force_set_left_panel_width)
+        self.page_animator.slide_fade_transition(
+            from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
 
     def onCurrentInterfaceChanged(self, index):
         widget = self.stackWidget.widget(index)
@@ -1488,7 +1490,8 @@ class Window(FramelessWindow):
             self.mainSplitter.blockSignals(False)
             current_widget = self.ssh_page.sshStack.currentWidget()
             if isinstance(current_widget, SSHWidget):
-                QTimer.singleShot(10, current_widget.force_set_left_panel_width)
+                QTimer.singleShot(
+                    10, current_widget.force_set_left_panel_width)
 
     def _expand_side_panel(self):
         self.expanderBar.hide()
@@ -1610,7 +1613,8 @@ def update_splash_progress(step, total_steps=10, message=""):
 
 
 if __name__ == '__main__':
-    config_path = "qfluentwidgets_config.json"
+    config_dir = Path.home() / ".config" / "pyqt-ssh"
+    config_path = config_dir / "qfluentwidgets_config.json"
     qconfig.load(config_path)
     try:
         # 步骤1: 初始化日志
