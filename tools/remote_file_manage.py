@@ -64,8 +64,8 @@ class RemoteFileManager(QThread):
         self.proxy_port = getattr(session_info, 'proxy_port', 0)
         self.proxy_username = getattr(session_info, 'proxy_username', '')
         self.proxy_password = getattr(session_info, 'proxy_password', '')
-        self.heart_timer = QTimer()
-        self.heart_timer.timeout.connect(self.keep_heartbeat)
+        # self.heart_timer = QTimer()
+        # self.heart_timer.timeout.connect(self.keep_heartbeat)
         self.conn = None
         self.sftp = None
         self.upload_conn = None
@@ -147,12 +147,8 @@ class RemoteFileManager(QThread):
                 banner_timeout=30,
                 sock=sock
             )
-        self.heart_timer.start(5000)
+        # self.heart_timer.start(5000)
         return conn
-
-    def keep_heartbeat(self):
-        transport = self.conn.get_transport()
-        transport.set_keepalive(30)
 
     def run(self):
         try:

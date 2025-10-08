@@ -70,7 +70,7 @@ class TransferWorker(QRunnable):
                 if not self.conn or not self.conn.get_transport() or not self.conn.get_transport().is_active():
                     raise Exception(
                         "SSH connection is not active or provided.")
-
+                self.conn.get_transport().set_keepalive(30)
                 self.sftp = self.conn.open_sftp()
 
                 if self.action == 'upload':
@@ -333,7 +333,7 @@ class TransferWorker(QRunnable):
         else:
             # 常规下载：使用原有的下载目录
             local_base = "_ssh_download"
-        
+
         os.makedirs(local_base, exist_ok=True)
         paths = [remote_path] if isinstance(remote_path, str) else remote_path
         print(f"download1 : {remote_path}")
@@ -387,7 +387,8 @@ class TransferWorker(QRunnable):
                 # 双击编辑模式：镜像远程路径结构
                 # 移除远程路径开头的斜杠，然后拼接到 local_base_path
                 remote_path_normalized = remote_item_path.lstrip('/')
-                local_target = os.path.join(local_base_path, remote_path_normalized)
+                local_target = os.path.join(
+                    local_base_path, remote_path_normalized)
             else:
                 # 常规下载模式：保持原有逻辑
                 # Determine local path, preserving directory structure if context is given
