@@ -67,6 +67,15 @@ class Config(QConfig):
     default_view = OptionsConfigItem(
         "Files", "DefaultView", "Icon", OptionsValidator(["Icon", "Info"]), restart=False
     )
+    
+    page_animation = OptionsConfigItem(
+        "MainWindow", "PageAnimation", "Slide Fade",
+        OptionsValidator([
+            "Slide Fade", "Zoom In", "Zoom Out", "Cross Fade",
+            "Bounce", "Elastic", "Fade Scale", "Slide Scale", "Stack"
+        ]),
+        restart=False
+    )
 
 
 class aigc_config(ExpandGroupSettingCard):
@@ -636,6 +645,29 @@ class SettingPage(ScrollArea):
         self._register_searchable(self.default_view_card, self.tr("Default file manager view"), [
                                   "view", "default view", "file manager", "icon", "info"])
 
+        self.animation_card = ComboBoxSettingCard(
+            configItem=self.cfg.page_animation,
+            icon=FluentIcon.ROTATE,
+            title=self.tr("Page Animation Effect"),
+            content=self.tr("Set the animation effect for page transitions"),
+            texts=[
+                self.tr("Slide Fade"),
+                self.tr("Zoom In"),
+                self.tr("Zoom Out"),
+                self.tr("Cross Fade"),
+                self.tr("Bounce"),
+                self.tr("Elastic"),
+                self.tr("Fade Scale"),
+                self.tr("Slide Scale"),
+                self.tr("Stack")
+            ]
+        )
+        self.animation_card.comboBox.currentIndexChanged.connect(
+            self._on_animation_changed)
+        layout.addWidget(self.animation_card)
+        self._register_searchable(self.animation_card, self.tr("Page Animation Effect"), [
+                                  "animation", "effect", "transition", "动画", "效果"])
+
         self.choose_color = PushSettingCard(
             self.tr("Open Color Picker"),
             FluentIcon.PENCIL_INK,
@@ -879,8 +911,13 @@ class SettingPage(ScrollArea):
 
         self.aigc.Max_lengthEdit.setText(
             str(self.config.get("aigc_max_length", 10)))
-        # self._set_color
-        # self.themeChanged.emit(color)
+        
+        animation_map = {
+            "slide_fade": 0, "zoom_in": 1, "zoom_out": 2, "cross_fade": 3,
+            "bounce": 4, "elastic": 5, "fade_scale": 6, "slide_scale": 7, "stack": 8
+        }
+        animation_type = self.config.get("page_animation", "slide_fade")
+        self.animation_card.comboBox.setCurrentIndex(animation_map.get(animation_type, 0))
 
     def _restore_background_opacity(self, value):
         parent = self.parent()
@@ -1007,6 +1044,14 @@ class SettingPage(ScrollArea):
         width, height = sizes
         self.parent().resize(width, height)
         self.init_window_size = True
+
+    def _on_animation_changed(self, index: int):
+        animation_map = {
+            0: "slide_fade", 1: "zoom_in", 2: "zoom_out", 3: "cross_fade",
+            4: "bounce", 5: "elastic", 6: "fade_scale", 7: "slide_scale", 8: "stack"
+        }
+        animation_type = animation_map.get(index, "slide_fade")
+        configer.revise_config("page_animation", animation_type)
 
     def _restart(self):
         pass
