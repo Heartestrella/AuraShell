@@ -147,6 +147,9 @@ class RemoteFileManager(QThread):
                 banner_timeout=30,
                 sock=sock
             )
+
+        transport = self.conn.get_transport()
+        transport.set_keepalive(30)
         return conn
 
     def run(self):
