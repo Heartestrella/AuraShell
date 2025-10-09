@@ -327,7 +327,8 @@ class SystemBubble {
     } catch (e) {}
     const trimmedContent = content.trim();
     if (trimmedContent.startsWith('<') && trimmedContent.endsWith('>')) {
-      const formattedXml = this._prettyPrintXml(content);
+      const unescapedContent = content.replace(/\\n/g, '\n');
+      const formattedXml = this._prettyPrintXml(unescapedContent);
       return hljs.highlight(formattedXml, { language: 'xml' }).value;
     }
     return hljs.highlight(code, { language: 'plaintext' }).value;
