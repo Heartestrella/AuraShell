@@ -1,4 +1,3 @@
-import xml.etree.ElementTree as ET
 import json
 import re
 import inspect
@@ -82,23 +81,23 @@ class AIMCPManager:
         if not match:
             return None
         xml_content = match.group(0)
-        sanitized_xml_content = re.sub(r'&(?!amp;|lt;|gt;|quot;|apos;)', '&amp;', xml_content)
         try:
-            root = ET.fromstring(sanitized_xml_content)
-            server_name_element = root.find('server_name')
-            tool_name_element = root.find('tool_name')
-            arguments_element = root.find('arguments')
-            if server_name_element is None or tool_name_element is None or arguments_element is None:
+            server_name_start = xml_content.find('<server_name>') + len('<server_name>')
+            server_name_end = xml_content.find('</server_name>')
+            if server_name_start == -1 or server_name_end == -1:
                 return None
-            server_name = server_name_element.text.strip() if server_name_element.text else ""
-            tool_name = tool_name_element.text.strip() if tool_name_element.text else ""
-            children = list(arguments_element)
-            if children:
-                arguments_text = "".join(ET.tostring(child, encoding='unicode').strip() for child in children)
-                arguments_text = html.unescape(arguments_text)
-            else:
-                arguments_text = arguments_element.text.strip() if arguments_element.text else "{}"
-                arguments_text = html.unescape(arguments_text)
+            server_name = xml_content[server_name_start:server_name_end].strip()
+            tool_name_start = xml_content.find('<tool_name>') + len('<tool_name>')
+            tool_name_end = xml_content.find('</tool_name>')
+            if tool_name_start == -1 or tool_name_end == -1:
+                return None
+            tool_name = xml_content[tool_name_start:tool_name_end].strip()
+            arguments_start = xml_content.find('<arguments>') + len('<arguments>')
+            arguments_end = xml_content.rfind('</arguments>')
+            if arguments_start == -1 or arguments_end == -1:
+                return None
+            arguments_text = xml_content[arguments_start:arguments_end].strip()
+            arguments_text = html.unescape(arguments_text)
             try:
                 arguments = json.loads(arguments_text)
             except (json.JSONDecodeError, TypeError):
@@ -112,9 +111,7 @@ class AIMCPManager:
                 "auto_approve": auto_approve,
                 "_xml_": xml_content
             }
-        except ET.ParseError as e:
-            print("结构解析错误:", e)
-            print("原文:", sanitized_xml_content)
-            return None
-        except Exception:
+        except Exception as e:
+            print(f"Error parsing MCP tool use with string manipulation: {e}")
+            print(f"Original content: {xml_content}")
             return None
