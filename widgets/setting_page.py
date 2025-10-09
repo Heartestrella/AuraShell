@@ -529,6 +529,19 @@ class SettingPage(ScrollArea):
             "AI", "Model", "API", "Settings", "ChatGPT", "DeepSeek", "Ollama", "Local"
         ])
 
+        self.right_panel_ai_chat_card = SwitchSettingCard(
+            icon=FluentIcon.CHAT,
+            title=self.tr("Enable Right Panel AI Chat"),
+            content=self.tr("Enable the AI chat panel on the right side (requires restart)"),
+            parent=self
+        )
+        self.right_panel_ai_chat_card.checkedChanged.connect(
+            lambda checked: configer.revise_config("right_panel_ai_chat", checked)
+        )
+        layout.addWidget(self.right_panel_ai_chat_card)
+        self._register_searchable(self.right_panel_ai_chat_card, self.tr("Enable Right Panel AI Chat"), [
+                                  "ai", "chat", "panel", "right"])
+
         self.Color_card = ComboBoxSettingCard(
             configItem=self.cfg.background_color,
             icon=FluentIcon.BRUSH,
@@ -644,6 +657,18 @@ class SettingPage(ScrollArea):
         layout.addWidget(self.default_view_card)
         self._register_searchable(self.default_view_card, self.tr("Default file manager view"), [
                                   "view", "default view", "file manager", "icon", "info"])
+
+        self.single_click_card = SwitchSettingCard(
+            icon=FluentIcon.FINGERPRINT,
+            title=self.tr("Single-click to open items"),
+            content=self.tr("When enabled, single-clicking an item in the file tree will open it."),
+            parent=self
+        )
+        self.single_click_card.checkedChanged.connect(
+            self._on_single_click_changed)
+        layout.addWidget(self.single_click_card)
+        self._register_searchable(self.single_click_card, self.tr("Single-click to open items"), [
+                                  "single", "click", "open", "file", "tree", "单击"])
 
         self.animation_card = ComboBoxSettingCard(
             configItem=self.cfg.page_animation,
@@ -807,6 +832,9 @@ class SettingPage(ScrollArea):
         value_to_save, display_name = view_map.get(index, ("icon", "图标"))
         configer.revise_config("default_view", value_to_save)
 
+    def _on_single_click_changed(self, checked: bool):
+        configer.revise_config("file_tree_single_click", checked)
+
     def _unbelievable(self):
         InfoBar.error(
             title=self.tr('What are you thinking'),
@@ -890,6 +918,8 @@ class SettingPage(ScrollArea):
         self.cfg.sizes.value = self.config["font_size"]
         self.lock_ratio_card.setChecked(self.config["locked_ratio"])
         self.cd_follow.setChecked(self.config["follow_cd"])
+        self.single_click_card.setChecked(
+            self.config.get("file_tree_single_click", False))
         self.parent_class.set_global_background(self.config["bg_pic"])
         self.opacityEdit.setValue(self.config["background_opacity"])
         self.cfg.default_view.value = "Icon" if self.config.get(
@@ -905,6 +935,8 @@ class SettingPage(ScrollArea):
             (self.config["window_last_width"], self.config["window_last_height"]))
         self.aigc.open_switchButton.setChecked(
             self.config.get("aigc_open", False))
+        self.right_panel_ai_chat_card.setChecked(
+            self.config.get("right_panel_ai_chat", True))
         self.aigc.ModelComboBox.setCurrentIndex(
             llm_models[self.config.get("aigc_model", "DeepSeek")])
         self.aigc.ApiEdit.setText(self.config.get("aigc_api_key", ""))

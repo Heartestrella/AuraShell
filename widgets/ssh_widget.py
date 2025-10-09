@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QTimer, QSize, QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup, pyqtProperty, QParallelAnimationGroup
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPainterPath, QLinearGradient
+import time
 
 from qfluentwidgets import SegmentedWidget, RoundMenu, Action, FluentIcon as FIF, ToolButton, Dialog
 from widgets.system_info_dialog import SystemInfoDialog
@@ -142,6 +143,8 @@ class SSHWidget(QWidget):
         super().__init__(parent=parent)
         self.button_animations = {}
         self.file_manager = None
+        self.loading_animations = {}
+        self.animation_start_times = {}
         config = CONFIGER.read_config()
         use_ai = config.get("aigc_open", False)
         self.setObjectName(name)
@@ -445,11 +448,11 @@ class SSHWidget(QWidget):
         self.net_monitor = NetProcessMonitor()
 
         self.file_explorer.dataRefreshed.connect(
-            lambda: self._trigger_button_animation("file_explorer"))
+            lambda: self.stop_loading_animation("file_explorer"))
         self.net_monitor.dataRefreshed.connect(
-            lambda: self._trigger_button_animation("net"))
+            lambda: self.stop_loading_animation("net"))
         self.task_detaile.dataRefreshed.connect(
-            lambda: self._trigger_button_animation("task"))
+            lambda: self.stop_loading_animation("task"))
 
         self.task_detaile.kill_process.connect(self._kill_process)
         self.net_monitor.kill_process.connect(self._kill_process)
@@ -503,69 +506,85 @@ class SSHWidget(QWidget):
             initial_color = '#cccccc'
         self.update_splitter_color(initial_color)
 
-    def _trigger_button_animation(self, key: str):
-            if key != self.now_ui or key not in self.file_bar.pivot.items:
-                return
-            button = self.file_bar.pivot.items[key]
-            if key in self.button_animations:
-                animation, original_style, helper = self.button_animations[key]
-                animation.stop()
+    def start_loading_animation(self, key: str):
+        if key not in self.file_bar.pivot.items:
+            return
+        button = self.file_bar.pivot.items[key]
+        if key in self.loading_animations:
+            self.stop_loading_animation(key, force_immediate=True)
+        original_style = button.styleSheet()
+        gradient_color1 = QColor("#00aaff")
+        gradient_color1.setAlpha(180)
+        gradient_color2 = QColor("#aa00ff")
+        gradient_color2.setAlpha(180)
+        class GradientHelper(QWidget):
+            def __init__(self, widget, original_style, color1, color2):
+                super().__init__()
+                self.widget = widget
+                self.original_style = original_style
+                self.color1 = color1
+                self.color2 = color2
+                self._offset = -0.6
+
+            @pyqtProperty(float)
+            def offset(self):
+                return self._offset
+
+            @offset.setter
+            def offset(self, value):
+                self._offset = value
+                total_width = 0.6
+                solid_width = 0.2
+                fade_width = (total_width - solid_width) / 1.5
+                p1, p2, p3, p4 = (self._offset, self._offset + fade_width,
+                                  self._offset + fade_width + solid_width,
+                                  self._offset + fade_width * 2 + solid_width)
+                stops = [max(0, min(1, p)) for p in [p1, p2, p3, p4]]
+                if stops[0] >= 1 or stops[3] <= 0:
+                    return
+                gradient_str = (
+                    f"qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+                    f"stop: {stops[0]} transparent, "
+                    f"stop: {stops[1]} {self.color1.name(QColor.HexArgb)}, "
+                    f"stop: {stops[2]} {self.color2.name(QColor.HexArgb)}, "
+                    f"stop: {stops[3]} transparent)"
+                )
+                self.widget.setStyleSheet(
+                    f"background: {gradient_str}; {self.original_style}"
+                )
+        helper = GradientHelper(
+            button, original_style, gradient_color1, gradient_color2)
+        animation = QPropertyAnimation(helper, b'offset', self)
+        animation.setDuration(1200)
+        animation.setStartValue(-0.6)
+        animation.setEndValue(1.6)
+        animation.setEasingCurve(QEasingCurve.Linear)
+        animation.setLoopCount(-1) 
+        self.loading_animations[key] = (animation, original_style, helper)
+        self.animation_start_times[key] = time.time()
+        animation.start()
+
+    def stop_loading_animation(self, key: str, force_immediate=False):
+        if key not in self.loading_animations:
+            return
+        animation_to_stop, original_style, helper = self.loading_animations[key]
+        button = helper.widget
+        start_time = self.animation_start_times.get(key, 0)
+        elapsed = time.time() - start_time
+        min_duration = 1.8
+        def cleanup():
+            current_animation_tuple = self.loading_animations.get(key)
+            if current_animation_tuple and current_animation_tuple[0] == animation_to_stop:
+                animation_to_stop.stop()
                 button.setStyleSheet(original_style)
-                del self.button_animations[key]
-            original_style = button.styleSheet()
-            gradient_color1 = QColor("#00aaff")
-            gradient_color1.setAlpha(180)
-            gradient_color2 = QColor("#aa00ff")
-            gradient_color2.setAlpha(180)
-            class GradientHelper(QWidget):
-                def __init__(self, widget, original_style, color1, color2):
-                    super().__init__()
-                    self.widget = widget
-                    self.original_style = original_style
-                    self.color1 = color1
-                    self.color2 = color2
-                    self._offset = -0.6
-                @pyqtProperty(float)
-                def offset(self):
-                    return self._offset
-                @offset.setter
-                def offset(self, value):
-                    self._offset = value
-                    total_width = 0.6
-                    solid_width = 0.2
-                    fade_width = (total_width - solid_width) / 1.5
-                    p1 = self._offset
-                    p2 = p1 + fade_width
-                    p3 = p2 + solid_width
-                    p4 = p3 + fade_width
-                    stops = [max(0, min(1, p)) for p in [p1, p2, p3, p4]]
-                    if stops[0] >= 1 or stops[3] <= 0:
-                        self.widget.setStyleSheet(self.original_style)
-                        return
-                    gradient_str = (
-                        f"qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-                        f"stop: {stops[0]} transparent, "
-                        f"stop: {stops[1]} {self.color1.name(QColor.HexArgb)}, "
-                        f"stop: {stops[2]} {self.color2.name(QColor.HexArgb)}, "
-                        f"stop: {stops[3]} transparent)"
-                    )
-                    self.widget.setStyleSheet(
-                        f"background: {gradient_str};"
-                        f"{self.original_style}"
-                    )
-            helper = GradientHelper(button, original_style, gradient_color1, gradient_color2)
-            animation = QPropertyAnimation(helper, b'offset', self)
-            animation.setDuration(1200)
-            animation.setStartValue(-0.6)
-            animation.setEndValue(1.0)
-            animation.setEasingCurve(QEasingCurve.Linear)
-            def on_finished():
-                button.setStyleSheet(original_style)
-                if key in self.button_animations:
-                    del self.button_animations[key]
-            animation.finished.connect(on_finished)
-            self.button_animations[key] = (animation, original_style, helper)
-            animation.start()
+                del self.loading_animations[key]
+                if key in self.animation_start_times:
+                    del self.animation_start_times[key]
+        if force_immediate or elapsed >= min_duration:
+            cleanup()
+        else:
+            remaining_time = (min_duration - elapsed) * 1000
+            QTimer.singleShot(int(remaining_time), cleanup)
 
     def _kill_process(self, pid: int):
         if self.file_manager:
@@ -804,6 +823,7 @@ class SSHWidget(QWidget):
                 self._on_list_dir_finished, type=Qt.QueuedConnection)
         if self.file_manager:
             # print(f"添加：{path} 到任务")
+            self.start_loading_animation("file_explorer")
             self.file_manager.list_dir_async(path)
 
     def _on_list_dir_finished(self, path: str, file_dict: dict):
@@ -812,13 +832,19 @@ class SSHWidget(QWidget):
 
         try:
             self.file_explorer.add_files(file_dict)
-        # self.file_manager._add_path_to_tree(path, False)
-        # file_tree = self.file_manager.get_file_tree()
-        # self.disk_storage.refresh_tree(file_tree)
+            if hasattr(self, '_perf_counter_start') and self._perf_counter_start:
+                end_time = time.perf_counter()
+                total_duration = end_time - self._perf_counter_start
+                print(f"从点击到渲染完成总耗时: {total_duration:.4f} 秒")
+                self._perf_counter_start = None  # Reset timer
+            # self.file_manager._add_path_to_tree(path, False)
+            # file_tree = self.file_manager.get_file_tree()
+            # self.disk_storage.refresh_tree(file_tree)
         except Exception as e:
             print(f"_on_list_dir_finished error: {e}")
 
     def _set_file_bar(self, path: str):
+        self._perf_counter_start = time.perf_counter()
         def parse_linux_path(path: str) -> list:
             if not path:
                 return []
