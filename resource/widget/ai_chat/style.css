@@ -14,7 +14,6 @@
   --user-avatar-bg: #6c5ce7;
   --ai-avatar-bg: #00cec9;
   --system-avatar-bg: #fab1a0;
-  --path-highlight-color: #f39c12;
 }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
@@ -672,10 +671,22 @@ body {
 #online-status .success-icon {
   background-color: #2ecc71;
 }
+@keyframes rainbow-background-animation {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
 .path-value {
-  color: var(--path-highlight-color) !important;
   font-weight: bold;
-  background-color: rgba(243, 156, 18, 0.15);
-  padding: 1px 3px;
-  border-radius: 3px;
+  color: rgb(145, 255, 0) !important;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #af01ff, #0000ff, #4b0082, #8b00ff);
+  background-size: 400% 400%;
+  animation: rainbow-background-animation 10s linear infinite;
 }
