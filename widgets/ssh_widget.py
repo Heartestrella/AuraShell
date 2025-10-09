@@ -567,18 +567,19 @@ class SSHWidget(QWidget):
     def stop_loading_animation(self, key: str, force_immediate=False):
         if key not in self.loading_animations:
             return
-        animation, original_style, helper = self.loading_animations[key]
+        animation_to_stop, original_style, helper = self.loading_animations[key]
         button = helper.widget
         start_time = self.animation_start_times.get(key, 0)
         elapsed = time.time() - start_time
         min_duration = 1.8
         def cleanup():
-            animation.stop()
-            button.setStyleSheet(original_style)
-            if key in self.loading_animations:
+            current_animation_tuple = self.loading_animations.get(key)
+            if current_animation_tuple and current_animation_tuple[0] == animation_to_stop:
+                animation_to_stop.stop()
+                button.setStyleSheet(original_style)
                 del self.loading_animations[key]
-            if key in self.animation_start_times:
-                del self.animation_start_times[key]
+                if key in self.animation_start_times:
+                    del self.animation_start_times[key]
         if force_immediate or elapsed >= min_duration:
             cleanup()
         else:
