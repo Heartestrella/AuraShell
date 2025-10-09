@@ -267,7 +267,18 @@ class AIBridge(QObject):
                     return active_widget.ssh_widget.get_latest_output(count)
                 else:
                     return json.dumps({"status": "error", "content": "Could not find the terminal output function."}, ensure_ascii=False)
-
+            def list_dir(path: str = None, recursive: bool = False):
+                try:
+                    if recursive:
+                        command = f"ls -RFa {path}"
+                    else:
+                        command = f"ls -Fa {path}"
+                    r = _internal_execute_silent_shell(command)
+                    if r == '':
+                        r = '空目录'
+                    return r
+                except Exception as e:
+                    return json.dumps({"status": "error", "content": f"Failed to list directory: {e}"}, ensure_ascii=False)
             self.mcp_manager.register_tool_handler(
                 server_name="Linux终端",
                 tool_name="exe_shell",
@@ -308,6 +319,13 @@ class AIBridge(QObject):
                 tool_name="get_terminal_output",
                 handler=get_terminal_output,
                 description="获取最新几条的所执行命令的终端输出",
+                auto_approve=True
+            )
+            self.mcp_manager.register_tool_handler(
+                server_name="Linux终端",
+                tool_name="list_dir",
+                handler=list_dir,
+                description="列出目录结构",
                 auto_approve=True
             )
         Linux终端()
