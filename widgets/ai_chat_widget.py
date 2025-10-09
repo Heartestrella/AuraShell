@@ -508,6 +508,45 @@ class AIBridge(QObject):
         else:
             return json.dumps({"status": "error", "content": "Could not find the file explorer."}, ensure_ascii=False)
 
+    @pyqtSlot(result=str)
+    def get_system_info(self):
+        if not self.main_window:
+            return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
+        active_widget = self.main_window.get_active_ssh_widget()
+        if not active_widget:
+            return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
+        worker = None
+        if hasattr(active_widget, 'ssh_widget') and hasattr(active_widget.ssh_widget, 'bridge'):
+            worker = active_widget.ssh_widget.bridge.worker
+        if not worker:
+            return json.dumps({"status": "error", "content": "Could not find the SSH worker for the active session."}, ensure_ascii=False)
+        command = (
+            'echo "---HOSTNAME---"; hostname; '
+            'echo "---USER---"; whoami; '
+            'echo "---OS---"; uname -a; '
+            'echo "---CPU---"; lscpu | grep "Model name:"'
+        )
+        output, error, exit_code = worker.execute_silent_command(command)
+        if exit_code != 0:
+            return json.dumps({"status": "error", "content": error, "exit_code": exit_code}, ensure_ascii=False)
+        info = {}
+        try:
+            parts = output.split('---')
+            for i in range(1, len(parts), 2):
+                key = parts[i].strip()
+                value = parts[i+1].strip()
+                if key == 'HOSTNAME':
+                    info['hostname'] = value
+                elif key == 'USER':
+                    info['user'] = value
+                elif key == 'OS':
+                    info['os'] = value
+                elif key == 'CPU':
+                    info['cpu_model'] = value.replace('Model name:', '').strip()
+        except Exception as e:
+            return json.dumps({"status": "error", "content": f"Failed to parse system info: {e}\nRaw output:\n{output}"}, ensure_ascii=False)
+        return json.dumps({"status": "success", "content": info}, ensure_ascii=False)
+
     @pyqtSlot(str)
     def cancelProxiedFetch(self, request_id):
         if request_id in self.active_requests:

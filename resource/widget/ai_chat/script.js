@@ -779,10 +779,7 @@ let aiChatApiOptionsBody = {
 };
 window.firstUserMessage = '';
 let backend;
-let lastSystemData = {
-  sshCwd: null,
-  fileManagerCwd: null,
-};
+let lastSystemData = {};
 const chat = new ChatController('.chat-body');
 const chatHistoryContainer = document.querySelector('.chat-history');
 window.loadHistory = function (filename) {
@@ -967,6 +964,7 @@ document.addEventListener('DOMContentLoaded', function () {
   async function sendMessage() {
     let sshCwd = JSON.parse(await backend.get_current_cwd()).cwd;
     let fileManagerCwd = JSON.parse(await backend.get_file_manager_cwd()).cwd;
+    let systemInfo = JSON.stringify(JSON.parse(await backend.get_system_info()).content);
     const approvalContainer = document.getElementById('approve-reject-buttons');
     if (approvalContainer && approvalContainer.style.display === 'flex') {
       const rejectBtn = approvalContainer.querySelector('.reject-button');
@@ -1009,10 +1007,11 @@ document.addEventListener('DOMContentLoaded', function () {
           });
         });
       }
-      const currentSystemData = { sshCwd, fileManagerCwd };
+      const currentSystemData = { sshCwd, fileManagerCwd, systemInfo };
       const systemDataMap = {
         sshCwd: '终端cwd',
         fileManagerCwd: '文件管理器cwd',
+        systemInfo: '系统信息',
       };
       const changedDataXmlParts = [];
       for (const key in systemDataMap) {
