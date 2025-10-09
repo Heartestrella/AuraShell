@@ -182,6 +182,7 @@ class CommandInput(TextEdit):
     def __init__(self, font_name, use_ai, parent=None):
         super().__init__(parent)
         self.use_ai = use_ai
+        self.setAcceptRichText(False)
         font = QFont(font_name)
         self.partial_output = ""
         self.suggestionpopup = OneSuggestionPopup(self, max_width=440)
@@ -192,7 +193,6 @@ class CommandInput(TextEdit):
         self.frames = [".", "..", "..."]
         self.frame_index = 0
         self._history_model = QStringListModel()
-
         self._history_view = ListView(None)
         self._history_view.setModel(self._history_model)
         self._history_view.setSelectionMode(ListView.SingleSelection)

@@ -1216,31 +1216,42 @@ class Window(FramelessWindow):
                 current_ssh_widget = self.ssh_page.sshStack.currentWidget()
                 if isinstance(current_ssh_widget, SSHWidget):
 
-                    QTimer.singleShot(150, current_ssh_widget.force_set_left_panel_width)
-        
+                    QTimer.singleShot(
+                        150, current_ssh_widget.force_set_left_panel_width)
+
         config = setting_.read_config()
         animation_type = config.get("page_animation", "slide_fade")
-        
+
         if animation_type == "slide_fade":
-            self.page_animator.slide_fade_transition(from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
+            self.page_animator.slide_fade_transition(
+                from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
         elif animation_type == "zoom_in":
-            self.page_animator.zoom_in_transition(from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
+            self.page_animator.zoom_in_transition(
+                from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
         elif animation_type == "zoom_out":
-            self.page_animator.zoom_out_transition(from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
+            self.page_animator.zoom_out_transition(
+                from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
         elif animation_type == "cross_fade":
-            self.page_animator.cross_fade_transition(from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
+            self.page_animator.cross_fade_transition(
+                from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
         elif animation_type == "bounce":
-            self.page_animator.bounce_transition(from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
+            self.page_animator.bounce_transition(
+                from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
         elif animation_type == "elastic":
-            self.page_animator.elastic_transition(from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
+            self.page_animator.elastic_transition(
+                from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
         elif animation_type == "fade_scale":
-            self.page_animator.fade_scale_transition(from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
+            self.page_animator.fade_scale_transition(
+                from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
         elif animation_type == "slide_scale":
-            self.page_animator.slide_scale_transition(from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
+            self.page_animator.slide_scale_transition(
+                from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
         elif animation_type == "stack":
-            self.page_animator.stack_transition(from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
+            self.page_animator.stack_transition(
+                from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
         else:
-            self.page_animator.slide_fade_transition(from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
+            self.page_animator.slide_fade_transition(
+                from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
 
     def onCurrentInterfaceChanged(self, index):
         widget = self.stackWidget.widget(index)
