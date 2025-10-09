@@ -13,6 +13,7 @@ from datetime import datetime
 import shlex
 from PyQt5.QtCore import Qt
 from functools import partial
+import time
 
 
 class RemoteFileManager(QThread):
@@ -1492,6 +1493,7 @@ class RemoteFileManager(QThread):
             return None
         detailed_result = []
         try:
+            start_time = time.time()
             for attr in self.sftp.listdir_attr(path):
                 owner, group = self._get_owner_group(attr.st_uid, attr.st_gid)
                 is_dir = stat.S_ISDIR(attr.st_mode)
@@ -1513,6 +1515,8 @@ class RemoteFileManager(QThread):
                     "perms": stat.filemode(attr.st_mode),
                     "owner": f"{owner}/{group}"
                 })
+            end_time = time.time()
+            print(f"获取远程目录 '{path}' 数据耗时: {end_time - start_time:.4f} 秒")
             return detailed_result
         except Exception as e:
             print(
