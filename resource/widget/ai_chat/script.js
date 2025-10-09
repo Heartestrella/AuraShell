@@ -16,11 +16,17 @@ async function executeMcpTool(serverName, toolName, args, providedRequestId = nu
     const requestId = providedRequestId || generateUniqueId();
     const handler = (receivedId, result) => {
       if (receivedId === requestId) {
+        const request = pendingRequests.get(requestId);
+        const wasCancelled = request && request.cancelled;
         cleanupRequest(requestId);
         try {
           const parsedResult = JSON.parse(result);
           if (parsedResult.status === 'cancelled') {
-            reject(new Error(parsedResult.content));
+            if (wasCancelled) {
+              resolve(result);
+            } else {
+              reject(new Error(parsedResult.content));
+            }
           } else {
             resolve(result);
           }
@@ -61,6 +67,7 @@ function getPendingRequests() {
 function cancelMcpRequest(requestId) {
   const request = pendingRequests.get(requestId);
   if (request) {
+    request.cancelled = true;
     backend.cancelMcpTool(requestId);
   }
 }
@@ -586,6 +593,7 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
             if (userDecision === 'approved') {
               const toolRequestId = generateUniqueId();
               const abortHandler = () => {
+                cancelButtonContainer.style.display = 'none';
                 cancelMcpRequest(toolRequestId);
               };
               cancelButton.addEventListener('click', abortHandler);
@@ -604,15 +612,29 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
                 aiChatApiOptionsBody.messages.push(mcpMessages);
                 messagesHistory.push({ messages: mcpMessages, isMcp: true });
                 saveHistory(window.firstUserMessage, messagesHistory);
+                cancelButton.removeEventListener('click', abortHandler);
+                const newController = new AbortController();
+                const newAbortHandler = () => {
+                  cancelButtonContainer.style.display = 'none';
+                  newController.abort();
+                };
+                cancelButton.addEventListener('click', newAbortHandler);
+                const newOnComplete = () => {
+                  cancelButton.removeEventListener('click', newAbortHandler);
+                  if (onComplete) {
+                    onComplete();
+                  }
+                };
                 const newAiMessageIndex = aiChatApiOptionsBody.messages.length + messageOffset;
                 const newAiHistoryIndex = messagesHistory.length;
                 const newAiBubble = chat.addAIBubble(newAiMessageIndex, newAiHistoryIndex);
                 newAiBubble.updateStream('');
-                const newHandler = createAIResponseHandler(newAiBubble, messageOffset, newAiMessageIndex, newAiHistoryIndex, controller, onComplete);
-                requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newHandler, controller.signal);
+                const newHandler = createAIResponseHandler(newAiBubble, messageOffset, newAiMessageIndex, newAiHistoryIndex, newController, newOnComplete);
+                requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newHandler, newController.signal);
                 return;
               } catch (error) {
                 systemBubble.setResult('rejected', `执行已取消:${error.message}`);
+                cancelButtonContainer.style.display = 'none';
                 if (onComplete) {
                   onComplete();
                 }
@@ -662,7 +684,10 @@ function retryAIMessage(bubbleElement) {
   const cancelButtonContainer = document.getElementById('cancel-button-container');
   const controller = new AbortController();
   const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
-  const abortRequest = () => controller.abort();
+  const abortRequest = () => {
+    cancelButtonContainer.style.display = 'none';
+    controller.abort();
+  };
   cancelButton.addEventListener('click', abortRequest);
   cancelButtonContainer.style.display = 'flex';
   const onComplete = () => {
@@ -779,10 +804,7 @@ let aiChatApiOptionsBody = {
 };
 window.firstUserMessage = '';
 let backend;
-let lastSystemData = {
-  sshCwd: null,
-  fileManagerCwd: null,
-};
+let lastSystemData = {};
 const chat = new ChatController('.chat-body');
 const chatHistoryContainer = document.querySelector('.chat-history');
 window.loadHistory = function (filename) {
@@ -967,6 +989,7 @@ document.addEventListener('DOMContentLoaded', function () {
   async function sendMessage() {
     let sshCwd = JSON.parse(await backend.get_current_cwd()).cwd;
     let fileManagerCwd = JSON.parse(await backend.get_file_manager_cwd()).cwd;
+    let systemInfo = JSON.stringify(JSON.parse(await backend.get_system_info()).content);
     const approvalContainer = document.getElementById('approve-reject-buttons');
     if (approvalContainer && approvalContainer.style.display === 'flex') {
       const rejectBtn = approvalContainer.querySelector('.reject-button');
@@ -1009,10 +1032,11 @@ document.addEventListener('DOMContentLoaded', function () {
           });
         });
       }
-      const currentSystemData = { sshCwd, fileManagerCwd };
+      const currentSystemData = { sshCwd, fileManagerCwd, systemInfo };
       const systemDataMap = {
         sshCwd: '终端cwd',
         fileManagerCwd: '文件管理器cwd',
+        systemInfo: '系统信息',
       };
       const changedDataXmlParts = [];
       for (const key in systemDataMap) {
@@ -1045,7 +1069,10 @@ document.addEventListener('DOMContentLoaded', function () {
       aiBubble.updateStream('');
       const cancelButtonContainer = document.getElementById('cancel-button-container');
       const controller = new AbortController();
-      const abortRequest = () => controller.abort();
+      const abortRequest = () => {
+        cancelButtonContainer.style.display = 'none';
+        controller.abort();
+      };
       const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
       cancelButton.addEventListener('click', abortRequest);
       cancelButtonContainer.style.display = 'flex';

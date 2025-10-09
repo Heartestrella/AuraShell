@@ -1,8 +1,10 @@
 from qfluentwidgets import BreadcrumbBar, LineEdit, TransparentToolButton
 from typing import Dict, Optional
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QStyle, QFrame
+import time
 from qfluentwidgets import isDarkTheme, SegmentedWidget
 from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QCursor
 from qfluentwidgets import TreeWidget, RoundMenu, Action, FluentIcon as FIF
 from typing import Optional, Dict, Set
 from tools.setting_config import SCM
@@ -204,6 +206,7 @@ Files are marked with the string "is_file"; directories are marked with a dict.
         self.tree.setColumnCount(1)
         self.layout().addWidget(self.tree)
         self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self.tree.itemClicked.connect(self._on_item_clicked)
         # Internal data model
         if file_tree is None:
             self.file_tree = {'': {}}
@@ -267,6 +270,7 @@ Files are marked with the string "is_file"; directories are marked with a dict.
         Refresh the entire tree:\n
         - If new_tree is passed, replace the internal model\n
         - preserve_expand: Whether to preserve the previous expanded state (default True)        """
+        start_time = time.perf_counter()
         if new_tree is not None:
             self.file_tree = new_tree
 
@@ -285,6 +289,8 @@ Files are marked with the string "is_file"; directories are marked with a dict.
         # 恢复展开状态（如果需要）
         if preserve_expand:
             self._restore_expanded_paths(expanded_paths)
+        end_time = time.perf_counter()
+        print(f"刷新文件树耗时: {end_time - start_time:.4f} 秒")
     print("Refresh tree complete")
 
     def _populate_tree(self, node_dict: Dict, parent_item, parent_path: str):
@@ -437,13 +443,11 @@ Files are marked with the string "is_file"; directories are marked with a dict.
             self.tree.scrollToItem(current_item)
             current_item.setSelected(True)
 
-    def _on_item_double_clicked(self, item, column):
-        """When you double-click an item, if it is a directory, a signal is emitted"""
+    def _enter_directory(self, item):
+        """Checks if an item is a directory and emits the selection signal."""
         path = item.data(0, Qt.UserRole)
         if not path:
             return
-
-        # Find the type of the path in the internal model
         node = self.file_tree.get('', {})
         parts = _parse_linux_path(path)
         for part in parts:
@@ -451,8 +455,21 @@ Files are marked with the string "is_file"; directories are marked with a dict.
                 node = node[part]
             else:
                 return
-
-        # If it is a directory (dict type), emit a signal
         if isinstance(node, dict):
             print(f"文件树被选择：{path}")
             self.directory_selected.emit(path)
+
+    def _on_item_double_clicked(self, item, column):
+        config = configer.read_config()
+        if not config.get("file_tree_single_click", False):
+            self._enter_directory(item)
+
+    def _on_item_clicked(self, item, column):
+        config = configer.read_config()
+        if not config.get("file_tree_single_click", False):
+            return
+        pos = self.tree.viewport().mapFromGlobal(QCursor.pos())
+        rect = self.tree.visualItemRect(item)
+        if pos.x() < rect.x() + self.tree.indentation():
+            return
+        self._enter_directory(item)

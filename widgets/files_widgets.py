@@ -5,6 +5,7 @@ from PyQt5.QtGui import QFont, QPainter, QColor, QStandardItemModel, QStandardIt
 from PyQt5.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
 from qfluentwidgets import RoundMenu, Action, FluentIcon as FIF, LineEdit, ScrollArea, TableView, CheckableMenu
 import os
+import time
 from qfluentwidgets import isDarkTheme
 from tools.setting_config import SCM
 
@@ -816,12 +817,15 @@ class FileExplorer(QWidget):
     - list of tuples: [("name", True), ...]
     Sorts directories first, files last, in ascending order by name (case-insensitive).
         """
+        start_time = time.perf_counter()
         if self.view_mode == "icon":
             self._add_files_to_icon_view(files, clear_old)
         else:
             self.details._add_files_to_details_view(files, clear_old)
         self._is_loading = False
         self.dataRefreshed.emit()
+        end_time = time.perf_counter()
+        print(f"渲染文件列表到视图耗时: {end_time - start_time:.4f} 秒")
 
     def _add_files_to_icon_view(self, files, clear_old=True):
         self.container.setUpdatesEnabled(False)

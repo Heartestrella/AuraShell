@@ -1,9 +1,8 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout
-from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel
 import os
-from PyQt5.QtCore import QUrl, Qt, QObject, pyqtSlot, QEventLoop, QTimer, QVariant, pyqtSignal
-from PyQt5.QtWebChannel import QWebChannel
-from PyQt5.QtGui import QKeyEvent, QDesktopServices
+from PyQt5.QtCore import QUrl, Qt, QObject, pyqtSlot, QEventLoop, QTimer, QVariant, pyqtSignal, QSize
+from PyQt5.QtGui import QKeyEvent, QDesktopServices, QPixmap, QPainter
+from PyQt5.QtSvg import QSvgRenderer
 from tools.setting_config import SCM
 from tools.ai_model_manager import AIModelManager
 from tools.ai_mcp_manager import AIMCPManager
@@ -15,6 +14,7 @@ import typing
 import time
 import requests
 import threading
+import shlex
 
 if typing.TYPE_CHECKING:
     from main_window import Window
@@ -41,6 +41,11 @@ class AIBridge(QObject):
     def _register_tool_handlers(self):
 
         def Linux终端():
+            def _safe_quote(path):
+                if path is None:
+                    return "''"
+                return shlex.quote(str(path))
+
             def _internal_execute_interactive_shell(command: str, cwd: str = '.', request_id: str = None):
                 full_command = "cd " + cwd + ";" + command
                 if not self.main_window:
@@ -68,8 +73,11 @@ class AIBridge(QObject):
 
                 def on_output_ready(result_str, code):
                     try:
-                        self.toolResultReady.emit(request_id, result_str)
                         if request_id in self.pending_tool_calls:
+                            call_info = self.pending_tool_calls[request_id]
+                            if call_info.get('cancelled', False):
+                                result_str = result_str + "\n用户中断"
+                            self.toolResultReady.emit(request_id, result_str)
                             del self.pending_tool_calls[request_id]
                         worker.command_output_ready.disconnect(on_output_ready)
                     except TypeError:
@@ -124,9 +132,10 @@ class AIBridge(QObject):
                 if not file_path:
                     return json.dumps({"status": "error", "content": "No file path provided."}, ensure_ascii=False)
                 try:
-                    command = f"cat {file_path}"
+                    safe_path = _safe_quote(file_path)
+                    command = f"cat {safe_path}"
                     if show_line:
-                        command = f"awk '{{print NR\"|\" $0}}' {file_path}"
+                        command = f"awk '{{print NR\"|\" $0}}' {safe_path}"
                     return _internal_execute_silent_shell(command)
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"Failed to read file: {e}"}, ensure_ascii=False)
@@ -155,7 +164,8 @@ class AIBridge(QObject):
                     if content.endswith('\n'):
                         content = content[:-1]
                     encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
-                    command = f"echo '{encoded_content}' | base64 --decode > {file_path}"
+                    safe_path = _safe_quote(file_path)
+                    command = f"echo '{encoded_content}' | base64 --decode > {safe_path}"
                     r = _internal_execute_silent_shell(command)
                     if r == '':
                         active_widget = self.main_window.get_active_ssh_widget()
@@ -228,7 +238,8 @@ class AIBridge(QObject):
                     new_lines = lines[:start_line - 1] + new_content_parts + lines[end_line:]
                     new_full_content = "".join(new_lines)
                     encoded_content = base64.b64encode(new_full_content.encode('utf-8')).decode('utf-8')
-                    command = f"echo '{encoded_content}' | base64 --decode > {file_path}"
+                    safe_path = _safe_quote(file_path)
+                    command = f"echo '{encoded_content}' | base64 --decode > {safe_path}"
                     r = _internal_execute_silent_shell(command)
                     if r == '':
                         active_widget = self.main_window.get_active_ssh_widget()
@@ -267,7 +278,19 @@ class AIBridge(QObject):
                     return active_widget.ssh_widget.get_latest_output(count)
                 else:
                     return json.dumps({"status": "error", "content": "Could not find the terminal output function."}, ensure_ascii=False)
-
+            def list_dir(path: str = None, recursive: bool = False):
+                try:
+                    safe_path = _safe_quote(path)
+                    if recursive:
+                        command = f"ls -RFa {safe_path}"
+                    else:
+                        command = f"ls -Fa {safe_path}"
+                    r = _internal_execute_silent_shell(command)
+                    if r == '':
+                        r = '空目录'
+                    return r
+                except Exception as e:
+                    return json.dumps({"status": "error", "content": f"Failed to list directory: {e}"}, ensure_ascii=False)
             self.mcp_manager.register_tool_handler(
                 server_name="Linux终端",
                 tool_name="exe_shell",
@@ -308,6 +331,13 @@ class AIBridge(QObject):
                 tool_name="get_terminal_output",
                 handler=get_terminal_output,
                 description="获取最新几条的所执行命令的终端输出",
+                auto_approve=True
+            )
+            self.mcp_manager.register_tool_handler(
+                server_name="Linux终端",
+                tool_name="list_dir",
+                handler=list_dir,
+                description="列出目录结构",
                 auto_approve=True
             )
         Linux终端()
@@ -388,16 +418,26 @@ class AIBridge(QObject):
         if request_id in self.pending_tool_calls:
             call_info = self.pending_tool_calls[request_id]
             worker = call_info.get('worker')
+            call_info['cancelled'] = True
+            call_info['cancel_time'] = time.time()
             if worker:
                 worker.send_interrupt()
-            
-            # Emit a result to unblock the frontend promise
-            self.toolResultReady.emit(request_id, json.dumps({
-                "status": "cancelled",
-                "content": "Tool execution was cancelled by the user."
-            }, ensure_ascii=False))
-
-            if request_id in self.pending_tool_calls:
+            QTimer.singleShot(5000, lambda: self._force_cancel_timeout(request_id))
+    
+    def _force_cancel_timeout(self, request_id):
+        if request_id in self.pending_tool_calls:
+            call_info = self.pending_tool_calls[request_id]
+            if call_info.get('cancelled', False):
+                self.toolResultReady.emit(request_id, json.dumps({
+                    "status": "cancelled",
+                    "content": "命令中断超时,强制取消。"
+                }, ensure_ascii=False))
+                worker = call_info.get('worker')
+                if worker:
+                    try:
+                        worker.command_output_ready.disconnect()
+                    except:
+                        pass
                 del self.pending_tool_calls[request_id]
 
     @pyqtSlot(result=str)
@@ -480,6 +520,45 @@ class AIBridge(QObject):
         else:
             return json.dumps({"status": "error", "content": "Could not find the file explorer."}, ensure_ascii=False)
 
+    @pyqtSlot(result=str)
+    def get_system_info(self):
+        if not self.main_window:
+            return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
+        active_widget = self.main_window.get_active_ssh_widget()
+        if not active_widget:
+            return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
+        worker = None
+        if hasattr(active_widget, 'ssh_widget') and hasattr(active_widget.ssh_widget, 'bridge'):
+            worker = active_widget.ssh_widget.bridge.worker
+        if not worker:
+            return json.dumps({"status": "error", "content": "Could not find the SSH worker for the active session."}, ensure_ascii=False)
+        command = (
+            'echo "---HOSTNAME---"; hostname; '
+            'echo "---USER---"; whoami; '
+            'echo "---OS---"; uname -a; '
+            'echo "---CPU---"; lscpu | grep "Model name:"'
+        )
+        output, error, exit_code = worker.execute_silent_command(command)
+        if exit_code != 0:
+            return json.dumps({"status": "error", "content": error, "exit_code": exit_code}, ensure_ascii=False)
+        info = {}
+        try:
+            parts = output.split('---')
+            for i in range(1, len(parts), 2):
+                key = parts[i].strip()
+                value = parts[i+1].strip()
+                if key == 'HOSTNAME':
+                    info['hostname'] = value
+                elif key == 'USER':
+                    info['user'] = value
+                elif key == 'OS':
+                    info['os'] = value
+                elif key == 'CPU':
+                    info['cpu_model'] = value.replace('Model name:', '').strip()
+        except Exception as e:
+            return json.dumps({"status": "error", "content": f"Failed to parse system info: {e}\nRaw output:\n{output}"}, ensure_ascii=False)
+        return json.dumps({"status": "success", "content": info}, ensure_ascii=False)
+
     @pyqtSlot(str)
     def cancelProxiedFetch(self, request_id):
         if request_id in self.active_requests:
@@ -541,24 +620,42 @@ class AiChatWidget(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(self.layout)
-
-        self.channel = QWebChannel()
-        self.bridge = AIBridge(self, main_window=main_window)
-        self.channel.registerObject('backend', self.bridge)
-
-        self.browser = QWebEngineView()
-        self.browser.page().setWebChannel(self.channel)
-        self.browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
-        self.browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
-        self.browser.setContextMenuPolicy(Qt.NoContextMenu)
-        self.layout.addWidget(self.browser)
-
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        index_html_path = os.path.join(project_root, 'resource', 'widget', 'ai_chat', 'index.html')
-        self.browser.setUrl(QUrl.fromLocalFile(index_html_path))
+        self.browser = None
+        if CONFIGER.read_config().get("right_panel_ai_chat", True):
+            from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings
+            from PyQt5.QtWebChannel import QWebChannel
+            self.channel = QWebChannel()
+            self.bridge = AIBridge(self, main_window=main_window)
+            self.channel.registerObject('backend', self.bridge)
+            self.browser = QWebEngineView()
+            self.browser.page().setWebChannel(self.channel)
+            self.browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+            self.browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
+            self.browser.setContextMenuPolicy(Qt.NoContextMenu)
+            self.layout.addWidget(self.browser)
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            index_html_path = os.path.join(project_root, 'resource', 'widget', 'ai_chat', 'index.html')
+            self.browser.setUrl(QUrl.fromLocalFile(index_html_path))
+        else:
+            self.layout.setAlignment(Qt.AlignCenter)
+            icon_label = QLabel()
+            icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'resource', 'icons', 'ai_disabled.svg'))
+            renderer = QSvgRenderer(icon_path)
+            pixmap = QPixmap(128, 128)
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            renderer.render(painter)
+            painter.end()
+            icon_label.setPixmap(pixmap)
+            icon_label.setAlignment(Qt.AlignCenter)
+            self.layout.addWidget(icon_label)
+            disabled_label = QLabel(self.tr("AI对话已经禁用,请开启选项后重启程序."))
+            disabled_label.setAlignment(Qt.AlignCenter)
+            disabled_label.setWordWrap(True)
+            self.layout.addWidget(disabled_label)
 
     def keyPressEvent(self, event: QKeyEvent):
-        if event.key() == Qt.Key_F5:
+        if self.browser and event.key() == Qt.Key_F5:
             self.browser.reload()
         elif event.key() == Qt.Key_F12:
             if os.environ.get('QTWEBENGINE_REMOTE_DEBUGGING'):

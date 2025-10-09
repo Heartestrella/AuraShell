@@ -13,6 +13,7 @@ from datetime import datetime
 import shlex
 from PyQt5.QtCore import Qt
 from functools import partial
+import time
 
 
 class RemoteFileManager(QThread):
@@ -1487,41 +1488,53 @@ class RemoteFileManager(QThread):
                 callback(False, error_msg)
 
     def list_dir_detailed(self, path: str) -> Optional[List[dict]]:
-        if self.sftp is None:
-            print("list_dir_detailed: sftp not ready")
+        if self.conn is None:
+            print("list_dir_detailed: ssh connection not ready")
             return None
+        start_time = time.perf_counter()
         detailed_result = []
+        safe_path = shlex.quote(path)
+        command = f'''
+        sh -c 'cd {safe_path} && for item in * .*; do
+            if [ "$item" = "." ] || [ "$item" = ".." ]; then continue; fi;
+            info=$(stat -c "%A	%s	%Y	%u	%g" "$item" 2>/dev/null);
+            if [ -z "$info" ]; then continue; fi;
+            printf "%s	%s" "$info" "$item";
+            if [ -L "$item" ] && [ -d "$item" ]; then printf "	DIRLINK"; fi;
+            printf "\\0";
+        done'
+        '''
         try:
-            for attr in self.sftp.listdir_attr(path):
-                owner, group = self._get_owner_group(attr.st_uid, attr.st_gid)
-                is_dir = stat.S_ISDIR(attr.st_mode)
-                if stat.S_ISLNK(attr.st_mode):
-                    try:
-                        full_path = f"{path.rstrip('/')}/{attr.filename}"
-                        target_attr = self.sftp.stat(full_path)
-                        if stat.S_ISDIR(target_attr.st_mode):
-                            is_dir = True
-                    except Exception as e:
-                        print(
-                            f"Could not stat symlink target for {attr.filename}: {e}")
-
+            stdin, stdout, stderr = self.conn.exec_command(command, timeout=20)
+            output = stdout.read().decode('utf-8', errors='ignore')
+            error_output = stderr.read().decode('utf-8', errors='ignore').strip()
+            if error_output:
+                print(f"Error executing remote command for path {path}: {error_output}")
+                return None
+            records = output.strip('\0').split('\0')
+            for record in records:
+                if not record:
+                    continue
+                parts = record.split('	')
+                if len(parts) < 6:
+                    continue
+                perms, size, mtime_unix, uid, gid, filename = parts[:6]
+                is_dir_link = len(parts) > 6 and parts[6] == 'DIRLINK'
+                is_dir = perms.startswith('d') or (perms.startswith('l') and is_dir_link)
+                owner, group = self._get_owner_group(int(uid), int(gid))
                 detailed_result.append({
-                    "name": attr.filename,
+                    "name": filename,
                     "is_dir": is_dir,
-                    "size": attr.st_size,
-                    "mtime": datetime.fromtimestamp(attr.st_mtime).strftime('%Y/%m/%d %H:%M'),
-                    "perms": stat.filemode(attr.st_mode),
+                    "size": int(size),
+                    "mtime": datetime.fromtimestamp(int(mtime_unix)).strftime('%Y/%m/%d %H:%M'),
+                    "perms": perms,
                     "owner": f"{owner}/{group}"
                 })
+            end_time = time.perf_counter()
+            print(f"获取远程目录 '{path}' 数据耗时: {end_time - start_time:.4f} 秒")
             return detailed_result
         except Exception as e:
-            print(
-                f"list_dir_detailed error when getting directory contents: {e}")
-            return None
-
-    # ---------------------------
-    # 删除功能实现
-    # ---------------------------
+            print(f"list_dir_detailed (optimized) error: {e}")
 
     def _handle_delete_task(self, paths, callback=None):
         """

@@ -636,40 +636,32 @@ class WebTerminal(QWidget):
         if self.bridge and self.bridge.worker:
             self.bridge.worker.execute_command_and_capture(command)
 
+
     def get_latest_output(self, count=1):
-        """
-        从终端缓冲区中提取最新的命令及其输出。
-
-        Args:
-            count (int): 要提取的最新命令的数量。
-
-        Returns:
-            str: 一个包含命令和输出的 XML 格式字符串。
-        """
-        output_blocks = deque(maxlen=count)
-        prompt_pattern = re.compile(r'(\[.*?\][\$#]\s*|[\w\d_-]+@[\w\d\.-]+:.*?[\$#]\s*)')
-        parts = prompt_pattern.split(self.terminal_texts)
-        i = 1
-        while i < len(parts) - 1:
-            content_with_command = parts[i+1]
-            if not content_with_command.strip():
-                i += 2
-                continue
-            lines = content_with_command.split('\n', 1)
-            command = lines[0].strip()
-            output = lines[1].strip() if len(lines) > 1 else ''
-            output_blocks.append({
-                "command": command,
-                "output": output
-            })
-            i += 2
-        xml_parts = ['<result>']
-        for idx, block in enumerate(output_blocks):
-            escaped_command = html.escape(block["command"])
-            escaped_output = html.escape(block["output"])
-            xml_parts.append(f'    <n_{idx + 1}>')
-            xml_parts.append(f'      <command>{escaped_command}</command>')
-            xml_parts.append(f'      <output>{escaped_output}</output>')
-            xml_parts.append(f'    </n_{idx + 1}>')
-        xml_parts.append('</result>')
-        return '\n'.join(xml_parts)
+        if not self.terminal_texts:
+            return "<results></results>"
+        prompt_re = re.compile(r"[\w\d\._-]+@[\w\d\.-]+:.*[#\$]")
+        lines = self.terminal_texts.splitlines()
+        prompt_indices = [i for i, line in enumerate(lines) if prompt_re.search(line)]
+        results_xml = "<results>"
+        num_possible_outputs = len(prompt_indices) - 1
+        if num_possible_outputs < 1:
+            return "<results></results>"
+        actual_count = min(count, num_possible_outputs)
+        for i in range(actual_count):
+            end_prompt_index = prompt_indices[-(i + 1)]
+            start_prompt_index = prompt_indices[-(i + 2)]
+            start_prompt_line = lines[start_prompt_index]
+            cleaned_start_line = _strip_ansi_sequences(start_prompt_line)
+            command = ""
+            last_hash_pos = cleaned_start_line.rfind('#')
+            last_dollar_pos = cleaned_start_line.rfind('$')
+            split_pos = max(last_hash_pos, last_dollar_pos)
+            if split_pos != -1:
+                command = cleaned_start_line[split_pos + 1:].strip()
+            output_lines = lines[start_prompt_index + 1: end_prompt_index]
+            full_output = "\n".join(output_lines)
+            plain_output = _strip_ansi_sequences(full_output)
+            results_xml += f"""<command_{i + 1}><cmd>{command}</cmd><output>{plain_output}</output></command_{i + 1}>"""
+        results_xml += "\n</results>"
+        return results_xml
