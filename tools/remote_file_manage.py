@@ -1510,7 +1510,7 @@ class RemoteFileManager(QThread):
             error_output = stderr.read().decode('utf-8', errors='ignore').strip()
             if error_output:
                 print(f"Error executing remote command for path {path}: {error_output}")
-                return self._list_dir_detailed_sftp_fallback(path)
+                return None
             records = output.strip('\0').split('\0')
             for record in records:
                 if not record:
