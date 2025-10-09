@@ -44,7 +44,8 @@ class SCM:
             "bg_theme_color": None,
             "side_panel_last_width": 300,
             "page_animation": "slide_fade",
-            "right_panel_ai_chat": True
+            "right_panel_ai_chat": True,
+            "file_tree_single_click": False
         }
         self.config_path = config_dir / "setting-config.json"
         if not os.path.exists(self.config_path):
