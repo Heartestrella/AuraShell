@@ -73,8 +73,11 @@ class AIBridge(QObject):
 
                 def on_output_ready(result_str, code):
                     try:
-                        self.toolResultReady.emit(request_id, result_str)
                         if request_id in self.pending_tool_calls:
+                            call_info = self.pending_tool_calls[request_id]
+                            if call_info.get('cancelled', False):
+                                result_str = result_str + "\n用户中断"
+                            self.toolResultReady.emit(request_id, result_str)
                             del self.pending_tool_calls[request_id]
                         worker.command_output_ready.disconnect(on_output_ready)
                     except TypeError:
@@ -415,16 +418,26 @@ class AIBridge(QObject):
         if request_id in self.pending_tool_calls:
             call_info = self.pending_tool_calls[request_id]
             worker = call_info.get('worker')
+            call_info['cancelled'] = True
+            call_info['cancel_time'] = time.time()
             if worker:
                 worker.send_interrupt()
-            
-            # Emit a result to unblock the frontend promise
-            self.toolResultReady.emit(request_id, json.dumps({
-                "status": "cancelled",
-                "content": "Tool execution was cancelled by the user."
-            }, ensure_ascii=False))
-
-            if request_id in self.pending_tool_calls:
+            QTimer.singleShot(5000, lambda: self._force_cancel_timeout(request_id))
+    
+    def _force_cancel_timeout(self, request_id):
+        if request_id in self.pending_tool_calls:
+            call_info = self.pending_tool_calls[request_id]
+            if call_info.get('cancelled', False):
+                self.toolResultReady.emit(request_id, json.dumps({
+                    "status": "cancelled",
+                    "content": "命令中断超时,强制取消。"
+                }, ensure_ascii=False))
+                worker = call_info.get('worker')
+                if worker:
+                    try:
+                        worker.command_output_ready.disconnect()
+                    except:
+                        pass
                 del self.pending_tool_calls[request_id]
 
     @pyqtSlot(result=str)
