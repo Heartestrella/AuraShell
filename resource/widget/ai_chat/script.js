@@ -559,7 +559,7 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
     aiChatApiOptionsBody.messages.push(assistantMessage);
     messagesHistory.push({ messages: assistantMessage, isMcp: false });
     saveHistory(window.firstUserMessage, messagesHistory);
-    cancelButton.removeEventListener('click', () => controller.abort());
+    // This was incorrect and is now handled by the onComplete callback of the parent request.
     cancelButtonContainer.style.display = 'none';
     if (backend) {
       const result = await backend.processMessage(fullContent);
@@ -589,7 +589,7 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
               const abortHandler = () => {
                 cancelMcpRequest(toolRequestId);
               };
-              cancelButton.addEventListener('click', abortHandler, { once: true });
+              cancelButton.addEventListener('click', abortHandler);
               cancelButtonContainer.style.display = 'flex';
               sendButton.disabled = true;
               try {
@@ -619,8 +619,6 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
                 }
               } finally {
                 cancelButton.removeEventListener('click', abortHandler);
-                cancelButtonContainer.style.display = 'none';
-                sendButton.disabled = false;
               }
             } else {
               systemBubble.setResult('rejected', 'User rejected the tool call.');
@@ -665,11 +663,13 @@ function retryAIMessage(bubbleElement) {
   const cancelButtonContainer = document.getElementById('cancel-button-container');
   const controller = new AbortController();
   const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
-  cancelButton.addEventListener('click', () => controller.abort());
+  const abortRequest = () => controller.abort();
+  cancelButton.addEventListener('click', abortRequest);
   cancelButtonContainer.style.display = 'flex';
   const onComplete = () => {
     sendButton.disabled = false;
     chat.chatBody.classList.remove('request-in-progress');
+    cancelButton.removeEventListener('click', abortRequest);
     if (chat.chatController && !chat.chatController.userHasScrolled) {
       chat.chatController.scrollToBottom();
     }
@@ -1003,6 +1003,7 @@ document.addEventListener('DOMContentLoaded', function () {
         isRequesting = false;
         sendButton.disabled = false;
         chat.chatBody.classList.remove('request-in-progress');
+        cancelButton.removeEventListener('click', abortRequest);
         if (chat.chatController && !chat.chatController.userHasScrolled) {
           chat.chatController.scrollToBottom();
         }
