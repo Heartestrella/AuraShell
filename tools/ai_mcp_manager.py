@@ -54,7 +54,7 @@ class AIMCPManager:
             "auto_approve": auto_approve
         }
 
-    def execute_tool(self, server_name: str, tool_name: str, arguments:str) -> Dict[str, Any]:
+    def execute_tool(self, server_name: str, tool_name: str, arguments:str, request_id: str = None) -> Dict[str, Any]:
         server = self.tools.get(server_name)
         if not server:
             return {"status": "error", "content": f"Server '{server_name}' is not registered."}
@@ -66,11 +66,16 @@ class AIMCPManager:
             return {"status": "error", "content": f"Handler for tool '{tool_name}' is missing."}
         try:
             sig = inspect.signature(handler)
+            handler_params = sig.parameters
             try:
                 while not isinstance(arguments, dict):
                     arguments = json.loads(arguments)
             except json.JSONDecodeError:
                 arguments = { "args": arguments }
+
+            if 'request_id' in handler_params and request_id:
+                arguments['request_id'] = request_id
+            
             bound_args = sig.bind(**arguments)
             return handler(*bound_args.args, **bound_args.kwargs)
         except Exception as e:
