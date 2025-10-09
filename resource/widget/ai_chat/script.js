@@ -559,7 +559,6 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
     aiChatApiOptionsBody.messages.push(assistantMessage);
     messagesHistory.push({ messages: assistantMessage, isMcp: false });
     saveHistory(window.firstUserMessage, messagesHistory);
-    cancelButton.removeEventListener('click', () => controller.abort());
     cancelButtonContainer.style.display = 'none';
     if (backend) {
       const result = await backend.processMessage(fullContent);
@@ -589,7 +588,7 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
               const abortHandler = () => {
                 cancelMcpRequest(toolRequestId);
               };
-              cancelButton.addEventListener('click', abortHandler, { once: true });
+              cancelButton.addEventListener('click', abortHandler);
               cancelButtonContainer.style.display = 'flex';
               sendButton.disabled = true;
               try {
@@ -619,8 +618,6 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
                 }
               } finally {
                 cancelButton.removeEventListener('click', abortHandler);
-                cancelButtonContainer.style.display = 'none';
-                sendButton.disabled = false;
               }
             } else {
               systemBubble.setResult('rejected', 'User rejected the tool call.');
@@ -665,11 +662,13 @@ function retryAIMessage(bubbleElement) {
   const cancelButtonContainer = document.getElementById('cancel-button-container');
   const controller = new AbortController();
   const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
-  cancelButton.addEventListener('click', () => controller.abort());
+  const abortRequest = () => controller.abort();
+  cancelButton.addEventListener('click', abortRequest);
   cancelButtonContainer.style.display = 'flex';
   const onComplete = () => {
     sendButton.disabled = false;
     chat.chatBody.classList.remove('request-in-progress');
+    cancelButton.removeEventListener('click', abortRequest);
     if (chat.chatController && !chat.chatController.userHasScrolled) {
       chat.chatController.scrollToBottom();
     }
@@ -895,6 +894,57 @@ function initializeBackendConnection(callback) {
   }
 }
 document.addEventListener('DOMContentLoaded', function () {
+  const attrDataStrPlugin = {
+    'after:highlight': (result) => {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = result.value;
+      const elements = tempDiv.querySelectorAll('.hljs-attr, .hljs-name');
+      elements.forEach((el) => {
+        const text = el.textContent;
+        if (el.classList.contains('hljs-attr')) {
+          if (text.startsWith('"') && text.endsWith('"')) {
+            const dataStr = text.substring(1, text.length - 1);
+            el.setAttribute('data-str', dataStr);
+          }
+        } else if (el.classList.contains('hljs-name')) {
+          el.setAttribute('data-str', text);
+        }
+      });
+      const pathKeys = tempDiv.querySelectorAll('[data-str="path"]');
+      pathKeys.forEach((keyEl) => {
+        if (keyEl.classList.contains('hljs-attr')) {
+          let currentNode = keyEl;
+          while ((currentNode = currentNode.nextSibling)) {
+            if (currentNode.nodeType === Node.ELEMENT_NODE) {
+              if (currentNode.classList.contains('hljs-string')) {
+                currentNode.classList.add('path-value');
+                break;
+              }
+              if (currentNode.classList.contains('hljs-attr')) {
+                break;
+              }
+            }
+          }
+        } else if (keyEl.classList.contains('hljs-name')) {
+          const tagWrapper = keyEl.parentElement;
+          if (tagWrapper && tagWrapper.classList.contains('hljs-tag')) {
+            let valueNode = tagWrapper.nextSibling;
+            if (valueNode && valueNode.nodeType === Node.TEXT_NODE && valueNode.textContent.trim() === '') {
+              valueNode = valueNode.nextSibling;
+            }
+            if (valueNode && valueNode.nodeType === Node.TEXT_NODE && valueNode.textContent.trim() !== '') {
+              const span = document.createElement('span');
+              span.className = 'path-value';
+              span.textContent = valueNode.textContent;
+              valueNode.parentNode.replaceChild(span, valueNode);
+            }
+          }
+        }
+      });
+      result.value = tempDiv.innerHTML;
+    },
+  };
+  hljs.addPlugin(attrDataStrPlugin);
   marked.setOptions({
     highlight: function (code, lang) {
       const language = hljs.getLanguage(lang) ? lang : 'plaintext';
@@ -1003,6 +1053,7 @@ document.addEventListener('DOMContentLoaded', function () {
         isRequesting = false;
         sendButton.disabled = false;
         chat.chatBody.classList.remove('request-in-progress');
+        cancelButton.removeEventListener('click', abortRequest);
         if (chat.chatController && !chat.chatController.userHasScrolled) {
           chat.chatController.scrollToBottom();
         }

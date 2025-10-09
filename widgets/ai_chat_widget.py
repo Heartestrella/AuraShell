@@ -241,6 +241,22 @@ class AIBridge(QObject):
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"An unexpected error occurred during file edit: {e}"}, ensure_ascii=False)
 
+            def navigate_file_manager(path:str = None):
+                if not path:
+                    return json.dumps({"status": "error", "content": "No path provided."}, ensure_ascii=False)
+                if not self.main_window:
+                    return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
+                
+                active_widget = self.main_window.get_active_ssh_widget()
+                if not active_widget:
+                    return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
+
+                if hasattr(active_widget, '_set_file_bar'):
+                    QTimer.singleShot(0, lambda: active_widget._set_file_bar(path))
+                    return json.dumps({"status": "success", "content": f"Navigated file manager to {path}"}, ensure_ascii=False)
+                else:
+                    return json.dumps({"status": "error", "content": "File explorer update function not found in the active session."}, ensure_ascii=False)
+
             def get_terminal_output(count: int = 1):
                 if not self.main_window:
                     return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
@@ -279,6 +295,13 @@ class AIBridge(QObject):
                 handler=edit_file,
                 description="编辑文件",
                 auto_approve=False
+            )
+            self.mcp_manager.register_tool_handler(
+                server_name="Linux终端",
+                tool_name="navigate_file_manager",
+                handler=navigate_file_manager,
+                description="导航文件管理器到指定路径",
+                auto_approve=True
             )
             self.mcp_manager.register_tool_handler(
                 server_name="Linux终端",

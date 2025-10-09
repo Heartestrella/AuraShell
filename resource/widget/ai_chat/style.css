@@ -671,3 +671,22 @@ body {
 #online-status .success-icon {
   background-color: #2ecc71;
 }
+@keyframes rainbow-background-animation {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+.path-value {
+  font-weight: bold;
+  color: rgb(145, 255, 0) !important;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #af01ff, #0000ff, #4b0082, #8b00ff);
+  background-size: 400% 400%;
+  animation: rainbow-background-animation 10s linear infinite;
+}
