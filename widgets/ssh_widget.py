@@ -831,13 +831,19 @@ class SSHWidget(QWidget):
 
         try:
             self.file_explorer.add_files(file_dict)
-        # self.file_manager._add_path_to_tree(path, False)
-        # file_tree = self.file_manager.get_file_tree()
-        # self.disk_storage.refresh_tree(file_tree)
+            if hasattr(self, '_perf_counter_start') and self._perf_counter_start:
+                end_time = time.perf_counter()
+                total_duration = end_time - self._perf_counter_start
+                print(f"从点击到渲染完成总耗时: {total_duration:.4f} 秒")
+                self._perf_counter_start = None  # Reset timer
+            # self.file_manager._add_path_to_tree(path, False)
+            # file_tree = self.file_manager.get_file_tree()
+            # self.disk_storage.refresh_tree(file_tree)
         except Exception as e:
             print(f"_on_list_dir_finished error: {e}")
 
     def _set_file_bar(self, path: str):
+        self._perf_counter_start = time.perf_counter()
         def parse_linux_path(path: str) -> list:
             if not path:
                 return []

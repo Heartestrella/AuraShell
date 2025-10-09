@@ -1,6 +1,7 @@
 from qfluentwidgets import BreadcrumbBar, LineEdit, TransparentToolButton
 from typing import Dict, Optional
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTreeWidgetItem, QStyle, QFrame
+import time
 from qfluentwidgets import isDarkTheme, SegmentedWidget
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QCursor
@@ -269,6 +270,7 @@ Files are marked with the string "is_file"; directories are marked with a dict.
         Refresh the entire tree:\n
         - If new_tree is passed, replace the internal model\n
         - preserve_expand: Whether to preserve the previous expanded state (default True)        """
+        start_time = time.perf_counter()
         if new_tree is not None:
             self.file_tree = new_tree
 
@@ -287,6 +289,8 @@ Files are marked with the string "is_file"; directories are marked with a dict.
         # 恢复展开状态（如果需要）
         if preserve_expand:
             self._restore_expanded_paths(expanded_paths)
+        end_time = time.perf_counter()
+        print(f"刷新文件树耗时: {end_time - start_time:.4f} 秒")
     print("Refresh tree complete")
 
     def _populate_tree(self, node_dict: Dict, parent_item, parent_path: str):
