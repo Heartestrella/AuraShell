@@ -559,7 +559,6 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
     aiChatApiOptionsBody.messages.push(assistantMessage);
     messagesHistory.push({ messages: assistantMessage, isMcp: false });
     saveHistory(window.firstUserMessage, messagesHistory);
-    // This was incorrect and is now handled by the onComplete callback of the parent request.
     cancelButtonContainer.style.display = 'none';
     if (backend) {
       const result = await backend.processMessage(fullContent);
@@ -895,6 +894,26 @@ function initializeBackendConnection(callback) {
   }
 }
 document.addEventListener('DOMContentLoaded', function () {
+  const attrDataStrPlugin = {
+    'after:highlight': (result) => {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = result.value;
+      const elements = tempDiv.querySelectorAll('.hljs-attr, .hljs-name');
+      elements.forEach((el) => {
+        const text = el.textContent;
+        if (el.classList.contains('hljs-attr')) {
+          if (text.startsWith('"') && text.endsWith('"')) {
+            const dataStr = text.substring(1, text.length - 1);
+            el.setAttribute('data-str', dataStr);
+          }
+        } else if (el.classList.contains('hljs-name')) {
+          el.setAttribute('data-str', text);
+        }
+      });
+      result.value = tempDiv.innerHTML;
+    },
+  };
+  hljs.addPlugin(attrDataStrPlugin);
   marked.setOptions({
     highlight: function (code, lang) {
       const language = hljs.getLanguage(lang) ? lang : 'plaintext';
