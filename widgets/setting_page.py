@@ -529,6 +529,19 @@ class SettingPage(ScrollArea):
             "AI", "Model", "API", "Settings", "ChatGPT", "DeepSeek", "Ollama", "Local"
         ])
 
+        self.right_panel_ai_chat_card = SwitchSettingCard(
+            icon=FluentIcon.CHAT,
+            title=self.tr("Enable Right Panel AI Chat"),
+            content=self.tr("Enable the AI chat panel on the right side (requires restart)"),
+            parent=self
+        )
+        self.right_panel_ai_chat_card.checkedChanged.connect(
+            lambda checked: configer.revise_config("right_panel_ai_chat", checked)
+        )
+        layout.addWidget(self.right_panel_ai_chat_card)
+        self._register_searchable(self.right_panel_ai_chat_card, self.tr("Enable Right Panel AI Chat"), [
+                                  "ai", "chat", "panel", "right"])
+
         self.Color_card = ComboBoxSettingCard(
             configItem=self.cfg.background_color,
             icon=FluentIcon.BRUSH,
@@ -905,6 +918,8 @@ class SettingPage(ScrollArea):
             (self.config["window_last_width"], self.config["window_last_height"]))
         self.aigc.open_switchButton.setChecked(
             self.config.get("aigc_open", False))
+        self.right_panel_ai_chat_card.setChecked(
+            self.config.get("right_panel_ai_chat", True))
         self.aigc.ModelComboBox.setCurrentIndex(
             llm_models[self.config.get("aigc_model", "DeepSeek")])
         self.aigc.ApiEdit.setText(self.config.get("aigc_api_key", ""))

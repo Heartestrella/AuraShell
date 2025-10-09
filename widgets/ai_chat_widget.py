@@ -1,9 +1,8 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout
-from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel
 import os
-from PyQt5.QtCore import QUrl, Qt, QObject, pyqtSlot, QEventLoop, QTimer, QVariant, pyqtSignal
-from PyQt5.QtWebChannel import QWebChannel
-from PyQt5.QtGui import QKeyEvent, QDesktopServices
+from PyQt5.QtCore import QUrl, Qt, QObject, pyqtSlot, QEventLoop, QTimer, QVariant, pyqtSignal, QSize
+from PyQt5.QtGui import QKeyEvent, QDesktopServices, QPixmap, QPainter
+from PyQt5.QtSvg import QSvgRenderer
 from tools.setting_config import SCM
 from tools.ai_model_manager import AIModelManager
 from tools.ai_mcp_manager import AIMCPManager
@@ -608,24 +607,42 @@ class AiChatWidget(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(self.layout)
-
-        self.channel = QWebChannel()
-        self.bridge = AIBridge(self, main_window=main_window)
-        self.channel.registerObject('backend', self.bridge)
-
-        self.browser = QWebEngineView()
-        self.browser.page().setWebChannel(self.channel)
-        self.browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
-        self.browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
-        self.browser.setContextMenuPolicy(Qt.NoContextMenu)
-        self.layout.addWidget(self.browser)
-
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        index_html_path = os.path.join(project_root, 'resource', 'widget', 'ai_chat', 'index.html')
-        self.browser.setUrl(QUrl.fromLocalFile(index_html_path))
+        self.browser = None
+        if CONFIGER.read_config().get("right_panel_ai_chat", True):
+            from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings
+            from PyQt5.QtWebChannel import QWebChannel
+            self.channel = QWebChannel()
+            self.bridge = AIBridge(self, main_window=main_window)
+            self.channel.registerObject('backend', self.bridge)
+            self.browser = QWebEngineView()
+            self.browser.page().setWebChannel(self.channel)
+            self.browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+            self.browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
+            self.browser.setContextMenuPolicy(Qt.NoContextMenu)
+            self.layout.addWidget(self.browser)
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            index_html_path = os.path.join(project_root, 'resource', 'widget', 'ai_chat', 'index.html')
+            self.browser.setUrl(QUrl.fromLocalFile(index_html_path))
+        else:
+            self.layout.setAlignment(Qt.AlignCenter)
+            icon_label = QLabel()
+            icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'resource', 'icons', 'ai_disabled.svg'))
+            renderer = QSvgRenderer(icon_path)
+            pixmap = QPixmap(128, 128)
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            renderer.render(painter)
+            painter.end()
+            icon_label.setPixmap(pixmap)
+            icon_label.setAlignment(Qt.AlignCenter)
+            self.layout.addWidget(icon_label)
+            disabled_label = QLabel(self.tr("AI对话已经禁用,请开启选项后重启程序."))
+            disabled_label.setAlignment(Qt.AlignCenter)
+            disabled_label.setWordWrap(True)
+            self.layout.addWidget(disabled_label)
 
     def keyPressEvent(self, event: QKeyEvent):
-        if event.key() == Qt.Key_F5:
+        if self.browser and event.key() == Qt.Key_F5:
             self.browser.reload()
         elif event.key() == Qt.Key_F12:
             if os.environ.get('QTWEBENGINE_REMOTE_DEBUGGING'):
