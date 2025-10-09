@@ -15,6 +15,7 @@ import typing
 import time
 import requests
 import threading
+import shlex
 
 if typing.TYPE_CHECKING:
     from main_window import Window
@@ -41,6 +42,11 @@ class AIBridge(QObject):
     def _register_tool_handlers(self):
 
         def Linux终端():
+            def _safe_quote(path):
+                if path is None:
+                    return "''"
+                return shlex.quote(str(path))
+
             def _internal_execute_interactive_shell(command: str, cwd: str = '.', request_id: str = None):
                 full_command = "cd " + cwd + ";" + command
                 if not self.main_window:
@@ -124,9 +130,10 @@ class AIBridge(QObject):
                 if not file_path:
                     return json.dumps({"status": "error", "content": "No file path provided."}, ensure_ascii=False)
                 try:
-                    command = f"cat {file_path}"
+                    safe_path = _safe_quote(file_path)
+                    command = f"cat {safe_path}"
                     if show_line:
-                        command = f"awk '{{print NR\"|\" $0}}' {file_path}"
+                        command = f"awk '{{print NR\"|\" $0}}' {safe_path}"
                     return _internal_execute_silent_shell(command)
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"Failed to read file: {e}"}, ensure_ascii=False)
@@ -155,7 +162,8 @@ class AIBridge(QObject):
                     if content.endswith('\n'):
                         content = content[:-1]
                     encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
-                    command = f"echo '{encoded_content}' | base64 --decode > {file_path}"
+                    safe_path = _safe_quote(file_path)
+                    command = f"echo '{encoded_content}' | base64 --decode > {safe_path}"
                     r = _internal_execute_silent_shell(command)
                     if r == '':
                         active_widget = self.main_window.get_active_ssh_widget()
@@ -228,7 +236,8 @@ class AIBridge(QObject):
                     new_lines = lines[:start_line - 1] + new_content_parts + lines[end_line:]
                     new_full_content = "".join(new_lines)
                     encoded_content = base64.b64encode(new_full_content.encode('utf-8')).decode('utf-8')
-                    command = f"echo '{encoded_content}' | base64 --decode > {file_path}"
+                    safe_path = _safe_quote(file_path)
+                    command = f"echo '{encoded_content}' | base64 --decode > {safe_path}"
                     r = _internal_execute_silent_shell(command)
                     if r == '':
                         active_widget = self.main_window.get_active_ssh_widget()
@@ -269,10 +278,11 @@ class AIBridge(QObject):
                     return json.dumps({"status": "error", "content": "Could not find the terminal output function."}, ensure_ascii=False)
             def list_dir(path: str = None, recursive: bool = False):
                 try:
+                    safe_path = _safe_quote(path)
                     if recursive:
-                        command = f"ls -RFa {path}"
+                        command = f"ls -RFa {safe_path}"
                     else:
-                        command = f"ls -Fa {path}"
+                        command = f"ls -Fa {safe_path}"
                     r = _internal_execute_silent_shell(command)
                     if r == '':
                         r = '空目录'
