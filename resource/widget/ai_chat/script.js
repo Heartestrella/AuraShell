@@ -11,17 +11,27 @@ function cleanupRequest(requestId) {
   pendingRequests.delete(requestId);
 }
 
-async function executeMcpTool(serverName, toolName, args) {
+async function executeMcpTool(serverName, toolName, args, providedRequestId = null) {
   return new Promise((resolve, reject) => {
-    const requestId = generateUniqueId();
+    const requestId = providedRequestId || generateUniqueId();
     const handler = (receivedId, result) => {
       if (receivedId === requestId) {
         cleanupRequest(requestId);
-        resolve(result);
+        try {
+          const parsedResult = JSON.parse(result);
+          if (parsedResult.status === 'cancelled') {
+            reject(new Error(parsedResult.content));
+          } else {
+            resolve(result);
+          }
+        } catch (e) {
+          resolve(result);
+        }
       }
     };
     pendingRequests.set(requestId, {
       handler,
+      reject,
       serverName,
       toolName,
       startTime: Date.now(),
@@ -46,6 +56,13 @@ function getPendingRequests() {
     });
   }
   return requests;
+}
+
+function cancelMcpRequest(requestId) {
+  const request = pendingRequests.get(requestId);
+  if (request) {
+    backend.cancelMcpTool(requestId);
+  }
 }
 
 class ChatController {
@@ -568,28 +585,43 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
               userDecision = await systemBubble.requireApproval();
             }
             if (userDecision === 'approved') {
-              cancelButtonContainer.style.display = 'flex';
-              cancelButton.addEventListener('click', () => controller.abort());
-              sendButton.disabled = true;
-              const executionResultStr = await executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments));
-              systemBubble.setResult('approved', executionResultStr);
-              let mcpMessages = {
-                role: 'user',
-                content: [
-                  { type: 'text', text: '[' + toolCall.server_name + ' -> ' + toolCall.tool_name + '] 执行结果:' },
-                  { type: 'text', text: executionResultStr },
-                ],
+              const toolRequestId = generateUniqueId();
+              const abortHandler = () => {
+                cancelMcpRequest(toolRequestId);
               };
-              aiChatApiOptionsBody.messages.push(mcpMessages);
-              messagesHistory.push({ messages: mcpMessages, isMcp: true });
-              saveHistory(window.firstUserMessage, messagesHistory);
-              const newAiMessageIndex = aiChatApiOptionsBody.messages.length + messageOffset;
-              const newAiHistoryIndex = messagesHistory.length;
-              const newAiBubble = chat.addAIBubble(newAiMessageIndex, newAiHistoryIndex);
-              newAiBubble.updateStream('');
-              const newHandler = createAIResponseHandler(newAiBubble, messageOffset, newAiMessageIndex, newAiHistoryIndex, controller, onComplete);
-              requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newHandler, controller.signal);
-              return;
+              cancelButton.addEventListener('click', abortHandler, { once: true });
+              cancelButtonContainer.style.display = 'flex';
+              sendButton.disabled = true;
+              try {
+                const executionResultStr = await executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments), toolRequestId);
+                systemBubble.setResult('approved', executionResultStr);
+                let mcpMessages = {
+                  role: 'user',
+                  content: [
+                    { type: 'text', text: '[' + toolCall.server_name + ' -> ' + toolCall.tool_name + '] 执行结果:' },
+                    { type: 'text', text: executionResultStr },
+                  ],
+                };
+                aiChatApiOptionsBody.messages.push(mcpMessages);
+                messagesHistory.push({ messages: mcpMessages, isMcp: true });
+                saveHistory(window.firstUserMessage, messagesHistory);
+                const newAiMessageIndex = aiChatApiOptionsBody.messages.length + messageOffset;
+                const newAiHistoryIndex = messagesHistory.length;
+                const newAiBubble = chat.addAIBubble(newAiMessageIndex, newAiHistoryIndex);
+                newAiBubble.updateStream('');
+                const newHandler = createAIResponseHandler(newAiBubble, messageOffset, newAiMessageIndex, newAiHistoryIndex, controller, onComplete);
+                requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newHandler, controller.signal);
+                return;
+              } catch (error) {
+                systemBubble.setResult('rejected', `执行已取消:${error.message}`);
+                if (onComplete) {
+                  onComplete();
+                }
+              } finally {
+                cancelButton.removeEventListener('click', abortHandler);
+                cancelButtonContainer.style.display = 'none';
+                sendButton.disabled = false;
+              }
             } else {
               systemBubble.setResult('rejected', 'User rejected the tool call.');
             }
@@ -1211,7 +1243,7 @@ function getRequestAiChatApiOptions() {
   return {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${key}`,
+      Authorization: `Bearer ${key}`,
       'User-Agent': 'RooCode/99999.99.9',
       Accept: 'application/json',
       'Accept-Encoding': 'br, gzip, deflate',

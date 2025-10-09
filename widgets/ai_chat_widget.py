@@ -41,35 +41,43 @@ class AIBridge(QObject):
     def _register_tool_handlers(self):
 
         def Linux终端():
-            def _internal_execute_interactive_shell(command: str, cwd: str = '.'):
+            def _internal_execute_interactive_shell(command: str, cwd: str = '.', request_id: str = None):
                 full_command = "cd " + cwd + ";" + command
                 if not self.main_window:
                     return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
-                active_widget = self.main_window.get_active_ssh_widget()
+                
+                active_widget = None
+                if request_id and request_id in self.pending_tool_calls:
+                    active_widget = self.pending_tool_calls[request_id].get('widget')
+
+                if not active_widget:
+                    active_widget = self.main_window.get_active_ssh_widget()
+
                 if not active_widget:
                     return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
+
                 worker = None
                 if hasattr(active_widget, 'ssh_widget') and hasattr(active_widget.ssh_widget, 'bridge'):
                     worker = active_widget.ssh_widget.bridge.worker
+                
                 if not worker:
                     return json.dumps({"status": "error", "content": "Could not find the SSH worker for the active session."}, ensure_ascii=False)
-                output = []
-                exit_code = [-1]
-                loop = QEventLoop()
+
+                if request_id:
+                    self.pending_tool_calls[request_id]['worker'] = worker
+
                 def on_output_ready(result_str, code):
-                    output.append(result_str)
-                    exit_code[0] = code
-                    if loop.isRunning():
-                        loop.quit()
+                    try:
+                        self.toolResultReady.emit(request_id, result_str)
+                        if request_id in self.pending_tool_calls:
+                            del self.pending_tool_calls[request_id]
+                        worker.command_output_ready.disconnect(on_output_ready)
+                    except TypeError:
+                        pass
+
                 worker.command_output_ready.connect(on_output_ready)
                 active_widget.execute_command_and_capture(full_command)
-                loop.exec_()
-                try:
-                    worker.command_output_ready.disconnect(on_output_ready)
-                except TypeError:
-                    pass
-                output_str = "".join(output)
-                return output_str
+                return "Executing..."
 
             def _internal_execute_silent_shell(command: str, cwd: str = '.'):
                 full_command = "cd " + cwd + "; " + command if cwd != '.' else command
@@ -96,7 +104,7 @@ class AIBridge(QObject):
                     return output
                 else:
                     return json.dumps({"status": "error", "content": error, "exit_code": exit_code}, ensure_ascii=False)
-            def exe_shell(args: str = ''):
+            def exe_shell(args: str = '', request_id: str = None):
                 """
                 <exe_shell><shell>{要执行的命令}</shell><cwd>{工作目录}</cwd></exe_shell>
                 """
@@ -109,7 +117,7 @@ class AIBridge(QObject):
                     shell = shell_match.group(1)
                     cwd_match = re.search(r'<cwd>(.*?)</cwd>', args, re.DOTALL)
                     cwd = cwd_match.group(1).strip() if cwd_match else '.'
-                    return _internal_execute_interactive_shell(shell, cwd)
+                    return _internal_execute_interactive_shell(shell, cwd, request_id)
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"An unexpected error occurred: {e}"}, ensure_ascii=False)
             def read_file(file_path: str = None, show_line: bool = False):
@@ -314,15 +322,22 @@ class AIBridge(QObject):
 
     def _execute_tool_async(self, server_name, tool_name, arguments, request_id):
         try:
-            result = self.mcp_manager.execute_tool(server_name, tool_name, arguments)
+            result = self.mcp_manager.execute_tool(server_name, tool_name, arguments, request_id)
             result_str = str(result)
+            if result_str != "Executing...":
+                self.toolResultReady.emit(request_id, result_str)
+                if request_id in self.pending_tool_calls:
+                    del self.pending_tool_calls[request_id]
         except json.JSONDecodeError as e:
             result_str = json.dumps({"status": "error", "content": f"Invalid arguments format: {e}"}, ensure_ascii=False)
+            self.toolResultReady.emit(request_id, result_str)
+            if request_id in self.pending_tool_calls:
+                del self.pending_tool_calls[request_id]
         except Exception as e:
             result_str = json.dumps({"status": "error", "content": f"Tool execution error: {e}"}, ensure_ascii=False)
-        self.toolResultReady.emit(request_id, result_str)
-        if request_id in self.pending_tool_calls:
-            del self.pending_tool_calls[request_id]
+            self.toolResultReady.emit(request_id, result_str)
+            if request_id in self.pending_tool_calls:
+                del self.pending_tool_calls[request_id]
     
     @pyqtSlot(str, str, str, result=str)
     @pyqtSlot(str, str, str, str, result=str)
@@ -331,7 +346,8 @@ class AIBridge(QObject):
             self.pending_tool_calls[request_id] = {
                 'server_name': server_name,
                 'tool_name': tool_name,
-                'start_time': time.time()
+                'start_time': time.time(),
+                'widget': self.main_window.get_active_ssh_widget()
             }
             QTimer.singleShot(0, lambda: self._execute_tool_async(
                 server_name, tool_name, arguments, request_id
@@ -343,6 +359,23 @@ class AIBridge(QObject):
                 return str(result)
             except json.JSONDecodeError as e:
                 return json.dumps({"status": "error", "content": f"Invalid arguments format: {e}"}, ensure_ascii=False)
+
+    @pyqtSlot(str)
+    def cancelMcpTool(self, request_id):
+        if request_id in self.pending_tool_calls:
+            call_info = self.pending_tool_calls[request_id]
+            worker = call_info.get('worker')
+            if worker:
+                worker.send_interrupt()
+            
+            # Emit a result to unblock the frontend promise
+            self.toolResultReady.emit(request_id, json.dumps({
+                "status": "cancelled",
+                "content": "Tool execution was cancelled by the user."
+            }, ensure_ascii=False))
+
+            if request_id in self.pending_tool_calls:
+                del self.pending_tool_calls[request_id]
 
     @pyqtSlot(result=str)
     def getModels(self):

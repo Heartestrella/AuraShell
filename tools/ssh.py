@@ -556,3 +556,11 @@ class SSHWorker(QThread):
             return output, error, exit_code
         except Exception as e:
             return None, str(e), -1
+
+    def send_interrupt(self):
+        """Sends an interrupt signal (Ctrl+C) to the channel."""
+        try:
+            if self.channel and not self.channel.closed:
+                self.channel.send(b'\x03')
+        except Exception as e:
+            self.error_occurred.emit(f"Failed to send interrupt: {e}")
