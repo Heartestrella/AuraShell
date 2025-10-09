@@ -910,6 +910,37 @@ document.addEventListener('DOMContentLoaded', function () {
           el.setAttribute('data-str', text);
         }
       });
+      const pathKeys = tempDiv.querySelectorAll('[data-str="path"]');
+      pathKeys.forEach((keyEl) => {
+        if (keyEl.classList.contains('hljs-attr')) {
+          let currentNode = keyEl;
+          while ((currentNode = currentNode.nextSibling)) {
+            if (currentNode.nodeType === Node.ELEMENT_NODE) {
+              if (currentNode.classList.contains('hljs-string')) {
+                currentNode.classList.add('path-value');
+                break;
+              }
+              if (currentNode.classList.contains('hljs-attr')) {
+                break;
+              }
+            }
+          }
+        } else if (keyEl.classList.contains('hljs-name')) {
+          const tagWrapper = keyEl.parentElement;
+          if (tagWrapper && tagWrapper.classList.contains('hljs-tag')) {
+            let valueNode = tagWrapper.nextSibling;
+            if (valueNode && valueNode.nodeType === Node.TEXT_NODE && valueNode.textContent.trim() === '') {
+              valueNode = valueNode.nextSibling;
+            }
+            if (valueNode && valueNode.nodeType === Node.TEXT_NODE && valueNode.textContent.trim() !== '') {
+              const span = document.createElement('span');
+              span.className = 'path-value';
+              span.textContent = valueNode.textContent;
+              valueNode.parentNode.replaceChild(span, valueNode);
+            }
+          }
+        }
+      });
       result.value = tempDiv.innerHTML;
     },
   };
