@@ -267,6 +267,8 @@ class Window(FramelessWindow):
             widget = self.session_widgets[widget_key]
             if widget:
                 if result["type"] == "info":
+                    widget.start_loading_animation("task")
+                    widget.start_loading_animation("net")
                     connections = result["connections"]
                     cpu_percent = result["cpu_percent"]
                     mem_percent = result["mem_percent"]
@@ -313,6 +315,8 @@ class Window(FramelessWindow):
                                 "read_kbps": disk.get("read_kbps"),
                                 "write_kbps": disk.get("write_kbps"),
                             })
+                    widget.stop_loading_animation("task")
+                    widget.stop_loading_animation("net")
 
                 elif result["type"] == "sysinfo":
                     print("Got SysInfo:", result)
