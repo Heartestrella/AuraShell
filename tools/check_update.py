@@ -85,7 +85,7 @@ class CheckUpdate(QThread):
         while True:
             bytes_written_this_attempt = 0
             try:
-                with requests.get(url, headers=headers, stream=True, timeout=10) as r:
+                with requests.get(url, headers=headers, stream=True, timeout=120) as r:
                     r.raise_for_status()
                     with open(part_path, 'wb') as f:
                         for chunk in r.iter_content(chunk_size=8192):
@@ -98,6 +98,7 @@ class CheckUpdate(QThread):
             except Exception as e:
                 with self.progress_lock:
                     self.downloaded_size -= bytes_written_this_attempt
+            time.sleep(1)
 
     def _prepare_updater_executable(self):
         try:
