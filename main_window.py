@@ -185,44 +185,6 @@ class Window(FramelessWindow):
 
         self.checker = CheckUpdate()
         self.checker.start()
-        self.checker.hash_signal.connect(self.show_hash)
-
-    def show_hash(self, status, hash):
-        print(status, hash)
-        if status:
-            local_hash = open(resource_path(
-                "resource/update_hash.txt"), encoding="utf-8").read()
-            if local_hash == hash:
-                InfoBar.success(
-                    title=self.tr(f"No update needed"),
-                    content=hash,
-                    orient=Qt.Vertical,
-                    isClosable=True,
-                    position=InfoBarPosition.TOP_RIGHT,
-                    duration=3000,
-                    parent=self
-                )
-            else:
-                InfoBar.warning(
-                    title=self.tr(f"U should redownload the software"),
-                    content=self.tr(
-                        f"Remote hash: {hash},Local hash : {local_hash}"),
-                    orient=Qt.Vertical,
-                    isClosable=True,
-                    position=InfoBarPosition.TOP_RIGHT,
-                    duration=10000,
-                    parent=self
-                )
-        else:
-            InfoBar.error(
-                title=self.tr("Failed to obtain hash"),
-                content=hash,
-                orient=Qt.Vertical,
-                isClosable=True,
-                position=InfoBarPosition.TOP_RIGHT,
-                duration=-1,
-                parent=self
-            )
 
     def set_background_opacity(self, opacity: float):
         if not self._bg_pixmap:
