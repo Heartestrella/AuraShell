@@ -21,15 +21,11 @@ def main():
         with open(lock_file, 'w') as f:
             f.write(str(os.getpid()))
         while psutil.pid_exists(pid):
-            time.sleep(1)
+            time.sleep(2)
         if os.path.isdir(source_path):
             shutil.copytree(source_path, target_path, dirs_exist_ok=True)
         else:
             shutil.copy2(source_path, target_path)
-        executable = target_path
-        if os.path.isdir(target_path):
-            executable = os.path.join(target_path, os.path.basename(sys.executable))
-        subprocess.Popen([executable])
     except Exception as e:
         file = 'update.log'
         with open(file, 'a') as f:

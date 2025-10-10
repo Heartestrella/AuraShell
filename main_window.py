@@ -1665,6 +1665,8 @@ def check_for_update_lock_and_recover():
 
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--update':
+        if pyi_splash:
+            pyi_splash.close()
         from tools.updater import main as updater_main
         updater_args = [sys.argv[0]] + sys.argv[2:]
         sys.argv = updater_args
