@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from .logger import get_logger
 import shutil
+from pySmartDL import SmartDL
 
 update_logger = get_logger("update")
 
@@ -21,8 +22,8 @@ def is_pyinstaller_bundle():
     return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
 
 def get_version():
-    if not is_pyinstaller_bundle():
-        return "dev"
+    # if not is_pyinstaller_bundle():
+    #     return "dev"
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS
     else:
@@ -41,9 +42,6 @@ def is_internal():
 class CheckUpdate(QThread):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.progress_lock = threading.Lock()
-        self.downloaded_size = 0
-        self.total_size = 0
         self.updater_executable_path = None
 
     def run(self):
@@ -78,45 +76,6 @@ class CheckUpdate(QThread):
         except Exception as e:
             update_logger.error(f"Error checking for updates: {e}")
         return False
-
-    def _download_chunk(self, args):
-        url, start, end, part_path = args
-        temp_path = f"{part_path}.tmp"
-        while True:
-            try:
-                if os.path.exists(temp_path):
-                    already_downloaded = os.path.getsize(temp_path)
-                    current_start = start + already_downloaded
-                else:
-                    current_start = start
-                    already_downloaded = 0
-                if current_start > end:
-                    if os.path.exists(part_path):
-                        os.remove(part_path)
-                    os.rename(temp_path, part_path)
-                    return part_path
-                headers = {'Range': f'bytes={current_start}-{end}'}
-                bytes_written_this_attempt = 0
-                with requests.get(url, headers=headers, stream=True, timeout=60) as r:
-                    r.raise_for_status()
-                    with open(temp_path, 'ab') as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                                chunk_len = len(chunk)
-                                bytes_written_this_attempt += chunk_len
-                                with self.progress_lock:
-                                    self.downloaded_size += chunk_len
-                if os.path.exists(part_path):
-                    os.remove(part_path)
-                os.rename(temp_path, part_path)
-                return part_path
-            except Exception as e:
-                newly_added = bytes_written_this_attempt
-                with self.progress_lock:
-                    self.downloaded_size -= newly_added
-                update_logger.warning(f"Download chunk {part_path} failed, retrying: {e}")
-                time.sleep(2)
 
     def _prepare_updater_executable(self):
         try:
@@ -170,41 +129,15 @@ class CheckUpdate(QThread):
         download_dir = os.path.join('tmp', 'update', 'download')
         os.makedirs(download_dir, exist_ok=True)
         file_path = os.path.join(download_dir, asset_name)
-        num_threads = 64
-        temp_files = []
         try:
-            print(asset_url)
-            with requests.head(asset_url, timeout=120) as r:
-                r.raise_for_status()
-                self.total_size = int(r.headers.get('content-length', 0))
-            self.downloaded_size = 0
-            chunk_size = self.total_size // num_threads
-            chunks = []
-            for i in range(num_threads):
-                start = i * chunk_size
-                end = start + chunk_size - 1
-                if i == num_threads - 1:
-                    end = self.total_size - 1
-                part_path = f"{file_path}.part{i}"
-                temp_files.append(part_path)
-                chunks.append((asset_url, start, end, part_path))
-            with ThreadPoolExecutor(max_workers=num_threads) as executor:
-                list(executor.map(self._download_chunk, chunks))
-            with open(file_path, 'wb') as final_file:
-                for part_path in temp_files:
-                    if not os.path.exists(part_path):
-                        continue
-                    with open(part_path, 'rb') as part_file:
-                        final_file.write(part_file.read())
-            return self.apply_update(file_path)
+            obj = SmartDL(asset_url, file_path, progress_bar=False, threads=8)
+            obj.start()
+            if obj.isSuccessful():
+                return self.apply_update(file_path)
+            else:
+                return False
         except Exception as e:
-            update_logger.error(f"Download failed: {e}")
             return False
-        finally:
-            for temp_file in temp_files:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-        return False
 
     def apply_update(self, file_path):
         if not is_pyinstaller_bundle():
