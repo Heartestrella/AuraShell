@@ -110,7 +110,7 @@ class SSHWorker(QThread):
             except paramiko.AuthenticationException as e:
                 error_msg = self.tr(f"Identity verification failed {e}")
                 self.auth_error.emit(error_msg)
-                # self._cleanup()
+                self._cleanup()
             transport = self.conn.get_transport()
             transport.set_keepalive(30)
             self.channel = transport.open_session()
