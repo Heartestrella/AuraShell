@@ -110,6 +110,7 @@ class SSHWorker(QThread):
             except paramiko.AuthenticationException as e:
                 error_msg = self.tr(f"Identity verification failed {e}")
                 self.auth_error.emit(error_msg)
+                # self._cleanup()
             transport = self.conn.get_transport()
             transport.set_keepalive(30)
             self.channel = transport.open_session()
@@ -201,12 +202,15 @@ class SSHWorker(QThread):
                     self.error_occurred.emit(f"启动 processes 失败：{e}")
             self.exec_()
             self._cleanup()
+
         except socks.ProxyError as e:
             error_msg = f"Proxy Error: {e}"
             self.error_occurred.emit(error_msg)
+            # self._cleanup()
         except Exception as e:
             tb = traceback.format_exc()
             self.error_occurred.emit(f"{e}\n{tb}")
+            # self._cleanup()
 
     def _create_socket(self):
         if self.proxy_type == 'None' or not self.proxy_host or not self.proxy_port:
