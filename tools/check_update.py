@@ -15,7 +15,7 @@ import shutil
 
 update_logger = get_logger("update")
 
-ProxySite = "https://ghfast.top/"
+ProxySite = "https://aurashell-aichatapi.beefuny.shop/proxy/"
 
 def is_pyinstaller_bundle():
     return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
@@ -47,8 +47,8 @@ class CheckUpdate(QThread):
         self.updater_executable_path = None
 
     def run(self):
-        # if not is_pyinstaller_bundle():
-        #     return
+        if not is_pyinstaller_bundle():
+            return
         while True:
             if self.check():
                 break
@@ -70,7 +70,7 @@ class CheckUpdate(QThread):
         if not repo_path:
             return False
         try:
-            api_url = f"https://api.github.com/repos/{repo_path}/releases/latest"
+            api_url = f"{ProxySite}https://api.github.com/repos/{repo_path}/releases/latest"
             response = requests.get(api_url, timeout=120)
             if response.status_code == 200:
                 data = response.json()
