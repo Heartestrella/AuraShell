@@ -149,6 +149,8 @@ class RemoteFileManager(QThread):
                 sock=sock
             )
         # self.heart_timer.start(5000)
+        transport = conn.get_transport()
+        transport.set_keepalive(30)
         return conn
 
     def run(self):
@@ -241,8 +243,9 @@ class RemoteFileManager(QThread):
                         else:
                             print(f"Unknown task type: {ttype}")
                     except Exception as e:
+                        tb = traceback.format_exc()
                         self.error_occurred.emit(
-                            f"Error while executing task: {e}")
+                            f"Error while executing task: {e}\n{tb}")
                 else:
                     self.mutex.unlock()
 

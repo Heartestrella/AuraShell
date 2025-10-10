@@ -77,6 +77,12 @@ class Config(QConfig):
         restart=False
     )
 
+    update_channel = OptionsConfigItem(
+        "Updates", "Channel", "none",
+        OptionsValidator(["none", "stable", "insider"]),
+        restart=False
+    )
+
 
 class aigc_config(ExpandGroupSettingCard):
 
@@ -510,6 +516,23 @@ class SettingPage(ScrollArea):
 
         self._register_searchable(self.language_card, self.tr("Language"),
                                   ["language", "语言", "lang", "system default", "english", "中文", "简体中文", "日本語", "русский"])
+
+        self.update_channel_card = ComboBoxSettingCard(
+            configItem=self.cfg.update_channel,
+            icon=FluentIcon.UPDATE,
+            title=self.tr("Update Channel"),
+            content=self.tr("Choose the update channel for the application"),
+            texts=[
+                self.tr("None"),
+                self.tr("Stable"),
+                self.tr("Insider")
+            ]
+        )
+        self.update_channel_card.comboBox.currentIndexChanged.connect(
+            self._on_update_channel_changed)
+        layout.addWidget(self.update_channel_card)
+        self._register_searchable(self.update_channel_card, self.tr("Update Channel"),
+                                  ["update", "channel", "stable", "insider", "更新", "渠道"])
 
         self.aigc = aigc_config()
         self.aigc.open_switchButton.checkedChanged.connect(
@@ -950,6 +973,11 @@ class SettingPage(ScrollArea):
         }
         animation_type = self.config.get("page_animation", "slide_fade")
         self.animation_card.comboBox.setCurrentIndex(animation_map.get(animation_type, 0))
+        
+        update_channel_map = {"none": 0, "stable": 1, "insider": 2}
+        current_channel = self.config.get("update_channel", "none")
+        self.update_channel_card.comboBox.setCurrentIndex(
+            update_channel_map.get(current_channel, 0))
 
     def _restore_background_opacity(self, value):
         parent = self.parent()
@@ -1084,6 +1112,11 @@ class SettingPage(ScrollArea):
         }
         animation_type = animation_map.get(index, "slide_fade")
         configer.revise_config("page_animation", animation_type)
+
+    def _on_update_channel_changed(self, index: int):
+        channel_map = {0: "none", 1: "stable", 2: "insider"}
+        value_to_save = channel_map.get(index, "stable")
+        configer.revise_config("update_channel", value_to_save)
 
     def _restart(self):
         pass

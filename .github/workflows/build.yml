@@ -14,7 +14,25 @@ on:
   workflow_dispatch:
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version_tag: ${{ steps.version.outputs.tag }}
+      release_name: ${{ steps.version.outputs.release_name }}
+    steps:
+      - name: 确定版本号
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "release_name=Release ${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=v$(TZ='Asia/Shanghai' date +'%Y.%m.%d.%H%M%S')" >> $GITHUB_OUTPUT
+            echo "release_name=$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+          fi
+
   build:
+    needs: prepare
     name: Build for ${{ matrix.platform_name }}
     strategy:
       matrix:
@@ -48,6 +66,10 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 创建版本文件
+        run: echo "${{ needs.prepare.outputs.version_tag }}" > version.txt
+        shell: bash
+      
       - name: 设置 Python 环境
         uses: actions/setup-python@v5
         with:
@@ -102,13 +124,13 @@ jobs:
       - name: 编译打包 (Linux)
         if: runner.os == 'Linux'
         run: |
-          python -m PyInstaller --icon "resource/icons/icon.ico" -w -F --add-data "resource:resource" --name "AuraShell-Linux" ./main_window.py
+          python -m PyInstaller --icon "resource/icons/icon.ico" -w -F --add-data "resource:resource" --add-data "version.txt${{ matrix.separator }}." --name "AuraShell-Linux" ./main_window.py
           chmod +x "dist/AuraShell-Linux"
 
       - name: 编译打包 (macOS)
         if: runner.os == 'macOS'
         run: |
-          python -m PyInstaller --icon "resource/icons/icon.ico" -w -F --add-data "resource:resource" --name "AuraShell-Macos" ./main_window.py
+          python -m PyInstaller --icon "resource/icons/icon.ico" -w -F --add-data "resource:resource" --add-data "version.txt${{ matrix.separator }}." --name "AuraShell-Macos" ./main_window.py
           chmod +x "dist/AuraShell-Macos"
 
       - name: 上传构建产物
@@ -119,7 +141,7 @@ jobs:
           retention-days: 30
 
   release:
-    needs: build
+    needs: [build, prepare]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     
@@ -132,6 +154,8 @@ jobs:
       - name: 创建发布
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ needs.prepare.outputs.version_tag }}
+          name: ${{ needs.prepare.outputs.release_name }}
           files: |
             artifacts/**/AuraShell*
           draft: false
@@ -141,7 +165,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   auto-release:
-    needs: build
+    needs: [build, prepare]
     if: github.repository == 'XiaoYingYo/AuraShell' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     
@@ -149,18 +173,12 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 生成时间标签
-        id: timestamp
-        run: |
-          echo "tag=v$(TZ='Asia/Shanghai' date +'%Y.%m.%d.%H%M%S')" >> $GITHUB_OUTPUT
-          echo "release_name=$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
-
       - name: 创建并推送标签
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${{ steps.timestamp.outputs.tag }}
-          git push origin ${{ steps.timestamp.outputs.tag }}
+          git tag ${{ needs.prepare.outputs.version_tag }}
+          git push origin ${{ needs.prepare.outputs.version_tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -169,15 +187,15 @@ jobs:
         with:
           path: artifacts
 
-      - name: 创建自动发布
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.timestamp.outputs.tag }}
-          name: ${{ steps.timestamp.outputs.release_name }}
-          files: |
-            artifacts/**/AuraShell*
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # - name: 创建自动发布
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     tag_name: ${{ needs.prepare.outputs.version_tag }}
+      #     name: ${{ needs.prepare.outputs.release_name }}
+      #     files: |
+      #       artifacts/**/AuraShell*
+      #     draft: false
+      #     prerelease: false
+      #     generate_release_notes: true
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

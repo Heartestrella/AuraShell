@@ -440,6 +440,14 @@ class AIBridge(QObject):
                         pass
                 del self.pending_tool_calls[request_id]
 
+    @pyqtSlot(str)
+    def forceContinueTool(self, request_id: str):
+        if request_id in self.pending_tool_calls:
+            call_info = self.pending_tool_calls[request_id]
+            worker = call_info.get('worker')
+            if worker and hasattr(worker, 'force_complete'):
+                worker.force_complete.emit(request_id)
+
     @pyqtSlot(result=str)
     def getModels(self):
         return json.dumps(self.model_manager.load_models(), ensure_ascii=False)

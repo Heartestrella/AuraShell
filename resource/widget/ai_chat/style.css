@@ -10,6 +10,8 @@
   --accent-color-blue: #3a96f7;
   --accent-color-grey: #5a5a5a;
   --accent-color-red: #e74c3c;
+  --accent-color-orange: #e67e22;
+  --accent-color-orange-hover: #d35400;
   --code-bg-color: #252525;
   --user-avatar-bg: #6c5ce7;
   --ai-avatar-bg: #00cec9;
@@ -71,6 +73,8 @@ body {
 .message-group.ai {
   align-self: flex-start;
   align-items: flex-start;
+  max-width: 100%;
+  width: 100%;
 }
 .message-group.system {
   width: 100%;
@@ -157,6 +161,10 @@ body {
   border-radius: 15px;
   line-height: 1.6;
   width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 .message-content {
   background-color: var(--message-bg-color);
@@ -219,6 +227,9 @@ body {
   color: #9cdcfe;
   white-space: pre-wrap;
   word-break: break-all;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 .message-content pre {
   margin: 10px 0;
@@ -231,6 +242,8 @@ body {
   border-radius: 5px;
   display: block;
   overflow-x: auto;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .tool-call-card {
   background-color: var(--message-bg-color);
@@ -349,6 +362,13 @@ body {
 }
 .action-buttons .reject-button:hover {
   background-color: #c0392b;
+}
+.action-buttons .continue-button {
+  background-color: var(--accent-color-orange);
+  color: white;
+}
+.action-buttons .continue-button:hover {
+  background-color: var(--accent-color-orange-hover);
 }
 .action-buttons .cancel-button {
   background-color: var(--message-bg-color);
