@@ -56,6 +56,12 @@ class CheckUpdate(QThread):
         if not self.process_lock.acquire():
             return False
         try:
+            download_dir = os.path.join('tmp', 'update', 'download')
+            if os.path.exists(download_dir):
+                shutil.rmtree(download_dir)
+        except Exception as e:
+            update_logger.warning(f"Failed to clean download directory: {e}")
+        try:
             config = SCM().read_config()
             channel = config.get("update_channel", "none")
             if channel == "none":
