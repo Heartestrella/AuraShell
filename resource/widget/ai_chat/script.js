@@ -1200,7 +1200,7 @@ function setupWebSocket() {
   const onlineStatusElement = document.getElementById('online-status');
   const statusIcon = onlineStatusElement.querySelector('.icon');
   const statusText = onlineStatusElement.querySelector('.status-text');
-  const wsUrl = 'wss://aurashell-aichatapi.esmondelliott9043.workers.dev/';
+  const wsUrl = 'ws://aurashell-aichatapi.beefuny.shop/ws';
   let ws;
   let pingInterval;
   function connect() {
@@ -1235,7 +1235,7 @@ function setupWebSocket() {
       setTimeout(connect, 1000);
     };
     ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      // console.error('WebSocket error:', error);
       ws.close();
     };
   }
@@ -1523,9 +1523,6 @@ async function requestAiChat(onStream, onDone, signal) {
 
 async function proxiedFetch(url, options) {
   const proxySettingsStr = await backend.getSetting('ai_chat_proxy');
-  if (!proxySettingsStr) {
-    return fetch(url, options);
-  }
   try {
     const proxySettings = JSON.parse(proxySettingsStr);
     if (!proxySettings || !proxySettings.protocol || !proxySettings.host || !proxySettings.port) {
@@ -1537,7 +1534,6 @@ async function proxiedFetch(url, options) {
   return new Promise((resolve, reject) => {
     const requestId = generateUniqueId();
     let streamController;
-
     const readableStream = new ReadableStream({
       start(controller) {
         streamController = controller;
