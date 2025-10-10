@@ -15,7 +15,7 @@ import shutil
 
 update_logger = get_logger("update")
 
-ProxySite = 'https://ghfast.top/'
+ProxySite = ''
 
 def is_pyinstaller_bundle():
     return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
