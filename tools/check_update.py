@@ -21,8 +21,8 @@ def is_pyinstaller_bundle():
     return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
 
 def get_version():
-    # if not is_pyinstaller_bundle():
-    #     return "dev"
+    if not is_pyinstaller_bundle():
+        return "dev"
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS
     else:
@@ -81,24 +81,42 @@ class CheckUpdate(QThread):
 
     def _download_chunk(self, args):
         url, start, end, part_path = args
-        headers = {'Range': f'bytes={start}-{end}'}
+        temp_path = f"{part_path}.tmp"
         while True:
-            bytes_written_this_attempt = 0
             try:
-                with requests.get(url, headers=headers, stream=True, timeout=120) as r:
-                    r.raise_for_status()
-                    with open(part_path, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                            chunk_len = len(chunk)
-                            bytes_written_this_attempt += chunk_len
-                            with self.progress_lock:
-                                self.downloaded_size += chunk_len
+                if os.path.exists(temp_path):
+                    already_downloaded = os.path.getsize(temp_path)
+                    current_start = start + already_downloaded
+                else:
+                    current_start = start
+                    already_downloaded = 0
+                if current_start > end:
+                    if os.path.exists(part_path):
+                        os.remove(part_path)
+                    os.rename(temp_path, part_path)
                     return part_path
+                headers = {'Range': f'bytes={current_start}-{end}'}
+                bytes_written_this_attempt = 0
+                with requests.get(url, headers=headers, stream=True, timeout=60) as r:
+                    r.raise_for_status()
+                    with open(temp_path, 'ab') as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                                chunk_len = len(chunk)
+                                bytes_written_this_attempt += chunk_len
+                                with self.progress_lock:
+                                    self.downloaded_size += chunk_len
+                if os.path.exists(part_path):
+                    os.remove(part_path)
+                os.rename(temp_path, part_path)
+                return part_path
             except Exception as e:
+                newly_added = bytes_written_this_attempt
                 with self.progress_lock:
-                    self.downloaded_size -= bytes_written_this_attempt
-            time.sleep(1)
+                    self.downloaded_size -= newly_added
+                update_logger.warning(f"Download chunk {part_path} failed, retrying: {e}")
+                time.sleep(2)
 
     def _prepare_updater_executable(self):
         try:
