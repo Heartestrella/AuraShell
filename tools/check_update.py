@@ -65,17 +65,18 @@ class CheckUpdate(QThread):
         repo_path = repo_map.get(channel)
         if not repo_path:
             return False
-        try:
-            api_url = f"{ProxySite}https://api.github.com/repos/{repo_path}/releases/latest"
-            response = requests.get(api_url, timeout=120)
-            if response.status_code == 200:
-                data = response.json()
-                remote_version = data.get("tag_name")
-                if remote_version and remote_version != local_version:
-                    return self.download_asset(data, remote_version)
-        except Exception as e:
-            update_logger.error(f"Error checking for updates: {e}")
-        return False
+        while True:
+            try:
+                api_url = f"{ProxySite}https://api.github.com/repos/{repo_path}/releases/latest"
+                response = requests.get(api_url, timeout=2)
+                if response.status_code == 200:
+                    data = response.json()
+                    remote_version = data.get("tag_name")
+                    if remote_version and remote_version != local_version:
+                        return self.download_asset(data, remote_version)
+                    return False
+            except Exception as e:
+                pass
 
     def _prepare_updater_executable(self):
         try:
