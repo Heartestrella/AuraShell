@@ -22,14 +22,18 @@ def main():
             f.write(str(os.getpid()))
         while psutil.pid_exists(pid):
             time.sleep(2)
-        if os.path.isdir(source_path):
-            shutil.copytree(source_path, target_path, dirs_exist_ok=True)
-        else:
-            shutil.copy2(source_path, target_path)
-    except Exception as e:
-        file = 'update.log'
-        with open(file, 'a') as f:
-            f.write(f"Failed to update: {e}\n")
+        while True:
+            try:
+                if os.path.isdir(source_path):
+                    shutil.copytree(source_path, target_path, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(source_path, target_path)
+                break
+            except PermissionError:
+                time.sleep(3)
+            except Exception as e:
+                sys.stderr.write(f"Update failed: {e}\n")
+                raise
     finally:
         if os.path.exists(lock_file):
             os.remove(lock_file)

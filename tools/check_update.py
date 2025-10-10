@@ -13,6 +13,7 @@ import threading
 from .logger import get_logger
 import shutil
 from pySmartDL import SmartDL
+from .process_lock import ProcessLock
 
 update_logger = get_logger("update")
 
@@ -43,6 +44,7 @@ class CheckUpdate(QThread):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.updater_executable_path = None
+        self.process_lock = ProcessLock("aura_shell_update_check")
 
     def run(self):
         while True:
@@ -51,32 +53,37 @@ class CheckUpdate(QThread):
             time.sleep(300)
 
     def check(self) -> bool:
-        config = SCM().read_config()
-        channel = config.get("update_channel", "none")
-        if channel == "none":
+        if not self.process_lock.acquire():
             return False
-        local_version = get_version()
-        if not local_version:
-            return False
-        repo_map = {
-            "stable": "Heartestrella/AuraShell",
-            "insider": "XiaoYingYo/AuraShell"
-        }
-        repo_path = repo_map.get(channel)
-        if not repo_path:
-            return False
-        while True:
-            try:
-                api_url = f"{ProxySite}https://api.github.com/repos/{repo_path}/releases/latest"
-                response = requests.get(api_url, timeout=2)
-                if response.status_code == 200:
-                    data = response.json()
-                    remote_version = data.get("tag_name")
-                    if remote_version and remote_version != local_version:
-                        return self.download_asset(data, remote_version)
-                    return False
-            except Exception as e:
-                pass
+        try:
+            config = SCM().read_config()
+            channel = config.get("update_channel", "none")
+            if channel == "none":
+                return False
+            local_version = get_version()
+            if not local_version:
+                return False
+            repo_map = {
+                "stable": "Heartestrella/AuraShell",
+                "insider": "XiaoYingYo/AuraShell"
+            }
+            repo_path = repo_map.get(channel)
+            if not repo_path:
+                return False
+            while True:
+                try:
+                    api_url = f"{ProxySite}https://api.github.com/repos/{repo_path}/releases/latest"
+                    response = requests.get(api_url, timeout=2)
+                    if response.status_code == 200:
+                        data = response.json()
+                        remote_version = data.get("tag_name")
+                        if remote_version and remote_version != local_version:
+                            return self.download_asset(data, remote_version)
+                        return False
+                except Exception as e:
+                    pass
+        finally:
+            self.process_lock.release()
 
     def _prepare_updater_executable(self):
         try:
