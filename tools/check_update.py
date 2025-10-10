@@ -47,8 +47,6 @@ class CheckUpdate(QThread):
         self.updater_executable_path = None
 
     def run(self):
-        if not is_pyinstaller_bundle():
-            return
         while True:
             if self.check():
                 break
@@ -153,9 +151,10 @@ class CheckUpdate(QThread):
         download_dir = os.path.join('tmp', 'update', 'download')
         os.makedirs(download_dir, exist_ok=True)
         file_path = os.path.join(download_dir, asset_name)
-        num_threads = 12
+        num_threads = 64
         temp_files = []
         try:
+            print(asset_url)
             with requests.head(asset_url, timeout=120) as r:
                 r.raise_for_status()
                 self.total_size = int(r.headers.get('content-length', 0))
