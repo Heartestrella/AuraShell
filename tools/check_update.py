@@ -2,7 +2,7 @@ import sys
 import os
 from .setting_config import SCM
 import requests
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import QThread
 from PyQt5.QtWidgets import QApplication
 import time
 import zipfile
@@ -10,6 +10,10 @@ import subprocess
 import psutil
 from concurrent.futures import ThreadPoolExecutor
 import threading
+from .logger import get_logger
+import shutil
+
+update_logger = get_logger("update")
 
 ProxySite = 'https://ghfast.top/'
 
@@ -17,8 +21,6 @@ def is_pyinstaller_bundle():
     return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
 
 def get_version():
-    if not is_pyinstaller_bundle():
-        return "dev"
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS
     else:
@@ -31,17 +33,16 @@ def get_version():
         return None
 
 def is_internal():
-    return os.path.exists("_internal")
+    base_path = os.path.dirname(sys.executable)
+    return os.path.exists(os.path.join(base_path, "_internal"))
 
 class CheckUpdate(QThread):
-    update_found = pyqtSignal(str)
-    update_progress = pyqtSignal(int)
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.progress_lock = threading.Lock()
         self.downloaded_size = 0
         self.total_size = 0
+        self.updater_executable_path = None
 
     def run(self):
         if not is_pyinstaller_bundle():
@@ -69,37 +70,64 @@ class CheckUpdate(QThread):
             return False
         try:
             api_url = f"https://api.github.com/repos/{repo_path}/releases/latest"
-            response = requests.get(api_url, timeout=10)
+            response = requests.get(api_url, timeout=120)
             if response.status_code == 200:
                 data = response.json()
                 remote_version = data.get("tag_name")
                 if remote_version and remote_version != local_version:
-                    self.update_found.emit(remote_version)
                     return self.download_asset(data, remote_version)
         except Exception as e:
-            print(f"Error checking for updates: {e}")
+            update_logger.error(f"Error checking for updates: {e}")
         return False
 
     def _download_chunk(self, args):
         url, start, end, part_path = args
         headers = {'Range': f'bytes={start}-{end}'}
+        while True:
+            bytes_written_this_attempt = 0
+            try:
+                with requests.get(url, headers=headers, stream=True, timeout=3) as r:
+                    r.raise_for_status()
+                    with open(part_path, 'wb') as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                            chunk_len = len(chunk)
+                            bytes_written_this_attempt += chunk_len
+                            with self.progress_lock:
+                                self.downloaded_size += chunk_len
+                    return part_path
+            except Exception as e:
+                with self.progress_lock:
+                    self.downloaded_size -= bytes_written_this_attempt
+
+    def _prepare_updater_executable(self):
         try:
-            with requests.get(url, headers=headers, stream=True, timeout=10240) as r:
-                r.raise_for_status()
-                with open(part_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                        with self.progress_lock:
-                            self.downloaded_size += len(chunk)
-                            if self.total_size > 0:
-                                progress = int(self.downloaded_size * 100 / self.total_size)
-                                self.update_progress.emit(progress)
-            return part_path
+            updater_dir = os.path.join('tmp', 'update', 'main')
+            if os.path.exists(updater_dir):
+                shutil.rmtree(updater_dir)
+            os.makedirs(updater_dir, exist_ok=True)
+            if is_internal():
+                base_dir = os.path.dirname(sys.executable)
+                source_internal_dir = os.path.join(base_dir, '_internal')
+                source_exe = sys.executable
+                if os.path.isdir(source_internal_dir):
+                    shutil.copytree(source_internal_dir, os.path.join(updater_dir, '_internal'), dirs_exist_ok=True)
+                if os.path.isfile(source_exe):
+                    shutil.copy2(source_exe, updater_dir)
+                self.updater_executable_path = os.path.join(updater_dir, os.path.basename(sys.executable))
+            else:
+                source_exe = sys.executable
+                self.updater_executable_path = os.path.join(updater_dir, os.path.basename(source_exe))
+                shutil.copy2(source_exe, self.updater_executable_path)
+            return os.path.exists(self.updater_executable_path)
         except Exception as e:
-            print(f"Failed to download chunk {part_path}: {e}")
-            raise
+            update_logger.error(f"Failed to create updater copy: {e}", exc_info=True)
+            return False
 
     def download_asset(self, release_data, version):
+        if not self._prepare_updater_executable():
+            update_logger.error("Failed to prepare updater executable. Aborting update download.")
+            return False
         asset_name = None
         if sys.platform == "win32":
             if is_internal():
@@ -111,7 +139,7 @@ class CheckUpdate(QThread):
         elif sys.platform == "darwin":
             asset_name = "AuraShell-Macos"
         if not asset_name:
-            print(f"Unsupported OS for update: {sys.platform}")
+            update_logger.error(f"Unsupported OS for update: {sys.platform}")
             return False
         asset_url = None
         for asset in release_data.get('assets', []):
@@ -119,19 +147,18 @@ class CheckUpdate(QThread):
                 asset_url = f"{ProxySite}{asset.get('browser_download_url')}"
                 break
         if not asset_url:
-            print(f"Asset '{asset_name}' not found in release {version}")
+            update_logger.error(f"Asset '{asset_name}' not found in release {version}")
             return False
-        download_dir = os.path.join('tmp', 'update')
+        download_dir = os.path.join('tmp', 'update', 'download')
         os.makedirs(download_dir, exist_ok=True)
         file_path = os.path.join(download_dir, asset_name)
         num_threads = 32
         temp_files = []
         try:
-            with requests.head(asset_url, timeout=10) as r:
+            with requests.head(asset_url, timeout=120) as r:
                 r.raise_for_status()
                 self.total_size = int(r.headers.get('content-length', 0))
             self.downloaded_size = 0
-            self.update_progress.emit(0)
             chunk_size = self.total_size // num_threads
             chunks = []
             for i in range(num_threads):
@@ -150,7 +177,7 @@ class CheckUpdate(QThread):
                         final_file.write(part_file.read())
             return self.apply_update(file_path)
         except Exception as e:
-            print(f"Download failed: {e}")
+            update_logger.error(f"Download failed: {e}")
             return False
         finally:
             for temp_file in temp_files:
@@ -161,29 +188,44 @@ class CheckUpdate(QThread):
     def apply_update(self, file_path):
         if not is_pyinstaller_bundle():
             return True
-        update_dir = os.path.dirname(file_path)
-        source_path = file_path
-        if file_path.endswith('.zip'):
-            unpacked_dir = os.path.join(update_dir, 'unpacked')
-            if os.path.exists(unpacked_dir):
-                import shutil
-                shutil.rmtree(unpacked_dir)
-            with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                zip_ref.extractall(unpacked_dir)
-            extracted_items = os.listdir(unpacked_dir)
-            if len(extracted_items) == 1:
-                 source_path = os.path.join(unpacked_dir, extracted_items[0])
+        try:
+            update_dir = os.path.dirname(file_path)
+            source_path = file_path
+            if file_path.endswith('.zip'):
+                unpacked_dir = os.path.join(update_dir, 'unpacked')
+                if os.path.exists(unpacked_dir):
+                    import shutil
+                    shutil.rmtree(unpacked_dir)
+                try:
+                    with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                        zip_ref.extractall(unpacked_dir)
+                except zipfile.BadZipFile as e:
+                    update_logger.error(f"Invalid zip file: {e}")
+                    return False
+                except Exception as e:
+                    update_logger.error(f"Failed to extract zip file: {e}")
+                    return False
+                extracted_items = os.listdir(unpacked_dir)
+                if len(extracted_items) == 1:
+                    source_path = os.path.join(unpacked_dir, extracted_items[0])
+                else:
+                    source_path = unpacked_dir
+            current_pid = os.getpid()
+            if is_internal():
+                target_path = os.path.dirname(sys.executable)
             else:
-                 source_path = unpacked_dir
-        updater_script = os.path.join(sys._MEIPASS, 'tools', 'updater.py') if getattr(sys, 'frozen', False) else os.path.join(os.path.abspath("."), "tools", "updater.py")
-        current_pid = os.getpid()
-        if is_internal():
-             target_path = os.path.abspath(os.path.join(os.path.dirname(sys.executable), '..', '_internal'))
-        else:
-             target_path = sys.executable
-        if not os.path.exists(updater_script):
-             print("Updater script not found!")
-             return False
-        args = [sys.executable, updater_script, str(current_pid), source_path, target_path]
-        subprocess.Popen(args)
-        return True
+                target_path = sys.executable
+            executable = self.updater_executable_path
+            if not executable or not os.path.exists(executable):
+                update_logger.error("Updater executable copy not found!")
+                return False
+            args = [executable, '--update', str(current_pid), source_path, target_path]
+            try:
+                subprocess.Popen(args, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0, close_fds=True)
+                return True
+            except Exception as e:
+                update_logger.error(f"Failed to start updater: {e}")
+                return False
+        except Exception as e:
+            update_logger.error(f"Error during update: {e}")
+            return False

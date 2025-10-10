@@ -1637,7 +1637,6 @@ def check_for_update_lock_and_recover():
             target_path = sys.executable
         app_dir = os.path.dirname(target_path)
         lock_file = os.path.join(app_dir, 'update.lock')
-        backup_path = f"{target_path}.bak"
         if os.path.exists(lock_file):
             pid = None
             try:
@@ -1650,34 +1649,9 @@ def check_for_update_lock_and_recover():
                 QMessageBox.information(None, "Update in Progress", "An update is currently in progress. The application will start automatically when it's done.")
                 return True
             else:
-                app_temp = QApplication(sys.argv)
-                if os.path.exists(backup_path):
-                    try:
-                        if os.path.exists(target_path):
-                            if os.path.isdir(target_path):
-                                shutil.rmtree(target_path)
-                            else:
-                                os.remove(target_path)
-                        os.rename(backup_path, target_path)
-                        if os.path.exists(lock_file):
-                            os.remove(lock_file)
-                        QMessageBox.warning(None, "Update Failed", "A previous update failed to complete. The application has been restored to its previous version. Please try updating again.")
-                    except Exception as e:
-                        QMessageBox.critical(None, "Recovery Failed", f"A critical error occurred during recovery: {e}\nPlease reinstall the application.")
-                else:
-                    if os.path.exists(lock_file):
-                        os.remove(lock_file)
-                    return False
-                return True
-        elif os.path.exists(backup_path):
-            try:
-                if os.path.isdir(backup_path):
-                    shutil.rmtree(backup_path)
-                else:
-                    os.remove(backup_path)
-            except Exception as e:
-                print(f"Could not remove old backup {backup_path}: {e}")
-        
+                if os.path.exists(lock_file):
+                    os.remove(lock_file)
+                return False
         return False
     except Exception as e:
         app_temp = QApplication(sys.argv)
@@ -1685,6 +1659,13 @@ def check_for_update_lock_and_recover():
         return True
 
 if __name__ == '__main__':
+    if len(sys.argv) > 1 and sys.argv[1] == '--update':
+        from tools.updater import main as updater_main
+        updater_args = [sys.argv[0]] + sys.argv[2:]
+        sys.argv = updater_args
+        updater_main()
+        sys.exit(0)
+        
     if check_for_update_lock_and_recover():
         sys.exit()
     config_dir = Path.home() / ".config" / "pyqt-ssh"
