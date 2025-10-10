@@ -113,12 +113,12 @@ jobs:
       - name: 编译打包 (Windows)
         if: runner.os == 'Windows' && matrix.build_type == 'file'
         run: |
-          python -m PyInstaller --add-data "version.txt${{ matrix.separator }}." AuraShell_onefile.spec
+          python -m PyInstaller AuraShell_onefile.spec
 
       - name: 编译打包 (Windows - Folder)
         if: runner.os == 'Windows' && matrix.build_type == 'folder'
         run: |
-          python -m PyInstaller --add-data "version.txt${{ matrix.separator }}." AuraShell.spec
+          python -m PyInstaller AuraShell.spec
           powershell -Command "Compress-Archive -Path 'dist\${{ matrix.build_name }}\*' -DestinationPath 'dist\AuraShell-Windows.zip' -Force"
 
       - name: 编译打包 (Linux)

@@ -5,6 +5,8 @@ import requests
 from PyQt5.QtCore import QThread
 import time
 
+ProxySite = ''
+
 def get_version():
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS
