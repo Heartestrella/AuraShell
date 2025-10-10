@@ -1080,10 +1080,7 @@ class Window(FramelessWindow):
 
         version = get_version()
         if version:
-            version_widget = NavigationAvatarWidget(
-                f"Version {version}",
-                resource_path('resource/icons/update.svg')
-            )
+            version_widget = NavigationAvatarWidget(version, resource_path('resource/icons/update.svg'))
             self.navigationInterface.addWidget(
                 routeKey='version_widget',
                 widget=version_widget,

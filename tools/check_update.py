@@ -8,6 +8,7 @@ import time
 import zipfile
 import subprocess
 import psutil
+from concurrent.futures import ThreadPoolExecutor
 
 ProxySite = ''
 
@@ -69,6 +70,20 @@ class CheckUpdate(QThread):
             print(f"Error checking for updates: {e}")
         return False
 
+    def _download_chunk(self, args):
+        url, start, end, part_path = args
+        headers = {'Range': f'bytes={start}-{end}'}
+        try:
+            with requests.get(url, headers=headers, stream=True, timeout=10240) as r:
+                r.raise_for_status()
+                with open(part_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            return part_path
+        except Exception as e:
+            print(f"Failed to download chunk {part_path}: {e}")
+            raise
+
     def download_asset(self, release_data, version):
         asset_name = None
         if sys.platform == "win32":
@@ -91,18 +106,39 @@ class CheckUpdate(QThread):
         if not asset_url:
             print(f"Asset '{asset_name}' not found in release {version}")
             return False
+        download_dir = os.path.join('tmp', 'update')
+        os.makedirs(download_dir, exist_ok=True)
+        file_path = os.path.join(download_dir, asset_name)
+        num_threads = 12
+        temp_files = []
         try:
-            download_dir = os.path.join('tmp', 'update')
-            os.makedirs(download_dir, exist_ok=True)
-            file_path = os.path.join(download_dir, asset_name)
-            with requests.get(asset_url, stream=True, timeout=10240) as r:
+            with requests.head(asset_url, timeout=10) as r:
                 r.raise_for_status()
-                with open(file_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
+                total_size = int(r.headers.get('content-length', 0))
+            chunk_size = total_size // num_threads
+            chunks = []
+            for i in range(num_threads):
+                start = i * chunk_size
+                end = start + chunk_size - 1
+                if i == num_threads - 1:
+                    end = total_size - 1
+                part_path = f"{file_path}.part{i}"
+                temp_files.append(part_path)
+                chunks.append((asset_url, start, end, part_path))
+            with ThreadPoolExecutor(max_workers=num_threads) as executor:
+                list(executor.map(self._download_chunk, chunks))
+            with open(file_path, 'wb') as final_file:
+                for part_path in temp_files:
+                    with open(part_path, 'rb') as part_file:
+                        final_file.write(part_file.read())
             return self.apply_update(file_path)
         except Exception as e:
             print(f"Download failed: {e}")
+            return False
+        finally:
+            for temp_file in temp_files:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
 
     def apply_update(self, file_path):
         update_dir = os.path.dirname(file_path)
