@@ -186,7 +186,7 @@ class Window(FramelessWindow):
 
         self.checker = CheckUpdate()
         self.checker.start()
-        app.aboutToQuit.connect(update_thread.stop)
+        app.aboutToQuit.connect(self.checker.stop)
 
     def set_background_opacity(self, opacity: float):
         if not self._bg_pixmap:
@@ -1625,8 +1625,13 @@ def update_splash_progress(step, total_steps=10, message=""):
     except Exception as e:
         pass
 
+def is_pyinstaller_bundle():
+    return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+
 def check_for_update_lock_and_recover():
     try:
+        if not is_pyinstaller_bundle():
+            return False
         def is_internal_local():
             if getattr(sys, 'frozen', False):
                 base_path = os.path.dirname(sys.executable)
