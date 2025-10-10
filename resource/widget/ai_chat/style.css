@@ -73,6 +73,8 @@ body {
 .message-group.ai {
   align-self: flex-start;
   align-items: flex-start;
+  max-width: 100%;
+  width: 100%;
 }
 .message-group.system {
   width: 100%;
@@ -159,6 +161,10 @@ body {
   border-radius: 15px;
   line-height: 1.6;
   width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 .message-content {
   background-color: var(--message-bg-color);
@@ -221,6 +227,9 @@ body {
   color: #9cdcfe;
   white-space: pre-wrap;
   word-break: break-all;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 .message-content pre {
   margin: 10px 0;
@@ -233,6 +242,8 @@ body {
   border-radius: 5px;
   display: block;
   overflow-x: auto;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .tool-call-card {
   background-color: var(--message-bg-color);
