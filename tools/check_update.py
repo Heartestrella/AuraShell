@@ -51,11 +51,10 @@ class CheckUpdate(QThread):
     def run(self):
         if not is_pyinstaller_bundle():
             return
-        # while True:
-        #     if self.check():
-        #         break
-        #     time.sleep(300)
-        self.check()
+        while True:
+            if self.check():
+                break
+            time.sleep(300)
 
     def check(self) -> bool:
         config = SCM().read_config()
