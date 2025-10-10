@@ -44,8 +44,8 @@ class CheckUpdate(QThread):
         self.total_size = 0
 
     def run(self):
-        # if not is_pyinstaller_bundle():
-        #     return
+        if not is_pyinstaller_bundle():
+            return
         # while True:
         #     if self.check():
         #         break
@@ -156,10 +156,10 @@ class CheckUpdate(QThread):
             for temp_file in temp_files:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
+        return False
 
     def apply_update(self, file_path):
         if not is_pyinstaller_bundle():
-            QApplication.instance().quit()
             return True
         update_dir = os.path.dirname(file_path)
         source_path = file_path
