@@ -2,20 +2,23 @@ import sys
 import os
 from .setting_config import SCM
 import requests
-from PyQt5.QtCore import QThread
+from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtWidgets import QApplication
 import time
 import zipfile
 import subprocess
 import psutil
 from concurrent.futures import ThreadPoolExecutor
+import threading
 
-ProxySite = ''
+ProxySite = 'https://ghfast.top/'
 
 def is_pyinstaller_bundle():
     return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
 
 def get_version():
+    if not is_pyinstaller_bundle():
+        return "dev"
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS
     else:
@@ -31,12 +34,18 @@ def is_internal():
     return os.path.exists("_internal")
 
 class CheckUpdate(QThread):
+    update_found = pyqtSignal(str)
+    update_progress = pyqtSignal(int)
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.progress_lock = threading.Lock()
+        self.downloaded_size = 0
+        self.total_size = 0
 
     def run(self):
-        if not is_pyinstaller_bundle():
-            return
+        # if not is_pyinstaller_bundle():
+        #     return
         # while True:
         #     if self.check():
         #         break
@@ -65,6 +74,7 @@ class CheckUpdate(QThread):
                 data = response.json()
                 remote_version = data.get("tag_name")
                 if remote_version and remote_version != local_version:
+                    self.update_found.emit(remote_version)
                     return self.download_asset(data, remote_version)
         except Exception as e:
             print(f"Error checking for updates: {e}")
@@ -79,6 +89,11 @@ class CheckUpdate(QThread):
                 with open(part_path, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
+                        with self.progress_lock:
+                            self.downloaded_size += len(chunk)
+                            if self.total_size > 0:
+                                progress = int(self.downloaded_size * 100 / self.total_size)
+                                self.update_progress.emit(progress)
             return part_path
         except Exception as e:
             print(f"Failed to download chunk {part_path}: {e}")
@@ -101,7 +116,7 @@ class CheckUpdate(QThread):
         asset_url = None
         for asset in release_data.get('assets', []):
             if asset.get('name') == asset_name:
-                asset_url = asset.get('browser_download_url')
+                asset_url = f"{ProxySite}{asset.get('browser_download_url')}"
                 break
         if not asset_url:
             print(f"Asset '{asset_name}' not found in release {version}")
@@ -109,19 +124,21 @@ class CheckUpdate(QThread):
         download_dir = os.path.join('tmp', 'update')
         os.makedirs(download_dir, exist_ok=True)
         file_path = os.path.join(download_dir, asset_name)
-        num_threads = 12
+        num_threads = 32
         temp_files = []
         try:
             with requests.head(asset_url, timeout=10) as r:
                 r.raise_for_status()
-                total_size = int(r.headers.get('content-length', 0))
-            chunk_size = total_size // num_threads
+                self.total_size = int(r.headers.get('content-length', 0))
+            self.downloaded_size = 0
+            self.update_progress.emit(0)
+            chunk_size = self.total_size // num_threads
             chunks = []
             for i in range(num_threads):
                 start = i * chunk_size
                 end = start + chunk_size - 1
                 if i == num_threads - 1:
-                    end = total_size - 1
+                    end = self.total_size - 1
                 part_path = f"{file_path}.part{i}"
                 temp_files.append(part_path)
                 chunks.append((asset_url, start, end, part_path))
@@ -141,6 +158,9 @@ class CheckUpdate(QThread):
                     os.remove(temp_file)
 
     def apply_update(self, file_path):
+        if not is_pyinstaller_bundle():
+            QApplication.instance().quit()
+            return True
         update_dir = os.path.dirname(file_path)
         source_path = file_path
         if file_path.endswith('.zip'):
@@ -166,5 +186,4 @@ class CheckUpdate(QThread):
              return False
         args = [sys.executable, updater_script, str(current_pid), source_path, target_path]
         subprocess.Popen(args)
-        QApplication.instance().quit()
         return True

@@ -186,20 +186,6 @@ class Window(FramelessWindow):
 
         self.checker = CheckUpdate()
         self.checker.start()
-        self._show_version_info()
-
-    def _show_version_info(self):
-        version = get_version()
-        if version:
-            InfoBar.info(
-                title=self.tr("Current Version"),
-                content=version,
-                orient=Qt.Horizontal,
-                isClosable=True,
-                position=InfoBarPosition.BOTTOM_RIGHT,
-                duration=5000,
-                parent=self
-            )
 
     def set_background_opacity(self, opacity: float):
         if not self._bg_pixmap:
