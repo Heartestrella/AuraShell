@@ -33,7 +33,7 @@ from widgets.side_panel import SidePanelWidget, AutoFitImageLabel
 from widgets.expander_bar import ExpanderBar
 import magic
 import traceback
-from tools.check_update import CheckUpdate
+from tools.check_update import CheckUpdate, get_version
 import sys
 import os
 import pyperclip as cb
@@ -185,6 +185,20 @@ class Window(FramelessWindow):
 
         self.checker = CheckUpdate()
         self.checker.start()
+        self._show_version_info()
+
+    def _show_version_info(self):
+        version = get_version()
+        if version:
+            InfoBar.info(
+                title=self.tr("Current Version"),
+                content=version,
+                orient=Qt.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.BOTTOM_RIGHT,
+                duration=5000,
+                parent=self
+            )
 
     def set_background_opacity(self, opacity: float):
         if not self._bg_pixmap:
