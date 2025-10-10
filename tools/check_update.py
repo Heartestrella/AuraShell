@@ -153,7 +153,7 @@ class CheckUpdate(QThread):
         download_dir = os.path.join('tmp', 'update', 'download')
         os.makedirs(download_dir, exist_ok=True)
         file_path = os.path.join(download_dir, asset_name)
-        num_threads = 32
+        num_threads = 12
         temp_files = []
         try:
             with requests.head(asset_url, timeout=120) as r:
