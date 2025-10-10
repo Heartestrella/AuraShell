@@ -1,6 +1,48 @@
 from PyQt5.QtWidgets import QHBoxLayout, QLabel, QFileDialog, QWidget
-from qfluentwidgets import LineEdit, ComboBox, SubtitleLabel, MessageBoxBase, PushButton, InfoBar, InfoBarPosition, PasswordLineEdit
+from qfluentwidgets import LineEdit, ComboBox, SubtitleLabel, MessageBoxBase, PushButton, InfoBar, InfoBarPosition, PasswordLineEdit, CheckBox
+
 from PyQt5.QtCore import Qt, QDir
+
+
+def set_font_recursive(widget: QWidget, font):
+    """
+    Recursively set the font for a widget and all its children.
+    """
+    if font is None:
+        return
+    widget.setFont(font)
+    for child in widget.findChildren(QWidget):
+        child.setFont(font)
+
+
+class PasswordDialog(MessageBoxBase):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._font = getattr(parent, "fonts", None)
+        self.titleLabel = SubtitleLabel(self.tr('Please Enter Password'))
+        self.yesButton.setText(self.tr("Connect"))
+        self.cancelButton.setText(self.tr("Cancel"))
+
+        self.password = PasswordLineEdit()
+        self.save_password = CheckBox("Save password")
+        self.save_password.stateChanged.connect(
+            lambda: print(self.save_password.isChecked()))
+
+        password_layout = QHBoxLayout()
+        save_check_layout = QHBoxLayout()
+
+        password_layout.addWidget(QLabel(self.tr("Enter Password:")))
+        password_layout.addWidget(self.password)
+        password_layout.setStretch(1, 1)
+
+        save_check_layout.addWidget(self.save_password)
+        save_check_layout.setStretch(1, 1)
+
+        self.viewLayout.addWidget(self.titleLabel)
+        self.viewLayout.addLayout(password_layout)
+        self.viewLayout.addLayout(save_check_layout)
+
+        set_font_recursive(self, self._font)
 
 
 class SessionDialog(MessageBoxBase):
@@ -74,21 +116,26 @@ class SessionDialog(MessageBoxBase):
         auth_layout.setStretch(1, 1)
 
         # Set SSH Default path
-        self.ssh_default_path.setPlaceholderText(self.tr("After connecting to the software, you will enter the SSH directory by default."))
+        self.ssh_default_path.setPlaceholderText(self.tr(
+            "After connecting to the software, you will enter the SSH directory by default."))
         ssh_default_path_layout = QHBoxLayout()
         ssh_default_path_layout.addWidget(QLabel(self.tr("SSH Default Path:")))
         ssh_default_path_layout.addWidget(self.ssh_default_path)
         ssh_default_path_layout.setStretch(1, 1)
 
         # Set File Manager Default path
-        self.file_manager_default_path.setPlaceholderText(self.tr("After connecting the software, you will enter the file manager directory by default."))
+        self.file_manager_default_path.setPlaceholderText(self.tr(
+            "After connecting the software, you will enter the file manager directory by default."))
         file_manager_default_path_layout = QHBoxLayout()
-        file_manager_default_path_layout.addWidget(QLabel(self.tr("File Manager Default Path:")))
-        file_manager_default_path_layout.addWidget(self.file_manager_default_path)
+        file_manager_default_path_layout.addWidget(
+            QLabel(self.tr("File Manager Default Path:")))
+        file_manager_default_path_layout.addWidget(
+            self.file_manager_default_path)
         file_manager_default_path_layout.setStretch(1, 1)
 
         # Password
-        self.password.setPlaceholderText(self.tr("Enter password"))
+        self.password.setPlaceholderText(
+            self.tr("Enter password if none.If empty, enter when connecting"))
         self.password.setEchoMode(LineEdit.Password)
         password_layout = QHBoxLayout()
         password_layout.addWidget(QLabel(self.tr("Password:")))
@@ -125,7 +172,7 @@ class SessionDialog(MessageBoxBase):
         self.widget.setMinimumWidth(400)
         self._on_auth_changed(0)  # Initialize to password authentication
 
-        self.set_font_recursive(self, self._font)
+        set_font_recursive(self, self._font)
 
     def _setup_proxy_ui(self):
         # Proxy Type
@@ -189,16 +236,6 @@ class SessionDialog(MessageBoxBase):
         is_proxy_enabled = self.proxy_type_combo.currentText() != "None"
         for widget in self.proxy_widgets:
             widget.setVisible(is_proxy_enabled)
-
-    def set_font_recursive(self, widget: QWidget, font):
-        """
-        Recursively set the font for a widget and all its children.
-        """
-        if font is None:
-            return
-        widget.setFont(font)
-        for child in widget.findChildren(QWidget):
-            child.setFont(font)
 
     def _on_auth_changed(self, index):
         if index == 0:  # Password

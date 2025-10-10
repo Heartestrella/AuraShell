@@ -12,12 +12,14 @@ import socket
 import uuid
 import time
 
+
 class SSHWorker(QThread):
     result_ready = pyqtSignal(bytes)
     connected = pyqtSignal(bool, str)
     error_occurred = pyqtSignal(str)
     sys_resource = pyqtSignal(dict)
     file_tree_updated = pyqtSignal(dict)
+    auth_error = pyqtSignal(str)
     # host_key , processes_md5 key
     key_verification = pyqtSignal(str, str)
     stop_timer_sig = pyqtSignal()
@@ -98,14 +100,17 @@ class SSHWorker(QThread):
             self.conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
             sock = self._create_socket()
-
-            if self.auth_type == "password":
-                self.conn.connect(self.host, username=self.user,
-                                  password=self.password, timeout=10, port=self.port, sock=sock)
-            else:
-                self.conn.connect(self.host, username=self.user,
-                                  key_filename=self.key_path, timeout=10, port=self.port, sock=sock)
-
+            try:
+                if self.auth_type == "password":
+                    self.conn.connect(self.host, username=self.user,
+                                      password=self.password, timeout=10, port=self.port, sock=sock)
+                else:
+                    self.conn.connect(self.host, username=self.user,
+                                      key_filename=self.key_path, timeout=10, port=self.port, sock=sock)
+            except paramiko.AuthenticationException as e:
+                error_msg = self.tr(f"Identity verification failed {e}")
+                self.auth_error.emit(error_msg)
+                self._cleanup()
             transport = self.conn.get_transport()
             transport.set_keepalive(30)
             self.channel = transport.open_session()
@@ -135,7 +140,8 @@ class SSHWorker(QThread):
                         self.error_occurred.emit(err)
                     else:
                         try:
-                            print(f"上传本地 {self.local_proc} 到远端 {self.remote_proc} ...")
+                            print(
+                                f"上传本地 {self.local_proc} 到远端 {self.remote_proc} ...")
                             with open(self.local_proc, 'rb') as f:
                                 content = f.read()
                             content = content.replace(b'\r\n', b'\n')
@@ -196,12 +202,15 @@ class SSHWorker(QThread):
                     self.error_occurred.emit(f"启动 processes 失败：{e}")
             self.exec_()
             self._cleanup()
+
         except socks.ProxyError as e:
             error_msg = f"Proxy Error: {e}"
             self.error_occurred.emit(error_msg)
+            # self._cleanup()
         except Exception as e:
             tb = traceback.format_exc()
             self.error_occurred.emit(f"{e}\n{tb}")
+            # self._cleanup()
 
     def _create_socket(self):
         if self.proxy_type == 'None' or not self.proxy_host or not self.proxy_port:
@@ -453,7 +462,8 @@ class SSHWorker(QThread):
 
     def execute_command_and_capture(self, command: str):
         if self.is_capturing:
-            self.error_occurred.emit("Another command capture is already in progress.")
+            self.error_occurred.emit(
+                "Another command capture is already in progress.")
             return
         unique_id = str(uuid.uuid4())
         self.start_marker = f"START_CMD_MARKER_{unique_id}"
@@ -467,7 +477,8 @@ class SSHWorker(QThread):
         if self.completion_timer:
             self.completion_timer.stop()
         self.completion_timer = QTimer(self)
-        self.completion_timer.timeout.connect(self._check_interactive_completion)
+        self.completion_timer.timeout.connect(
+            self._check_interactive_completion)
         self.completion_timer.start(500)
 
     def _process_capture_buffer(self, force=False):
@@ -507,7 +518,8 @@ class SSHWorker(QThread):
                         b'$' in last_line and b'#' in last_line):
                     actual_content_bytes = b'\n'.join(lines[:-1])
             actual_content_bytes = actual_content_bytes.rstrip(b'\r\n \t')
-            exit_code = int(exit_code_match.group(1).decode()) if exit_code_match else 0
+            exit_code = int(exit_code_match.group(
+                1).decode()) if exit_code_match else 0
             output_str = actual_content_bytes.decode('utf-8', errors='replace')
             output_str = re.sub(r'\x1b\[[0-9;]*m', '', output_str)
             output_str = re.sub(r'\x1b\[\??[0-9;]*[a-zA-Z]', '', output_str)
@@ -519,7 +531,7 @@ class SSHWorker(QThread):
         except Exception as e:
             self.error_occurred.emit(f"Error processing command output: {e}")
             self._reset_capture_state()
-    
+
     def _reset_capture_state(self):
         self.is_capturing = False
         self.capture_buffer = b""
@@ -529,7 +541,7 @@ class SSHWorker(QThread):
         if self.completion_timer:
             self.completion_timer.stop()
             self.completion_timer = None
-    
+
     def _check_interactive_completion(self):
         try:
             if not self.is_capturing or self.command_completed:
@@ -538,7 +550,8 @@ class SSHWorker(QThread):
             lines = text.splitlines()
             if not lines:
                 return
-            last_line = re.sub(r'\x1b\[[0-9;?]*[a-zA-Z]', '', lines[-1]).strip()
+            last_line = re.sub(
+                r'\x1b\[[0-9;?]*[a-zA-Z]', '', lines[-1]).strip()
             prompt_patterns = [
                 r'(?:\([^\)]+\)\s)?\S+@\S+:.*[\$#]\s*$',
                 r'\[\S+@\S+\s+\S+\][\$#]\s*$',
@@ -548,7 +561,8 @@ class SSHWorker(QThread):
                     self.command_completed = True
                     if self.completion_timer:
                         self.completion_timer.stop()
-                    self.run_command(f'EXIT_CODE=$?; echo "{self.end_marker}:$EXIT_CODE"')
+                    self.run_command(
+                        f'EXIT_CODE=$?; echo "{self.end_marker}:$EXIT_CODE"')
                     return
         except Exception as e:
             print(f"Error checking interactive completion: {e}")
@@ -559,7 +573,8 @@ class SSHWorker(QThread):
         try:
             if not self.conn:
                 return None, "SSH main connection is not available.", -1
-            stdin, stdout, stderr = self.conn.exec_command(command, timeout=timeout)
+            stdin, stdout, stderr = self.conn.exec_command(
+                command, timeout=timeout)
             exit_code = stdout.channel.recv_exit_status()
             output = stdout.read().decode('utf-8', errors='ignore')
             error = stderr.read().decode('utf-8', errors='ignore')

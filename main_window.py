@@ -38,6 +38,7 @@ import sys
 import os
 import pyperclip as cb
 import psutil
+from widgets.session_dialog import PasswordDialog
 
 try:
     import ctypes
@@ -616,6 +617,18 @@ class Window(FramelessWindow):
     def _start_ssh_connect(self, widget_key):
         parent_key = widget_key.split("-")[0].strip()
         session = self.sessionmanager.get_session_by_name(parent_key)
+        processes = None
+
+        def on_auth_error(e=None):
+            update_password, reshow = self.verify_password(
+                session, reinput=True)
+            if update_password and (not reshow):
+                start_processes()
+            elif reshow:
+                on_auth_error()
+            else:
+                self._on_ssh_error(
+                    self.tr("The user did not enter a password. Connection canceled."))
 
         def key_verification(file_md5, host_key):
             msg = ''
@@ -644,6 +657,7 @@ class Window(FramelessWindow):
                 start_real_connection()
 
         def start_real_connection():
+            nonlocal processes
             session_widget = self.session_widgets[widget_key]
             # processes = SSHWorker(session, for_resources=True)
             # processes.key_verification.connect(key_verification)
@@ -678,7 +692,6 @@ class Window(FramelessWindow):
                     partial(_on_path_check_result,
                             widget_key), Qt.QueuedConnection
                 )
-
             file_manager.sftp_ready.connect(on_sftp_ready)
             file_manager.start()
 
@@ -709,10 +722,15 @@ class Window(FramelessWindow):
                 lambda checked, ck=widget_key: self._refresh_paths(ck)
             )
 
-        processes = SSHWorker(session, for_resources=True)
-        self.ssh_session[f'{widget_key}-processes'] = processes
-        processes.key_verification.connect(key_verification)
-        processes.start()
+        def start_processes():
+            nonlocal processes
+            processes = SSHWorker(session, for_resources=True)
+            processes.auth_error.connect(lambda e: on_auth_error(e))
+            self.ssh_session[f'{widget_key}-processes'] = processes
+            processes.key_verification.connect(key_verification)
+            processes.start()
+
+        start_processes()
 
     def _open_server_files(self, path: str, type_: str, widget_key: str):
         config = setting_.read_config()
@@ -912,6 +930,33 @@ class Window(FramelessWindow):
                 count += 1
         return count
 
+    def verify_password(self, session, reinput: bool = False) -> bool:
+        '''verify password is or not None and incorrect if reinput is true it means password incorrec
+        the second returned parameter indicates whether to continue displaying. '''
+        if (not session.password) or reinput:
+            password_box = PasswordDialog(self)
+            if password_box.exec_():
+                password = password_box.password.text()
+                if not password:
+                    InfoBar.error(
+                        title=self.tr('Password is None'),
+                        content=self.tr(
+                            f"The password entered is empty. The connection will not continue."),
+                        orient=Qt.Horizontal,
+                        isClosable=True,
+                        position=InfoBarPosition.TOP_RIGHT,
+                        duration=10000,
+                        parent=self
+                    )
+                    return False, True
+                session.password = password
+                if password_box.save_password.isChecked():
+                    session.save(self.sessionmanager)
+                return True, False
+            else:
+                return False, False
+        return True, False
+
     def _on_session_selected(self, session_id=None, session_name=None):
         """Handling session selection"""
         now = time.time()
@@ -928,6 +973,10 @@ class Window(FramelessWindow):
         if not session:
             print(
                 "Warning: _on_session_selected called with no valid session identifier.")
+            return
+
+        update, reshow = self.verify_password(session=session)
+        if not update:
             return
         if debounce_key:
             last_click_time = self.last_session_click_time.get(debounce_key, 0)
@@ -1193,31 +1242,42 @@ class Window(FramelessWindow):
                 current_ssh_widget = self.ssh_page.sshStack.currentWidget()
                 if isinstance(current_ssh_widget, SSHWidget):
 
-                    QTimer.singleShot(150, current_ssh_widget.force_set_left_panel_width)
-        
+                    QTimer.singleShot(
+                        150, current_ssh_widget.force_set_left_panel_width)
+
         config = setting_.read_config()
         animation_type = config.get("page_animation", "slide_fade")
-        
+
         if animation_type == "slide_fade":
-            self.page_animator.slide_fade_transition(from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
+            self.page_animator.slide_fade_transition(
+                from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
         elif animation_type == "zoom_in":
-            self.page_animator.zoom_in_transition(from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
+            self.page_animator.zoom_in_transition(
+                from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
         elif animation_type == "zoom_out":
-            self.page_animator.zoom_out_transition(from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
+            self.page_animator.zoom_out_transition(
+                from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
         elif animation_type == "cross_fade":
-            self.page_animator.cross_fade_transition(from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
+            self.page_animator.cross_fade_transition(
+                from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
         elif animation_type == "bounce":
-            self.page_animator.bounce_transition(from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
+            self.page_animator.bounce_transition(
+                from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
         elif animation_type == "elastic":
-            self.page_animator.elastic_transition(from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
+            self.page_animator.elastic_transition(
+                from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
         elif animation_type == "fade_scale":
-            self.page_animator.fade_scale_transition(from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
+            self.page_animator.fade_scale_transition(
+                from_widget=current_widget, to_widget=widget, on_finished=on_animation_finished)
         elif animation_type == "slide_scale":
-            self.page_animator.slide_scale_transition(from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
+            self.page_animator.slide_scale_transition(
+                from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
         elif animation_type == "stack":
-            self.page_animator.stack_transition(from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
+            self.page_animator.stack_transition(
+                from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
         else:
-            self.page_animator.slide_fade_transition(from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
+            self.page_animator.slide_fade_transition(
+                from_widget=current_widget, to_widget=widget, direction=direction, on_finished=on_animation_finished)
 
     def onCurrentInterfaceChanged(self, index):
         widget = self.stackWidget.widget(index)
@@ -1604,7 +1664,7 @@ def excepthook(exc_type, exc_value, exc_traceback):
     QMessageBox.critical(None, "程序出错", error_msg)
 
 
-sys.excepthook = excepthook
+# sys.excepthook = excepthook
 
 
 def update_splash_progress(step, total_steps=10, message=""):

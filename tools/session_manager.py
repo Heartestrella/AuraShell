@@ -61,6 +61,16 @@ class Session:
             "file_manager_default_path": self.file_manager_default_path
         }
 
+    def save(self, session_manager: 'SessionManager'):
+        sessions = session_manager.sessions_cache
+        for i, session in enumerate(sessions):
+            if session.id == self.id:
+                sessions[i] = self
+                break
+        else:
+            sessions.append(self)
+        session_manager.save_sessions(sessions)
+
     def add_command(self, command: str):
         if command.strip() and command not in self.history:
             self.history.append(command)
