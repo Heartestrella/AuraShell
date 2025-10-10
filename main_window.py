@@ -5,7 +5,7 @@ import sys
 import time
 from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
-from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter, QLabel
+from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter, QLabel, QToolButton
 from widgets.editor_widget import EditorWidget
 from qfluentwidgets import (NavigationInterface,  NavigationItemPosition, InfoBar,
                             isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget,  Dialog)
@@ -37,6 +37,7 @@ from tools.check_update import CheckUpdate, get_version
 import sys
 import os
 import pyperclip as cb
+import psutil
 
 try:
     import ctypes
@@ -1077,6 +1078,19 @@ class Window(FramelessWindow):
 
         self.addSubInterface(self.ssh_page, FIF.ALBUM, self.tr("SSH Session"))
 
+        version = get_version()
+        if version:
+            version_widget = NavigationAvatarWidget(
+                f"Version {version}",
+                resource_path('resource/icons/update.svg')
+            )
+            self.navigationInterface.addWidget(
+                routeKey='version_widget',
+                widget=version_widget,
+                onClick=lambda: None,
+                position=NavigationItemPosition.BOTTOM
+            )
+
         self.navigationInterface.addWidget(
             routeKey='sync',
             widget=NavigationAvatarWidget(
@@ -1627,8 +1641,69 @@ def update_splash_progress(step, total_steps=10, message=""):
     except Exception as e:
         pass
 
+def check_for_update_lock_and_recover():
+    try:
+        def is_internal_local():
+            if getattr(sys, 'frozen', False):
+                base_path = os.path.dirname(sys.executable)
+                return os.path.exists(os.path.join(base_path, "_internal"))
+            return os.path.exists("_internal")
+        if is_internal_local():
+            target_path = os.path.dirname(sys.executable)
+        else:
+            target_path = sys.executable
+        app_dir = os.path.dirname(target_path)
+        lock_file = os.path.join(app_dir, 'update.lock')
+        backup_path = f"{target_path}.bak"
+        if os.path.exists(lock_file):
+            pid = None
+            try:
+                with open(lock_file, 'r') as f:
+                    pid = int(f.read().strip())
+            except (ValueError, IOError):
+                pid = None
+            if pid and psutil.pid_exists(pid):
+                app_temp = QApplication(sys.argv)
+                QMessageBox.information(None, "Update in Progress", "An update is currently in progress. The application will start automatically when it's done.")
+                return True
+            else:
+                app_temp = QApplication(sys.argv)
+                if os.path.exists(backup_path):
+                    try:
+                        if os.path.exists(target_path):
+                            if os.path.isdir(target_path):
+                                shutil.rmtree(target_path)
+                            else:
+                                os.remove(target_path)
+                        os.rename(backup_path, target_path)
+                        if os.path.exists(lock_file):
+                            os.remove(lock_file)
+                        QMessageBox.warning(None, "Update Failed", "A previous update failed to complete. The application has been restored to its previous version. Please try updating again.")
+                    except Exception as e:
+                        QMessageBox.critical(None, "Recovery Failed", f"A critical error occurred during recovery: {e}\nPlease reinstall the application.")
+                else:
+                    if os.path.exists(lock_file):
+                        os.remove(lock_file)
+                    return False
+                return True
+        elif os.path.exists(backup_path):
+            try:
+                if os.path.isdir(backup_path):
+                    shutil.rmtree(backup_path)
+                else:
+                    os.remove(backup_path)
+            except Exception as e:
+                print(f"Could not remove old backup {backup_path}: {e}")
+        
+        return False
+    except Exception as e:
+        app_temp = QApplication(sys.argv)
+        QMessageBox.critical(None, "Startup Error", f"A critical error occurred during startup integrity check: {e}\nPlease reinstall the application.")
+        return True
 
 if __name__ == '__main__':
+    if check_for_update_lock_and_recover():
+        sys.exit()
     config_dir = Path.home() / ".config" / "pyqt-ssh"
     config_path = config_dir / "qfluentwidgets_config.json"
     qconfig.load(config_path)

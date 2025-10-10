@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 
-data_files = [('resource', 'resource')]
+data_files = [('resource', 'resource'), ('tools/updater.py', 'tools')]
 if os.path.exists('version.txt'):
     data_files.append(('version.txt', '.'))
 
