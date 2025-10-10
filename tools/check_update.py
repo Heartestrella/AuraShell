@@ -40,13 +40,9 @@ class CheckUpdate(QThread):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.progress_lock = threading.Lock()
-        self.stop_event = threading.Event()
         self.downloaded_size = 0
         self.total_size = 0
         self.updater_executable_path = None
-
-    def stop(self):
-        self.stop_event.set()
 
     def run(self):
         if not is_pyinstaller_bundle():
@@ -174,17 +170,12 @@ class CheckUpdate(QThread):
                 chunks.append((asset_url, start, end, part_path))
             with ThreadPoolExecutor(max_workers=num_threads) as executor:
                 list(executor.map(self._download_chunk, chunks))
-            if self.stop_event.is_set():
-                update_logger.info("Update download cancelled.")
-                return False
             with open(file_path, 'wb') as final_file:
                 for part_path in temp_files:
                     if not os.path.exists(part_path):
                         continue
                     with open(part_path, 'rb') as part_file:
                         final_file.write(part_file.read())
-            if self.stop_event.is_set():
-                return False
             return self.apply_update(file_path)
         except Exception as e:
             update_logger.error(f"Download failed: {e}")

@@ -186,7 +186,6 @@ class Window(FramelessWindow):
 
         self.checker = CheckUpdate()
         self.checker.start()
-        app.aboutToQuit.connect(self.checker.stop)
 
     def set_background_opacity(self, opacity: float):
         if not self._bg_pixmap:
