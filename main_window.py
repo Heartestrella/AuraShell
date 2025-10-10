@@ -37,7 +37,7 @@ from tools.check_update import CheckUpdate, get_version
 import sys
 import os
 import pyperclip as cb
-
+from widgets.session_dialog import PasswordDialog
 try:
     import ctypes
 except:
@@ -691,7 +691,6 @@ class Window(FramelessWindow):
                     partial(_on_path_check_result,
                             widget_key), Qt.QueuedConnection
                 )
-
             file_manager.sftp_ready.connect(on_sftp_ready)
             file_manager.start()
 
@@ -721,8 +720,8 @@ class Window(FramelessWindow):
             session_widget.disk_storage.refresh.triggered.connect(
                 lambda checked, ck=widget_key: self._refresh_paths(ck)
             )
-
         processes = SSHWorker(session, for_resources=True)
+        processes.auth_error.connect(lambda e: self._on_ssh_error(e))
         self.ssh_session[f'{widget_key}-processes'] = processes
         processes.key_verification.connect(key_verification)
         processes.start()
@@ -942,6 +941,29 @@ class Window(FramelessWindow):
             print(
                 "Warning: _on_session_selected called with no valid session identifier.")
             return
+
+        if not session.password:
+            password_box = PasswordDialog(self)
+            if password_box.exec_():
+                password = password_box.password.text()
+                if not password:
+                    InfoBar.error(
+                        title=self.tr('Password is None'),
+                        content=self.tr(
+                            f"The password entered is empty. The connection will not continue."),
+                        orient=Qt.Horizontal,
+                        isClosable=True,
+                        position=InfoBarPosition.TOP_RIGHT,
+                        duration=10000,
+                        parent=self
+                    )
+                    return
+                session.password = password
+                if password_box.save_password.isChecked():
+                    session.save(self.sessionmanager)
+            else:
+                return
+
         if debounce_key:
             last_click_time = self.last_session_click_time.get(debounce_key, 0)
             if (now - last_click_time) < 1.0:  # 1 second debounce time
@@ -1618,7 +1640,7 @@ def excepthook(exc_type, exc_value, exc_traceback):
     QMessageBox.critical(None, "程序出错", error_msg)
 
 
-sys.excepthook = excepthook
+# sys.excepthook = excepthook
 
 
 def update_splash_progress(step, total_steps=10, message=""):

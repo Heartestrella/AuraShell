@@ -7,6 +7,7 @@ import time
 
 ProxySite = ''
 
+
 def get_version():
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS
@@ -19,8 +20,10 @@ def get_version():
     except FileNotFoundError:
         return None
 
+
 def is_internal():
     return os.path.exists("_internal")
+
 
 class CheckUpdate(QThread):
     def __init__(self, parent=None):
@@ -33,28 +36,29 @@ class CheckUpdate(QThread):
         self.check()
 
     def check(self):
-        config = SCM().read_config()
-        channel = config.get("update_channel", "none")
-        if channel == "none":
-            return
-        local_version = get_version()
-        if not local_version:
-            return
-        repo_map = {
-            "stable": "Heartestrella/AuraShell",
-            "insider": "XiaoYingYo/AuraShell"
-        }
-        repo_path = repo_map.get(channel)
-        if not repo_path:
-            return
         try:
-            api_url = f"https://api.github.com/repos/{repo_path}/releases/latest"
-            response = requests.get(api_url, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                remote_version = data.get("tag_name")
-                if remote_version and remote_version != local_version:
-                    self.download_asset(data, remote_version)
+            config = SCM().read_config()
+            channel = config.get("update_channel", "none")
+            if channel == "none":
+                return
+            local_version = get_version()
+            if not local_version:
+                return
+            repo_map = {
+                "stable": "Heartestrella/AuraShell",
+                "insider": "XiaoYingYo/AuraShell"
+            }
+            repo_path = repo_map.get(channel)
+            if not repo_path:
+                return
+
+                api_url = f"https://api.github.com/repos/{repo_path}/releases/latest"
+                response = requests.get(api_url, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    remote_version = data.get("tag_name")
+                    if remote_version and remote_version != local_version:
+                        self.download_asset(data, remote_version)
         except Exception as e:
             print(f"Error checking for updates: {e}")
 
