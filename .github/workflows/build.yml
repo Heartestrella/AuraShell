@@ -110,6 +110,13 @@ jobs:
           pip install -r requirements-macos.txt
           pip install pyinstaller
 
+      - name: 清理构建缓存和临时文件
+        run: |
+          if [ -d "tmp" ]; then rm -rf tmp; fi
+          if [ -d "dist" ]; then rm -rf dist; fi
+          if [ -d "build" ]; then rm -rf build; fi
+        shell: bash
+
       - name: 编译打包 (Windows)
         if: runner.os == 'Windows' && matrix.build_type == 'file'
         run: |

@@ -1,11 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 
+data_files = [('resource', 'resource'), ('tools/updater.py', 'tools')]
+if os.path.exists('version.txt'):
+    data_files.append(('version.txt', '.'))
 
 a = Analysis(
     ['main_window.py'],
     pathex=[],
     binaries=[],
-    datas=[('resource', 'resource')],
+    datas=data_files,
     hiddenimports=['tzdata', 'scipy.special._cdflib'],
     hookspath=[],
     hooksconfig={},

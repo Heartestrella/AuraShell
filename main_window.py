@@ -5,7 +5,7 @@ import sys
 import time
 from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
-from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter, QLabel
+from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter, QLabel, QToolButton
 from widgets.editor_widget import EditorWidget
 from qfluentwidgets import (NavigationInterface,  NavigationItemPosition, InfoBar,
                             isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget,  Dialog)
@@ -37,7 +37,9 @@ from tools.check_update import CheckUpdate, get_version
 import sys
 import os
 import pyperclip as cb
+import psutil
 from widgets.session_dialog import PasswordDialog
+
 try:
     import ctypes
 except:
@@ -185,20 +187,6 @@ class Window(FramelessWindow):
 
         self.checker = CheckUpdate()
         self.checker.start()
-        self._show_version_info()
-
-    def _show_version_info(self):
-        version = get_version()
-        if version:
-            InfoBar.info(
-                title=self.tr("Current Version"),
-                content=version,
-                orient=Qt.Horizontal,
-                isClosable=True,
-                position=InfoBarPosition.BOTTOM_RIGHT,
-                duration=5000,
-                parent=self
-            )
 
     def set_background_opacity(self, opacity: float):
         if not self._bg_pixmap:
@@ -1125,6 +1113,16 @@ class Window(FramelessWindow):
 
         self.addSubInterface(self.ssh_page, FIF.ALBUM, self.tr("SSH Session"))
 
+        version = get_version()
+        if version:
+            version_widget = NavigationAvatarWidget(version, resource_path('resource/icons/update.svg'))
+            self.navigationInterface.addWidget(
+                routeKey='version_widget',
+                widget=version_widget,
+                onClick=lambda: None,
+                position=NavigationItemPosition.BOTTOM
+            )
+
         self.navigationInterface.addWidget(
             routeKey='sync',
             widget=NavigationAvatarWidget(
@@ -1686,8 +1684,57 @@ def update_splash_progress(step, total_steps=10, message=""):
     except Exception as e:
         pass
 
+def is_pyinstaller_bundle():
+    return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+
+def check_for_update_lock_and_recover():
+    try:
+        if not is_pyinstaller_bundle():
+            return False
+        def is_internal_local():
+            if getattr(sys, 'frozen', False):
+                base_path = os.path.dirname(sys.executable)
+                return os.path.exists(os.path.join(base_path, "_internal"))
+            return os.path.exists("_internal")
+        if is_internal_local():
+            target_path = os.path.dirname(sys.executable)
+        else:
+            target_path = sys.executable
+        app_dir = os.path.dirname(target_path)
+        lock_file = os.path.join(app_dir, 'update.lock')
+        if os.path.exists(lock_file):
+            pid = None
+            try:
+                with open(lock_file, 'r') as f:
+                    pid = int(f.read().strip())
+            except (ValueError, IOError):
+                pid = None
+            if pid and psutil.pid_exists(pid):
+                app_temp = QApplication(sys.argv)
+                QMessageBox.information(None, "Update in Progress", "An update is currently in progress. The application will start automatically when it's done.")
+                return True
+            else:
+                if os.path.exists(lock_file):
+                    os.remove(lock_file)
+                return False
+        return False
+    except Exception as e:
+        app_temp = QApplication(sys.argv)
+        QMessageBox.critical(None, "Startup Error", f"A critical error occurred during startup integrity check: {e}\nPlease reinstall the application.")
+        return True
 
 if __name__ == '__main__':
+    if len(sys.argv) > 1 and sys.argv[1] == '--update':
+        if pyi_splash:
+            pyi_splash.close()
+        from tools.updater import main as updater_main
+        updater_args = [sys.argv[0]] + sys.argv[2:]
+        sys.argv = updater_args
+        updater_main()
+        sys.exit(0)
+        
+    if check_for_update_lock_and_recover():
+        sys.exit()
     config_dir = Path.home() / ".config" / "pyqt-ssh"
     config_path = config_dir / "qfluentwidgets_config.json"
     qconfig.load(config_path)

@@ -3,12 +3,28 @@ import os
 from .setting_config import SCM
 import requests
 from PyQt5.QtCore import QThread
+from PyQt5.QtWidgets import QApplication
 import time
+import zipfile
+import subprocess
+import psutil
+from concurrent.futures import ThreadPoolExecutor
+import threading
+from .logger import get_logger
+import shutil
+from pySmartDL import SmartDL
+from .process_lock import ProcessLock
 
-ProxySite = ''
+update_logger = get_logger("update")
 
+ProxySite = "https://aurashell-aichatapi.beefuny.shop/proxy/"
+
+def is_pyinstaller_bundle():
+    return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
 
 def get_version():
+    # if not is_pyinstaller_bundle():
+    #     return "dev"
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS
     else:
@@ -20,49 +36,89 @@ def get_version():
     except FileNotFoundError:
         return None
 
-
 def is_internal():
-    return os.path.exists("_internal")
-
+    base_path = os.path.dirname(sys.executable)
+    return os.path.exists(os.path.join(base_path, "_internal"))
 
 class CheckUpdate(QThread):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.updater_executable_path = None
+        self.process_lock = ProcessLock("aura_shell_update_check")
 
     def run(self):
-        # while True:
-        #     self.check()
-        #     time.sleep(300)
-        self.check()
+        while True:
+            if self.check():
+                break
+            time.sleep(300)
 
-    def check(self):
+    def check(self) -> bool:
+        if not self.process_lock.acquire():
+            return False
+        try:
+            download_dir = os.path.join('tmp', 'update', 'download')
+            if os.path.exists(download_dir):
+                shutil.rmtree(download_dir)
+        except Exception as e:
+            update_logger.warning(f"Failed to clean download directory: {e}")
         try:
             config = SCM().read_config()
             channel = config.get("update_channel", "none")
             if channel == "none":
-                return
+                return False
             local_version = get_version()
             if not local_version:
-                return
+                return False
             repo_map = {
                 "stable": "Heartestrella/AuraShell",
                 "insider": "XiaoYingYo/AuraShell"
             }
             repo_path = repo_map.get(channel)
             if not repo_path:
-                return
+                return False
+            while True:
+                try:
+                    api_url = f"{ProxySite}https://api.github.com/repos/{repo_path}/releases/latest"
+                    response = requests.get(api_url, timeout=2)
+                    if response.status_code == 200:
+                        data = response.json()
+                        remote_version = data.get("tag_name")
+                        if remote_version and remote_version != local_version:
+                            return self.download_asset(data, remote_version)
+                        return False
+                except Exception as e:
+                    pass
+        finally:
+            self.process_lock.release()
 
-                api_url = f"https://api.github.com/repos/{repo_path}/releases/latest"
-                response = requests.get(api_url, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    remote_version = data.get("tag_name")
-                    if remote_version and remote_version != local_version:
-                        self.download_asset(data, remote_version)
+    def _prepare_updater_executable(self):
+        try:
+            updater_dir = os.path.join('tmp', 'update', 'main')
+            if os.path.exists(updater_dir):
+                shutil.rmtree(updater_dir)
+            os.makedirs(updater_dir, exist_ok=True)
+            if is_internal():
+                base_dir = os.path.dirname(sys.executable)
+                source_internal_dir = os.path.join(base_dir, '_internal')
+                source_exe = sys.executable
+                if os.path.isdir(source_internal_dir):
+                    shutil.copytree(source_internal_dir, os.path.join(updater_dir, '_internal'), dirs_exist_ok=True)
+                if os.path.isfile(source_exe):
+                    shutil.copy2(source_exe, updater_dir)
+                self.updater_executable_path = os.path.join(updater_dir, os.path.basename(sys.executable))
+            else:
+                source_exe = sys.executable
+                self.updater_executable_path = os.path.join(updater_dir, os.path.basename(source_exe))
+                shutil.copy2(source_exe, self.updater_executable_path)
+            return os.path.exists(self.updater_executable_path)
         except Exception as e:
-            print(f"Error checking for updates: {e}")
+            update_logger.error(f"Failed to create updater copy: {e}", exc_info=True)
+            return False
 
     def download_asset(self, release_data, version):
+        if not self._prepare_updater_executable():
+            update_logger.error("Failed to prepare updater executable. Aborting update download.")
+            return False
         asset_name = None
         if sys.platform == "win32":
             if is_internal():
@@ -74,24 +130,70 @@ class CheckUpdate(QThread):
         elif sys.platform == "darwin":
             asset_name = "AuraShell-Macos"
         if not asset_name:
-            print(f"Unsupported OS for update: {sys.platform}")
-            return
+            update_logger.error(f"Unsupported OS for update: {sys.platform}")
+            return False
         asset_url = None
         for asset in release_data.get('assets', []):
             if asset.get('name') == asset_name:
-                asset_url = asset.get('browser_download_url')
+                asset_url = f"{ProxySite}{asset.get('browser_download_url')}"
                 break
         if not asset_url:
-            print(f"Asset '{asset_name}' not found in release {version}")
-            return
+            update_logger.error(f"Asset '{asset_name}' not found in release {version}")
+            return False
+        download_dir = os.path.join('tmp', 'update', 'download')
+        os.makedirs(download_dir, exist_ok=True)
+        file_path = os.path.join(download_dir, asset_name)
         try:
-            download_dir = os.path.join('tmp', 'update')
-            os.makedirs(download_dir, exist_ok=True)
-            file_path = os.path.join(download_dir, f"{asset_name}-{version}")
-            with requests.get(asset_url, stream=True, timeout=300) as r:
-                r.raise_for_status()
-                with open(file_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
+            obj = SmartDL(asset_url, file_path, progress_bar=False, threads=8)
+            obj.start()
+            if obj.isSuccessful():
+                return self.apply_update(file_path)
+            else:
+                return False
         except Exception as e:
-            print(f"Download failed: {e}")
+            return False
+
+    def apply_update(self, file_path):
+        if not is_pyinstaller_bundle():
+            return True
+        try:
+            update_dir = os.path.dirname(file_path)
+            source_path = file_path
+            if file_path.endswith('.zip'):
+                unpacked_dir = os.path.join(update_dir, 'unpacked')
+                if os.path.exists(unpacked_dir):
+                    import shutil
+                    shutil.rmtree(unpacked_dir)
+                try:
+                    with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                        zip_ref.extractall(unpacked_dir)
+                except zipfile.BadZipFile as e:
+                    update_logger.error(f"Invalid zip file: {e}")
+                    return False
+                except Exception as e:
+                    update_logger.error(f"Failed to extract zip file: {e}")
+                    return False
+                extracted_items = os.listdir(unpacked_dir)
+                if len(extracted_items) == 1:
+                    source_path = os.path.join(unpacked_dir, extracted_items[0])
+                else:
+                    source_path = unpacked_dir
+            current_pid = os.getpid()
+            if is_internal():
+                target_path = os.path.dirname(sys.executable)
+            else:
+                target_path = sys.executable
+            executable = self.updater_executable_path
+            if not executable or not os.path.exists(executable):
+                update_logger.error("Updater executable copy not found!")
+                return False
+            args = [executable, '--update', str(current_pid), source_path, target_path]
+            try:
+                subprocess.Popen(args, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0, close_fds=True)
+                return True
+            except Exception as e:
+                update_logger.error(f"Failed to start updater: {e}")
+                return False
+        except Exception as e:
+            update_logger.error(f"Error during update: {e}")
+            return False
