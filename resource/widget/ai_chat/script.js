@@ -644,6 +644,16 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
                 cancelMcpRequest(toolRequestId);
               };
               cancelButton.addEventListener('click', abortHandler);
+              const continueButton = cancelButtonContainer.querySelector('.continue-button');
+              const continueHandler = () => {
+                backend.forceContinueTool(toolRequestId);
+              };
+              continueButton.addEventListener('click', continueHandler, { once: true });
+              if (toolCall.tool_name === 'exe_shell') {
+                continueButton.style.display = 'block';
+              } else {
+                continueButton.style.display = 'none';
+              }
               cancelButtonContainer.style.display = 'flex';
               sendButton.disabled = true;
               try {
@@ -660,6 +670,7 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
                 messagesHistory.push({ messages: mcpMessages, isMcp: true });
                 saveHistory(window.firstUserMessage, messagesHistory);
                 cancelButton.removeEventListener('click', abortHandler);
+                continueButton.removeEventListener('click', continueHandler);
                 const newController = new AbortController();
                 const newAbortHandler = () => {
                   cancelButtonContainer.style.display = 'none';
@@ -677,6 +688,9 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
                 const newAiBubble = chat.addAIBubble(newAiMessageIndex, newAiHistoryIndex);
                 newAiBubble.updateStream('');
                 const newHandler = createAIResponseHandler(newAiBubble, messageOffset, newAiMessageIndex, newAiHistoryIndex, newController, newOnComplete);
+                if (continueButton) {
+                  continueButton.style.display = 'none';
+                }
                 requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newHandler, newController.signal);
                 return;
               } catch (error) {
@@ -687,6 +701,7 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
                 }
               } finally {
                 cancelButton.removeEventListener('click', abortHandler);
+                continueButton.removeEventListener('click', continueHandler);
               }
             } else {
               systemBubble.setResult('rejected', 'User rejected the tool call.');
@@ -736,6 +751,8 @@ function retryAIMessage(bubbleElement) {
     controller.abort();
   };
   cancelButton.addEventListener('click', abortRequest);
+  const continueButton = cancelButtonContainer.querySelector('.continue-button');
+  continueButton.style.display = 'none';
   cancelButtonContainer.style.display = 'flex';
   const onComplete = () => {
     sendButton.disabled = false;
@@ -1122,6 +1139,8 @@ document.addEventListener('DOMContentLoaded', function () {
       };
       const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
       cancelButton.addEventListener('click', abortRequest);
+      const continueButton = cancelButtonContainer.querySelector('.continue-button');
+      continueButton.style.display = 'none';
       cancelButtonContainer.style.display = 'flex';
       const onComplete = () => {
         isRequesting = false;

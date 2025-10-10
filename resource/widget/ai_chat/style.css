@@ -10,6 +10,8 @@
   --accent-color-blue: #3a96f7;
   --accent-color-grey: #5a5a5a;
   --accent-color-red: #e74c3c;
+  --accent-color-orange: #e67e22;
+  --accent-color-orange-hover: #d35400;
   --code-bg-color: #252525;
   --user-avatar-bg: #6c5ce7;
   --ai-avatar-bg: #00cec9;
@@ -349,6 +351,13 @@ body {
 }
 .action-buttons .reject-button:hover {
   background-color: #c0392b;
+}
+.action-buttons .continue-button {
+  background-color: var(--accent-color-orange);
+  color: white;
+}
+.action-buttons .continue-button:hover {
+  background-color: var(--accent-color-orange-hover);
 }
 .action-buttons .cancel-button {
   background-color: var(--message-bg-color);

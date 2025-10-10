@@ -22,6 +22,7 @@ class SSHWorker(QThread):
     key_verification = pyqtSignal(str, str)
     stop_timer_sig = pyqtSignal()
     command_output_ready = pyqtSignal(str, int)
+    force_complete = pyqtSignal(str)
 
     def __init__(self, session_info, parent=None, for_resources=False, for_file=False):
         super().__init__(parent)
@@ -86,8 +87,13 @@ class SSHWorker(QThread):
         except Exception:
             return None
 
+    def handle_force_complete(self, request_id: str):
+        if self.is_capturing:
+            self._process_capture_buffer(force=True)
+
     def run(self):
         try:
+            self.force_complete.connect(self.handle_force_complete)
             self.conn = paramiko.SSHClient()
             self.conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
@@ -464,7 +470,7 @@ class SSHWorker(QThread):
         self.completion_timer.timeout.connect(self._check_interactive_completion)
         self.completion_timer.start(500)
 
-    def _process_capture_buffer(self):
+    def _process_capture_buffer(self, force=False):
         try:
             if len(self.capture_buffer) > 0:
                 self.last_output_time = time.time()
@@ -476,11 +482,15 @@ class SSHWorker(QThread):
             content_after_start = self.capture_buffer[start_idx + len(
                 start_bytes):]
             end_idx = content_after_start.find(end_bytes)
-            if end_idx == -1:
+            if end_idx == -1 and not force:
                 return
-            exit_code_part = content_after_start[end_idx + len(end_bytes):]
+            if force:
+                exit_code_part = b''
+                end_idx = len(content_after_start)
+            else:
+                exit_code_part = content_after_start[end_idx + len(end_bytes):]
             exit_code_match = re.search(rb':(\d+)[\r\n]', exit_code_part)
-            if not exit_code_match:
+            if not exit_code_match and not force:
                 return
             actual_content_bytes = content_after_start[:end_idx]
             if actual_content_bytes.startswith(b'\r\n'):
@@ -497,7 +507,7 @@ class SSHWorker(QThread):
                         b'$' in last_line and b'#' in last_line):
                     actual_content_bytes = b'\n'.join(lines[:-1])
             actual_content_bytes = actual_content_bytes.rstrip(b'\r\n \t')
-            exit_code = int(exit_code_match.group(1).decode())
+            exit_code = int(exit_code_match.group(1).decode()) if exit_code_match else 0
             output_str = actual_content_bytes.decode('utf-8', errors='replace')
             output_str = re.sub(r'\x1b\[[0-9;]*m', '', output_str)
             output_str = re.sub(r'\x1b\[\??[0-9;]*[a-zA-Z]', '', output_str)

@@ -894,6 +894,9 @@ class SSHWidget(QWidget):
             dialog.exec()
 
     def cleanup(self):
+        for key in list(self.loading_animations.keys()):
+            self.stop_loading_animation(key, force_immediate=True)
+
         self.ssh_widget.cleanup()
         try:
             self.ssh_widget.directoryChanged.disconnect()
