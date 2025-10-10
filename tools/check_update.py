@@ -15,12 +15,14 @@ import shutil
 
 update_logger = get_logger("update")
 
-ProxySite = ''
+ProxySite = "https://ghfast.top/"
 
 def is_pyinstaller_bundle():
     return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
 
 def get_version():
+    # if not is_pyinstaller_bundle():
+    #     return "dev"
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS
     else:
@@ -45,8 +47,8 @@ class CheckUpdate(QThread):
         self.updater_executable_path = None
 
     def run(self):
-        if not is_pyinstaller_bundle():
-            return
+        # if not is_pyinstaller_bundle():
+        #     return
         while True:
             if self.check():
                 break
