@@ -187,15 +187,15 @@ jobs:
         with:
           path: artifacts
 
-      - name: 创建自动发布
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.prepare.outputs.version_tag }}
-          name: ${{ needs.prepare.outputs.release_name }}
-          files: |
-            artifacts/**/AuraShell*
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # - name: 创建自动发布
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     tag_name: ${{ needs.prepare.outputs.version_tag }}
+      #     name: ${{ needs.prepare.outputs.release_name }}
+      #     files: |
+      #       artifacts/**/AuraShell*
+      #     draft: false
+      #     prerelease: false
+      #     generate_release_notes: true
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
