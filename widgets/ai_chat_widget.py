@@ -16,6 +16,7 @@ import requests
 import threading
 import shlex
 from bs4 import BeautifulSoup
+from tokenizers import Tokenizer
 
 if typing.TYPE_CHECKING:
     from main_window import Window
@@ -37,6 +38,13 @@ class AIBridge(QObject):
         self.history_manager = AIHistoryManager()
         self.pending_tool_calls = {}
         self.active_requests = {}
+        try:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            tokenizer_path = os.path.join(current_dir, '..', 'resource', 'models', 'tokenizer.json')
+            self.tokenizer = Tokenizer.from_file(tokenizer_path)
+        except Exception as e:
+            self.tokenizer = None
+            print(f"Failed to load tokenizer from file: {e}")
         self._register_tool_handlers()
 
     def _register_tool_handlers(self):
@@ -686,6 +694,24 @@ class AIBridge(QObject):
                     del self.active_requests[request_id]
         thread = threading.Thread(target=run)
         thread.start()
+
+    @pyqtSlot(QVariant, result=str)
+    def getTokenUsage(self, messages_variant):
+        if not self.tokenizer:
+            return "?"
+        messages = messages_variant
+        if not isinstance(messages, list):
+            return "0"
+        total_tokens = 0
+        for message in messages:
+            content = message.get('content')
+            if isinstance(content, str):
+                total_tokens += len(self.tokenizer.encode(content).ids)
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and part.get('type') == 'text' and 'text' in part:
+                        total_tokens += len(self.tokenizer.encode(part['text']).ids)
+        return str(total_tokens)
 
 class AiChatWidget(QWidget):
     def __init__(self, parent=None, main_window: 'Window' = None):

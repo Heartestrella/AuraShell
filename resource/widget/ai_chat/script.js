@@ -11,6 +11,11 @@ function cleanupRequest(requestId) {
   pendingRequests.delete(requestId);
 }
 
+async function updateTokenUsage(){
+  let tokenElement = document.getElementById('token-count');
+  tokenElement.textContent = await backend.getTokenUsage(aiChatApiOptionsBody.messages);
+}
+
 async function executeMcpTool(serverName, toolName, args, providedRequestId = null) {
   return new Promise((resolve, reject) => {
     const requestId = providedRequestId || generateUniqueId();
@@ -956,6 +961,7 @@ window.loadHistory = function (filename) {
       }
     }
     chat.scrollToBottom();
+    updateTokenUsage();
   });
 };
 function initializeBackendConnection(callback) {
@@ -1125,6 +1131,7 @@ document.addEventListener('DOMContentLoaded', function () {
       aiChatApiOptionsBody.messages.push(userMessage);
       messagesHistory.push({ messages: userMessage, isMcp: false });
       saveHistory(window.firstUserMessage, messagesHistory);
+      updateTokenUsage();
       pastedImageDataUrls = [];
       renderImagePreviews();
       const aiMessageIndex = aiChatApiOptionsBody.messages.length + messageOffset;
@@ -1150,6 +1157,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (chat.chatController && !chat.chatController.userHasScrolled) {
           chat.chatController.scrollToBottom();
         }
+        updateTokenUsage();
       };
       const onDone = createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHistoryIndex, controller, onComplete);
       requestAiChat(aiBubble.updateStream.bind(aiBubble), onDone, controller.signal);
