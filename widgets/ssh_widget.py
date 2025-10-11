@@ -1,10 +1,12 @@
 from PyQt5.QtWidgets import (
     QWidget, QStackedWidget, QVBoxLayout, QHBoxLayout, QFrame,
-    QLabel, QSizePolicy, QSplitter, QApplication, QGraphicsDropShadowEffect
+    QLabel, QSizePolicy, QSplitter
 )
-from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QTimer, QSize, QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup, pyqtProperty, QParallelAnimationGroup
-from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPainterPath, QLinearGradient
+from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QTimer, QSize, QPropertyAnimation, QEasingCurve,  pyqtProperty
+from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPainterPath
 import time
+from tools.atool import resource_path
+import os
 
 from qfluentwidgets import SegmentedWidget, RoundMenu, Action, FluentIcon as FIF, ToolButton, Dialog
 from widgets.system_info_dialog import SystemInfoDialog
@@ -316,6 +318,26 @@ class SSHWidget(QWidget):
         command_bar_layout.setContentsMargins(8, 5, 8, 5)
         command_bar_layout.setSpacing(8)
 
+        self.status_icon = ToolButton(
+            QIcon(resource_path(os.path.join("resource", "icons", "gray.png"))), self)
+        # self.status_icon.setEnabled(False)
+        self.status_icon.setFixedSize(30, 30)
+        self.status_icon.setFocusPolicy(Qt.NoFocus)
+        self.status_icon.setToolTip(self.tr("Clean History"))
+        self.status_icon.setStyleSheet("""
+            PushButton {
+                border: none;
+                color: rgb(180, 180, 180);
+                font-weight: bold;
+                background: transparent;
+                font-size: 14px;
+            }
+            PushButton:hover {
+                color: white;
+                background-color: rgb(60, 60, 60);
+                border-radius: 11px;
+            }
+        """)
         self.command_icon = ToolButton(FIF.BROOM, self.command_bar)
         self.history = ToolButton(FIF.HISTORY, self.command_bar)
         # Add bash wrap toggle button
@@ -359,6 +381,7 @@ class SSHWidget(QWidget):
             session_manager.get_session_by_name(self.parentkey).history)
         self.command_icon.clicked.connect(self.ssh_widget.clear_screen)
         self.history.clicked.connect(self.command_input.toggle_history)
+        command_bar_layout.addWidget(self.status_icon)
         command_bar_layout.addWidget(self.command_icon)
         command_bar_layout.addWidget(self.bash_wrap_button)
         command_bar_layout.addWidget(self.history)
@@ -517,6 +540,7 @@ class SSHWidget(QWidget):
         gradient_color1.setAlpha(180)
         gradient_color2 = QColor("#aa00ff")
         gradient_color2.setAlpha(180)
+
         class GradientHelper(QWidget):
             def __init__(self, widget, original_style, color1, color2):
                 super().__init__()
@@ -559,7 +583,7 @@ class SSHWidget(QWidget):
         animation.setStartValue(-0.6)
         animation.setEndValue(1.6)
         animation.setEasingCurve(QEasingCurve.Linear)
-        animation.setLoopCount(-1) 
+        animation.setLoopCount(-1)
         self.loading_animations[key] = (animation, original_style, helper)
         self.animation_start_times[key] = time.time()
         animation.start()
@@ -572,6 +596,7 @@ class SSHWidget(QWidget):
         start_time = self.animation_start_times.get(key, 0)
         elapsed = time.time() - start_time
         min_duration = 1.8
+
         def cleanup():
             current_animation_tuple = self.loading_animations.get(key)
             if current_animation_tuple and current_animation_tuple[0] == animation_to_stop:
@@ -845,6 +870,7 @@ class SSHWidget(QWidget):
 
     def _set_file_bar(self, path: str):
         self._perf_counter_start = time.perf_counter()
+
         def parse_linux_path(path: str) -> list:
             if not path:
                 return []
@@ -887,10 +913,11 @@ class SSHWidget(QWidget):
 
     def _sys_info_dialog(self):
         if self.sys_info_msg:
-            dialog = SystemInfoDialog( self.tr("System Information"), self.sys_info_msg, self )
+            dialog = SystemInfoDialog(
+                self.tr("System Information"), self.sys_info_msg, self)
             dialog.exec()
         else:
-            dialog = SystemInfoDialog( self.tr("System Information"), "", self )
+            dialog = SystemInfoDialog(self.tr("System Information"), "", self)
             dialog.exec()
 
     def cleanup(self):

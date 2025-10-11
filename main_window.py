@@ -5,7 +5,7 @@ import sys
 import time
 from PyQt5.QtCore import Qt, QTranslator, QTimer, QLocale, QUrl, QEvent, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
-from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter, QLabel, QToolButton
+from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter, QLabel
 from widgets.editor_widget import EditorWidget
 from qfluentwidgets import (NavigationInterface,  NavigationItemPosition, InfoBar,
                             isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget,  Dialog)
@@ -702,7 +702,13 @@ class Window(FramelessWindow):
             self.ssh_session[widget_key] = worker
             worker.connected.connect(
                 lambda success, msg: self._on_ssh_connected(success, msg))
+            worker.connected.connect(
+                lambda s, m: session_widget.status_icon.setIcon(
+                    resource_path(os.path.join("resource", "icons", "green.png")))
+            )
             worker.error_occurred.connect(lambda e: self._on_ssh_error(e))
+            worker.error_occurred.connect(lambda s, : session_widget.status_icon.setIcon(
+                resource_path(os.path.join("resource", "icons", "red.png"))))
 
             try:
                 child_widget = self.session_widgets[widget_key]
@@ -1115,7 +1121,8 @@ class Window(FramelessWindow):
 
         version = get_version()
         if version:
-            version_widget = NavigationAvatarWidget(version, resource_path('resource/icons/update.svg'))
+            version_widget = NavigationAvatarWidget(
+                version, resource_path('resource/icons/update.svg'))
             self.navigationInterface.addWidget(
                 routeKey='version_widget',
                 widget=version_widget,
@@ -1684,13 +1691,16 @@ def update_splash_progress(step, total_steps=10, message=""):
     except Exception as e:
         pass
 
+
 def is_pyinstaller_bundle():
     return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+
 
 def check_for_update_lock_and_recover():
     try:
         if not is_pyinstaller_bundle():
             return False
+
         def is_internal_local():
             if getattr(sys, 'frozen', False):
                 base_path = os.path.dirname(sys.executable)
@@ -1711,7 +1721,8 @@ def check_for_update_lock_and_recover():
                 pid = None
             if pid and psutil.pid_exists(pid):
                 app_temp = QApplication(sys.argv)
-                QMessageBox.information(None, "Update in Progress", "An update is currently in progress. The application will start automatically when it's done.")
+                QMessageBox.information(
+                    None, "Update in Progress", "An update is currently in progress. The application will start automatically when it's done.")
                 return True
             else:
                 if os.path.exists(lock_file):
@@ -1720,8 +1731,10 @@ def check_for_update_lock_and_recover():
         return False
     except Exception as e:
         app_temp = QApplication(sys.argv)
-        QMessageBox.critical(None, "Startup Error", f"A critical error occurred during startup integrity check: {e}\nPlease reinstall the application.")
+        QMessageBox.critical(
+            None, "Startup Error", f"A critical error occurred during startup integrity check: {e}\nPlease reinstall the application.")
         return True
+
 
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--update':
@@ -1732,7 +1745,7 @@ if __name__ == '__main__':
         sys.argv = updater_args
         updater_main()
         sys.exit(0)
-        
+
     if check_for_update_lock_and_recover():
         sys.exit()
     config_dir = Path.home() / ".config" / "pyqt-ssh"

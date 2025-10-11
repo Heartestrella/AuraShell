@@ -111,6 +111,10 @@ class SSHWorker(QThread):
                 error_msg = self.tr(f"Identity verification failed {e}")
                 self.auth_error.emit(error_msg)
                 self._cleanup()
+            except (socket.timeout, paramiko.SSHException) as e:
+                error_msg = self.tr(f"Connection failed: {e}")
+                self.auth_error.emit(error_msg)
+                self._cleanup()
             transport = self.conn.get_transport()
             transport.set_keepalive(30)
             self.channel = transport.open_session()
@@ -176,6 +180,7 @@ class SSHWorker(QThread):
                 cd_folder: str = self.ssh_default_path.replace("\\", "/")
                 if "/" in cd_folder:
                     self.run_command(f"cd {cd_folder}")
+                self.connected.emit(True, "Connect Succes")
             self.timer = QTimer()
             self.stop_timer_sig.connect(self.timer.stop)
             self.timer.timeout.connect(self._check_output)
