@@ -324,7 +324,6 @@ select {
     justify-content: center;
     align-items: center;
 }
-/* Custom Scrollbar */
 .main-content::-webkit-scrollbar,
 .custom-select-options::-webkit-scrollbar {
     width: 8px;
