@@ -147,7 +147,7 @@ body {
   flex-direction: row-reverse;
 }
 .message-group.user .message-sender .icon {
-  background-color: var(--user-avatar-bg);
+  /* background-color: var(--user-avatar-bg); */
 }
 .message-group.ai .message-sender .icon {
   background-color: var(--ai-avatar-bg);

@@ -20,9 +20,22 @@ function setQQUserInfo(qq_name, qq_number) {
     return;
   }
   window.ws.send(JSON.stringify({ action: 'setQQUser', data: JSON.stringify({ qq_name, qq_number, id: messageId }) }));
+  const avatarUrl = `http://q.qlogo.cn/headimg_dl?dst_uin=${qq_number}&spec=640&img_type=png`;
+  window.currentUserInfo = { name: qq_name, avatarUrl: avatarUrl };
+  document.querySelectorAll('.message-group.user .message-sender').forEach((senderDiv) => {
+    const iconSpan = senderDiv.querySelector('.icon');
+    const nameDivs = senderDiv.querySelectorAll('div');
+    if (iconSpan) {
+      iconSpan.innerHTML = `<img src="${avatarUrl}" style="width: 20px; height: 20px; border-radius: 50%;" />`;
+    }
+    if (nameDivs.length > 0) {
+      nameDivs[0].textContent = qq_name;
+    }
+  });
 }
 window.OnlineUser = {};
 window.setQQUserInfo = setQQUserInfo;
+window.currentUserInfo = { name: '用户', avatarUrl: null };
 
 async function updateTokenUsage() {
   const tokenElement = document.getElementById('token-count');
@@ -162,10 +175,12 @@ class ChatController {
 }
 class UserBubble {
   constructor(container, messageIndex = -1, historyIndex = -1) {
+    const senderName = window.currentUserInfo.name;
+    const senderIcon = window.currentUserInfo.avatarUrl ? `<img src="${window.currentUserInfo.avatarUrl}" style="width: 20px; height: 20px; border-radius: 50%;" />` : '<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path></svg>';
     const template = `<div class="message-group user"${messageIndex >= 0 ? ` data-message-index="${messageIndex}"` : ''}${historyIndex >= 0 ? ` data-history-index="${historyIndex}"` : ''}>
               <div class="message-sender">
-                <span class="icon">👤</span>
-                <div>用户</div>
+                <span class="icon">${senderIcon}</span>
+                <div>${senderName}</div>
                 <div class="message-actions">
                   <button class="copy-button" title="复制">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
