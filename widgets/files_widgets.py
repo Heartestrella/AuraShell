@@ -1101,19 +1101,63 @@ class FileExplorer(QWidget):
         return os.path.normpath(path).replace('\\', '/')
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Delete:
-            selected_names = []
+        def get_selected_names():
             if self.view_mode == 'icon':
                 if not self.selected_items:
-                    return
-                selected_names = [item.name for item in self.selected_items]
-
+                    return []
+                return [item.name for item in self.selected_items]
             elif self.view_mode == 'details':
                 indexes = self.details.details_view.selectionModel().selectedRows()
                 if not indexes:
-                    return
-                selected_names = [self.details.details_model.item(
+                    return []
+                return [self.details.details_model.item(
                     index.row(), 0).text() for index in indexes]
+            return []
+
+        if event.modifiers() & Qt.ControlModifier:
+            selected_names = get_selected_names()
+
+            if not selected_names and not self.copy_file_path:
+                return
+
+            full_path = []
+
+            if isinstance(selected_names, list):
+                for name in selected_names:
+                    full_path_ = self._get_full_path(name)
+                    full_path.append(full_path_)
+            else:
+                full_path = self._get_full_path(selected_names)
+
+            if event.key() == Qt.Key_C:
+                print(f"copy {full_path}")
+                self.copy_file_path = full_path
+                self.cut_ = False
+
+            elif event.key() == Qt.Key_V:
+                print(f"paste {full_path}")
+                if self.copy_file_path:  # A list of paths copied/cut earlier
+                    if isinstance(self.copy_file_path, list):
+                        for path in self.copy_file_path:
+                            self.file_action.emit(
+                                "paste", path, self.path, self.cut_)
+                    else:
+                        self.file_action.emit(
+                            "paste", self.copy_file_path, self.path, self.cut_)
+
+                    self.cut_ = False
+                    self.copy_file_path = []  # Reset after paste
+
+            elif event.key() == Qt.Key_X:
+                print(f"cut {full_path}")
+                self.copy_file_path = full_path
+                self.cut_ = True
+            else:
+                super().keyPressEvent(event)
+            return
+
+        if event.key() == Qt.Key_Delete:
+            selected_names = get_selected_names()
 
             if selected_names:
                 self._handle_file_action('delete', selected_names, False, None)
@@ -1125,6 +1169,7 @@ class FileExplorer(QWidget):
                 item._start_rename()
             elif self.view_mode == 'details' and len(self.details.details_view.selectionModel().selectedRows()) == 1:
                 self.details.rename_selected_item()
+
         elif event.key() == Qt.Key_F5:
             self.refresh_action.emit()
         elif event.key() == Qt.Key_Backspace:
