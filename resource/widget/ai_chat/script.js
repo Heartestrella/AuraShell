@@ -11,6 +11,19 @@ function cleanupRequest(requestId) {
   pendingRequests.delete(requestId);
 }
 
+function setQQUserInfo(qq_name, qq_number) {
+  let messageId = generateUniqueId();
+  if (!window.ws) {
+    return;
+  }
+  if (window.ws.readyState === WebSocket.CONNECTING) {
+    return;
+  }
+  window.ws.send(JSON.stringify({ action: 'setQQUser', data: JSON.stringify({ qq_name, qq_number, id: messageId }) }));
+}
+window.OnlineUser = {};
+window.setQQUserInfo = setQQUserInfo;
+
 async function updateTokenUsage() {
   const tokenElement = document.getElementById('token-count');
   const rawCountStr = await backend.getTokenUsage(aiChatApiOptionsBody.messages);
@@ -1255,6 +1268,22 @@ document.addEventListener('DOMContentLoaded', function () {
       settingsPopup.style.display = 'none';
     }
   });
+  const onlineStatusBtn = document.getElementById('online-status');
+  const onlineUserPopup = document.getElementById('online-user-popup');
+  const closeOnlineUserBtn = document.getElementById('close-online-user-btn');
+  if (onlineStatusBtn && onlineUserPopup && closeOnlineUserBtn) {
+    onlineStatusBtn.addEventListener('click', () => {
+      onlineUserPopup.style.display = 'flex';
+    });
+    closeOnlineUserBtn.addEventListener('click', () => {
+      onlineUserPopup.style.display = 'none';
+    });
+    window.addEventListener('click', (event) => {
+      if (event.target === onlineUserPopup) {
+        onlineUserPopup.style.display = 'none';
+      }
+    });
+  }
   initializeBackendConnection((backend) => {
     initializeHistoryPanel(backend);
   });
@@ -1290,17 +1319,28 @@ function setupWebSocket() {
   const wsUrl = 'ws://aurashell-aichatapi.beefuny.shop/ws';
   let ws;
   let pingInterval;
+  const onlineUserIframe = document.getElementById('online-user-iframe');
+  const iframeWindow = onlineUserIframe ? onlineUserIframe.contentWindow : null;
   function connect() {
     ws = new WebSocket(wsUrl);
+    window.ws = ws;
     ws.onopen = () => {
       statusIcon.classList.remove('error-icon');
       statusIcon.classList.add('success-icon');
-      if (pingInterval) clearInterval(pingInterval);
+      if (pingInterval) {
+        clearInterval(pingInterval);
+      }
       pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ action: 'ping', id: Date.now() }));
         }
       }, 30000);
+      initializeBackendConnection(async (backendObject) => {
+        if (backendObject) {
+          let qqInfo = await backendObject.getQQUserInfo();
+          setQQUserInfo(qqInfo.qq_name, qqInfo.qq_number);
+        }
+      });
     };
     ws.onmessage = (event) => {
       try {
@@ -1308,6 +1348,34 @@ function setupWebSocket() {
         if (message.action === 'updateUserCount') {
           const data = JSON.parse(message.data);
           statusText.textContent = `在线用户数量:${data.userCount}`;
+        }
+        if (message.action === 'addUser') {
+          const data = JSON.parse(message.data);
+          let qq_number = data.qq_number.toString();
+          if (window.OnlineUser[qq_number]) {
+            return;
+          }
+          window.OnlineUser[qq_number] = data.qq_name;
+          iframeWindow.addUser(qq_number, data.qq_name);
+        }
+        if (message.action === 'removeUser') {
+          const data = JSON.parse(message.data);
+          let qq_number = data.qq_number.toString();
+          if (!window.OnlineUser[qq_number]) {
+            return;
+          }
+          delete window.OnlineUser[data.qq_number.toString()];
+          iframeWindow.removeUser(qq_number);
+        }
+        if (message.action === 'allUser') {
+          try {
+            const data = JSON.parse(message.data);
+            if (data == null) {
+              return;
+            }
+            window.OnlineUser = data;
+            iframeWindow.allUser(data);
+          } catch (e) {}
         }
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
