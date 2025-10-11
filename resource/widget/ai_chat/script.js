@@ -11,9 +11,21 @@ function cleanupRequest(requestId) {
   pendingRequests.delete(requestId);
 }
 
-async function updateTokenUsage(){
-  let tokenElement = document.getElementById('token-count');
-  tokenElement.textContent = await backend.getTokenUsage(aiChatApiOptionsBody.messages);
+async function updateTokenUsage() {
+  const tokenElement = document.getElementById('token-count');
+  const rawCountStr = await backend.getTokenUsage(aiChatApiOptionsBody.messages);
+  const num = parseInt(rawCountStr, 10);
+  if (isNaN(num)) {
+    tokenElement.textContent = rawCountStr;
+    return;
+  }
+  let displayText = num.toString();
+  if (num >= 1000000) {
+    displayText += ` (${(num / 1000000).toFixed(1)}M)`;
+  } else if (num >= 1000) {
+    displayText += ` (${(num / 1000).toFixed(1)}K)`;
+  }
+  tokenElement.textContent = displayText;
 }
 
 async function executeMcpTool(serverName, toolName, args, providedRequestId = null) {
