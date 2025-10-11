@@ -618,6 +618,7 @@ function truncateFromMessage(messageIndex, historyIndex) {
   }
 }
 function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHistoryIndex, controller, onComplete) {
+  updateTokenUsage();
   const cancelButtonContainer = document.getElementById('cancel-button-container');
   const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
   const sendButton = document.querySelector('.send-button');
