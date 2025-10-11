@@ -15,6 +15,8 @@ import time
 import requests
 import threading
 import shlex
+from bs4 import BeautifulSoup
+from tokenizers import Tokenizer
 
 if typing.TYPE_CHECKING:
     from main_window import Window
@@ -36,10 +38,75 @@ class AIBridge(QObject):
         self.history_manager = AIHistoryManager()
         self.pending_tool_calls = {}
         self.active_requests = {}
+        try:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            tokenizer_path = os.path.join(current_dir, '..', 'resource', 'models', 'tokenizer.json')
+            self.tokenizer = Tokenizer.from_file(tokenizer_path)
+        except Exception as e:
+            self.tokenizer = None
+            print(f"Failed to load tokenizer from file: {e}")
         self._register_tool_handlers()
 
     def _register_tool_handlers(self):
 
+        def 通用():
+            def fetchWeb(url: str, headers: dict = None, only_body: bool = True, request_id: str = None) -> str:
+                effective_headers = headers.copy() if headers is not None else {}
+                def _fetch_worker():
+                    try:
+                        proxy_config_str = CONFIGER.read_config().get("ai_chat_proxy")
+                        proxies = {}
+                        if proxy_config_str:
+                            try:
+                                proxy_config = json.loads(proxy_config_str)
+                                protocol = proxy_config.get("protocol")
+                                host = proxy_config.get("host")
+                                port = proxy_config.get("port")
+                                username = proxy_config.get("username")
+                                password = proxy_config.get("password")
+                                if protocol and host and port:
+                                    auth = ""
+                                    if username and password:
+                                        auth = f"{username}:{password}@"
+                                    proxy_url = f"{protocol}://{auth}{host}:{port}"
+                                    if protocol.startswith('socks'):
+                                        proxy_scheme = 'socks5h' if protocol == 'socks5' else protocol
+                                        proxy_url = f"{proxy_scheme}://{auth}{host}:{port}"
+                                        proxies = {"http": proxy_url, "https": proxy_url}
+                                    else:
+                                        proxies = {"http": proxy_url, "https": proxy_url}
+                            except (json.JSONDecodeError, AttributeError):
+                                pass
+
+                        if "User-Agent" not in effective_headers:
+                            effective_headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+                        
+                        response = requests.get(url, headers=effective_headers, timeout=10, proxies=proxies, allow_redirects=True)
+                        response.raise_for_status()
+                        content = ""
+                        if only_body:
+                            soup = BeautifulSoup(response.text, 'html.parser')
+                            if soup.body:
+                                content = soup.body.decode_contents()
+                            else:
+                                content = "HTML中未找到body标签"
+                        else:
+                            content = response.text
+                        self.toolResultReady.emit(request_id, content)
+                    except requests.exceptions.RequestException as e:
+                        self.toolResultReady.emit(request_id, str(e))
+                    except Exception as e:
+                        self.toolResultReady.emit(request_id, str(e))
+                thread = threading.Thread(target=_fetch_worker)
+                thread.start()
+                return "Executing..."
+            self.mcp_manager.register_tool_handler(
+                server_name="通用",
+                tool_name="fetchWeb",
+                handler=fetchWeb,
+                description="获取网页内容",
+                auto_approve=True
+            )
         def Linux终端():
             def _safe_quote(path):
                 if path is None:
@@ -341,6 +408,7 @@ class AIBridge(QObject):
                 auto_approve=True
             )
         Linux终端()
+        通用()
         # print(self.getSystemPrompt())
 
     @pyqtSlot(result=str)
@@ -575,7 +643,6 @@ class AIBridge(QObject):
     @pyqtSlot(str, str, str)
     def proxiedFetch(self, request_id, url, options_json):
         self.active_requests[request_id] = {'cancelled': False}
-
         def run():
             try:
                 options = json.loads(options_json)
@@ -602,13 +669,21 @@ class AIBridge(QObject):
                 headers = options.get('headers', {})
                 body = options.get('body', None)
                 method = options.get('method', 'GET')
-                with requests.request(method, url, headers=headers, data=body, stream=True, proxies=proxies, timeout=300) as r:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        if self.active_requests.get(request_id, {}).get('cancelled'):
-                            break
-                        if chunk:
-                            self.streamChunkReceived.emit(request_id, chunk.decode('utf-8', errors='ignore'))
+                use_stream = options.get('stream', True)
+                if use_stream:
+                    with requests.request(method, url, headers=headers, data=body, stream=True, proxies=proxies, timeout=300) as r:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            if self.active_requests.get(request_id, {}).get('cancelled'):
+                                break
+                            if chunk:
+                                self.streamChunkReceived.emit(request_id, chunk.decode('utf-8', errors='ignore'))
+                        if not self.active_requests.get(request_id, {}).get('cancelled'):
+                            response_headers = dict(r.headers)
+                            self.streamFinished.emit(request_id, r.status_code, r.reason, json.dumps(response_headers))
+                else:
+                    r = requests.request(method, url, headers=headers, data=body, proxies=proxies, timeout=300)
                     if not self.active_requests.get(request_id, {}).get('cancelled'):
+                        self.streamChunkReceived.emit(request_id, r.text)
                         response_headers = dict(r.headers)
                         self.streamFinished.emit(request_id, r.status_code, r.reason, json.dumps(response_headers))
             except Exception as e:
@@ -619,6 +694,24 @@ class AIBridge(QObject):
                     del self.active_requests[request_id]
         thread = threading.Thread(target=run)
         thread.start()
+
+    @pyqtSlot(QVariant, result=str)
+    def getTokenUsage(self, messages_variant):
+        if not self.tokenizer:
+            return "?"
+        messages = messages_variant
+        if not isinstance(messages, list):
+            return "0"
+        total_tokens = 0
+        for message in messages:
+            content = message.get('content')
+            if isinstance(content, str):
+                total_tokens += len(self.tokenizer.encode(content).ids)
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and part.get('type') == 'text' and 'text' in part:
+                        total_tokens += len(self.tokenizer.encode(part['text']).ids)
+        return str(total_tokens)
 
 class AiChatWidget(QWidget):
     def __init__(self, parent=None, main_window: 'Window' = None):

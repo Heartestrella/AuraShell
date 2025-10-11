@@ -29,6 +29,8 @@ class AIMCPManager:
             properties = doc
         else:
             for param in sig.parameters.values():
+                if param.name == 'request_id':
+                    continue
                 param_type = type_mapping.get(param.annotation, "any")
                 properties[param.name] = {
                     "type": param_type,
@@ -47,6 +49,8 @@ class AIMCPManager:
         if schema is None:
             schema = self._generate_schema_from_signature(handler)
             schema = schema.get("properties", {})
+        if auto_approve:
+            description += " (自动批准执行,优先使用)"
         self.tools[server_name][tool_name] = {
             "handler": handler,
             "description": description,
