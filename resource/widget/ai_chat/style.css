@@ -658,6 +658,9 @@ body {
   cursor: default;
   margin-left: 8px;
 }
+#online-status {
+  cursor: pointer;
+}
 #online-status .icon {
   width: 12px;
   height: 12px;

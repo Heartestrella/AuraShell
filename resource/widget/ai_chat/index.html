@@ -71,6 +71,12 @@
         <iframe src="about:blank"></iframe>
       </div>
     </div>
+    <div id="online-user-popup" class="settings-popup-overlay" style="display: none;">
+      <div class="settings-popup-content">
+        <button id="close-online-user-btn" class="close-button">&times;</button>
+        <iframe id="online-user-iframe" src="iframe/onlineUser/index.html"></iframe>
+      </div>
+    </div>
     <script>
       if (!Array.prototype.at) {
         Object.defineProperty(Array.prototype, 'at', {

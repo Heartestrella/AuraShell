@@ -38,6 +38,8 @@ class AIBridge(QObject):
         self.history_manager = AIHistoryManager()
         self.pending_tool_calls = {}
         self.active_requests = {}
+        self.qq_name = None
+        self.qq_number = None
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             tokenizer_path = os.path.join(current_dir, '..', 'resource', 'models', 'tokenizer.json')
@@ -713,11 +715,69 @@ class AIBridge(QObject):
                         total_tokens += len(self.tokenizer.encode(part['text']).ids)
         return str(total_tokens)
 
+    @pyqtSlot(str, str)
+    def setQQUserInfo(self, qq_name, qq_number):
+        self.qq_name = qq_name
+        self.qq_number = qq_number
+        parent = self.parent()
+        if parent:
+            if hasattr(parent, 'browser') and parent.browser:
+                js_code = f"setQQUserInfo({json.dumps(qq_name)}, {json.dumps(qq_number)});"
+                parent.browser.page().runJavaScript(js_code)
+            if hasattr(parent, 'destroy_qq_login_browser'):
+                parent.destroy_qq_login_browser()
+
+    @pyqtSlot(result=QVariant)
+    def getQQUserInfo(self):
+        return {"qq_name": self.qq_name, "qq_number": self.qq_number}
+
 class AiChatWidget(QWidget):
+
+    def qqLoginUrlBrowser(self):
+        from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings
+        from PyQt5.QtWebChannel import QWebChannel
+        qqLoginUrl = "https://xui.ptlogin2.qq.com/cgi-bin/xlogin?pt_disable_pwd=1&appid=715030901&hide_close_icon=0&daid=73&pt_no_auth=1&s_url=https%3A%2F%2Fqun.qq.com%2F"
+        self.qq_login_browser = QWebEngineView(self)
+        self.qq_login_browser.page().setWebChannel(self.channel)
+        self.qq_login_browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+        self.qq_login_browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
+        self.qq_login_browser.setContextMenuPolicy(Qt.NoContextMenu)
+        self.qq_login_browser.resize(1024, 768)
+        self.qq_login_browser.setUrl(QUrl(qqLoginUrl))
+        try:
+            def on_load(ok):
+                if not ok:
+                    return
+                qq_login_js_path = os.path.join(os.path.dirname(__file__), '..', 'resource', 'widget', 'ai_chat', 'qq_login.js')
+                with open(qq_login_js_path, 'r', encoding='utf-8') as f:
+                    qq_login_js_code = f.read()
+                injection_js = f"""
+                    new Promise((resolve, reject) => {{
+                        const script = document.createElement('script');
+                        script.src = 'qrc:///qtwebchannel/qwebchannel.js';
+                        script.onload = () => {{
+                            new QWebChannel(qt.webChannelTransport, function (channel) {{
+                                window.backend = channel.objects.backend;
+                                resolve();
+                            }});
+                        }};
+                        script.onerror = () => {{
+                            reject(new Error('Failed to load qwebchannel.js'));
+                        }};
+                        document.head.appendChild(script);
+                    }}).then(() => {{
+                        {qq_login_js_code}
+                    }}).catch(console.error);"""
+                self.qq_login_browser.page().runJavaScript(injection_js)
+            self.qq_login_browser.page().loadFinished.connect(on_load)
+        except Exception as e:
+            pass
+
     def __init__(self, parent=None, main_window: 'Window' = None):
         super().__init__(parent)
         self.tab_id = None
         self._side_panel = None
+        self.qq_login_browser = None
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(self.layout)
@@ -737,6 +797,8 @@ class AiChatWidget(QWidget):
             project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
             index_html_path = os.path.join(project_root, 'resource', 'widget', 'ai_chat', 'index.html')
             self.browser.setUrl(QUrl.fromLocalFile(index_html_path))
+
+            self.qqLoginUrlBrowser()
         else:
             self.layout.setAlignment(Qt.AlignCenter)
             icon_label = QLabel()
@@ -784,3 +846,8 @@ class AiChatWidget(QWidget):
             tab_data = side_panel.get_tab_data_by_uuid(self.tab_id)
             return tab_data
         return None
+
+    def destroy_qq_login_browser(self):
+        if self.qq_login_browser:
+            self.qq_login_browser.deleteLater()
+            self.qq_login_browser = None

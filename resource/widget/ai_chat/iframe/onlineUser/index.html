@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>在线用户</title>
+    <style>
+      :root {
+        --bg-color: #2d2d2d;
+        --list-item-bg-color: #3c3c3c;
+        --text-color: #dcdcdc;
+        --text-color-light: #b0b0b0;
+        --border-color: #4a4a4a;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        margin: 0;
+        padding: 20px;
+        box-sizing: border-box;
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      body::-webkit-scrollbar {
+        display: none;
+      }
+      h1 {
+        text-align: center;
+        color: var(--text-color-light);
+        margin-top: 0;
+        margin-bottom: 20px;
+        font-size: 24px;
+      }
+      .user-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 15px;
+      }
+      .user-item {
+        background-color: var(--list-item-bg-color);
+        border-radius: 8px;
+        padding: 15px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        border: 1px solid var(--border-color);
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out, opacity 0.3s;
+      }
+      .user-item:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      }
+      .avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+      .user-info {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .user-name {
+        font-weight: bold;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .user-qq {
+        font-size: 12px;
+        color: var(--text-color-light);
+      }
+      .empty-placeholder {
+        text-align: center;
+        color: var(--text-color-light);
+        grid-column: 1 / -1;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>在线用户</h1>
+    <ul id="user-list-container" class="user-list"></ul>
+    <script>
+      const userListContainer = document.getElementById('user-list-container');
+      function updatePlaceholder() {
+        let placeholder = userListContainer.querySelector('.empty-placeholder');
+        if (userListContainer.children.length === 0 && !placeholder) {
+          placeholder = document.createElement('p');
+          placeholder.className = 'empty-placeholder';
+          placeholder.textContent = '当前没有其他在线用户。';
+          userListContainer.appendChild(placeholder);
+        } else if (userListContainer.children.length > 1 && placeholder) {
+          placeholder.remove();
+        }
+      }
+      function createUserItem(qq, name) {
+        const userItem = document.createElement('li');
+        userItem.className = 'user-item';
+        userItem.dataset.qq = qq;
+        const avatarUrl = 'http://q.qlogo.cn/headimg_dl?dst_uin=' + qq + '&spec=640&img_type=png';
+        userItem.innerHTML = `
+                <img src="${avatarUrl}" alt="Avatar" class="avatar" onerror="this.src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='">
+                <div class="user-info">
+                    <span class="user-name">${name}</span>
+                    <span class="user-qq">${qq}</span>
+                </div>`;
+        return userItem;
+      }
+      function addUser(qq, name) {
+        if (document.querySelector(`.user-item[data-qq="${qq}"]`)) {
+          return;
+        }
+        const userItem = createUserItem(qq, name);
+        userListContainer.appendChild(userItem);
+        updatePlaceholder();
+      }
+      function removeUser(qq) {
+        const userItem = document.querySelector(`.user-item[data-qq="${qq}"]`);
+        if (userItem) {
+          userItem.style.opacity = '0';
+          setTimeout(() => {
+            userItem.remove();
+            updatePlaceholder();
+          }, 300);
+        }
+      }
+      function allUser(users) {
+        userListContainer.innerHTML = '';
+        if (users && Object.keys(users).length > 0) {
+          for (const qq in users) {
+            const name = users[qq];
+            const userItem = createUserItem(qq, name);
+            userListContainer.appendChild(userItem);
+          }
+        }
+        updatePlaceholder();
+      }
+      updatePlaceholder();
+    </script>
+  </body>
+</html>
