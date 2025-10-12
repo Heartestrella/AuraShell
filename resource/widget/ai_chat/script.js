@@ -1372,6 +1372,9 @@ function setupWebSocket() {
         if (message.action === 'addUser') {
           const data = JSON.parse(message.data);
           let qq_number = data.qq_number.toString();
+          if (qq_number == null || qq_number == '') {
+            return;
+          }
           if (window.OnlineUser[qq_number]) {
             return;
           }
@@ -1381,6 +1384,9 @@ function setupWebSocket() {
         if (message.action === 'removeUser') {
           const data = JSON.parse(message.data);
           let qq_number = data.qq_number.toString();
+          if (qq_number == null || qq_number == '') {
+            return;
+          }
           if (!window.OnlineUser[qq_number]) {
             return;
           }
