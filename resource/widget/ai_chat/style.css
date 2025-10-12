@@ -67,8 +67,16 @@ body {
 }
 .message-group.user {
   align-self: flex-end;
-  align-items: flex-end;
   max-width: 85%;
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  align-items: flex-start;
+}
+.message-group.user .message-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
 .message-group.ai {
   align-self: flex-start;
@@ -133,18 +141,15 @@ body {
 .delete-button:hover {
   color: var(--accent-color-red);
 }
-.message-sender .icon {
-  width: 30px;
-  height: 30px;
+.message-sender .icon,
+.message-group > .icon {
   border-radius: 50%;
   display: flex;
   justify-content: center;
   align-items: center;
   font-size: 16px;
   color: white;
-}
-.message-group.user .message-sender {
-  flex-direction: row-reverse;
+  flex-shrink: 0;
 }
 .message-group.user .message-sender .icon {
   /* background-color: var(--user-avatar-bg); */
