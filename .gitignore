@@ -10,3 +10,4 @@ build/
 .venv/
 dist/
 qfluentwidgets_config.json
+QQBot/
