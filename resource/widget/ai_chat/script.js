@@ -245,7 +245,7 @@ class UserBubble {
     this.contentElement.innerHTML = '';
     if (text) {
       const textBlock = document.createElement('div');
-      textBlock.style.whiteSpace = 'pre-wrap';
+      textBlock.className = 'user-text-block';
       textBlock.textContent = text;
       this.contentElement.appendChild(textBlock);
     }
@@ -1787,3 +1787,16 @@ async function proxiedFetch(url, options) {
     backend.proxiedFetch(requestId, url, JSON.stringify(optionsForBackend));
   });
 }
+
+let bodyStyle = '<style id="dynamic-body-style"></style>';
+document.body.insertAdjacentHTML('beforeend', bodyStyle);
+let bodyStyleElement = document.getElementById('dynamic-body-style');
+let onresize = function () {
+  bodyStyleElement.textContent = `
+    .message-wrapper {
+      max-width: calc(100% - 46px);
+    }
+  `;
+};
+window.addEventListener('resize', onresize);
+onresize();
