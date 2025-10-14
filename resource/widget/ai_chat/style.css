@@ -67,7 +67,7 @@ body {
 }
 .message-group.user {
   align-self: flex-end;
-  max-width: 85%;
+  max-width: 100%;
   display: flex;
   flex-direction: row;
   gap: 10px;
@@ -183,6 +183,11 @@ body {
 .user-response {
   background-color: var(--user-message-bg-color);
   color: white;
+}
+
+.user-text-block {
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 .message-group.user .user-response {
   border-bottom-right-radius: 5px;
