@@ -104,12 +104,25 @@
         userItem.className = 'user-item';
         userItem.dataset.qq = qq;
         const avatarUrl = 'http://q.qlogo.cn/headimg_dl?dst_uin=' + qq + '&spec=640&img_type=png';
-        userItem.innerHTML = `
-                <img src="${avatarUrl}" alt="Avatar" class="avatar" onerror="this.src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='">
-                <div class="user-info">
-                    <span class="user-name">${name}</span>
-                    <span class="user-qq">${qq}</span>
-                </div>`;
+        const avatarImg = document.createElement('img');
+        avatarImg.src = avatarUrl;
+        avatarImg.alt = 'Avatar';
+        avatarImg.className = 'avatar';
+        avatarImg.onerror = function () {
+          this.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+        };
+        const userInfoDiv = document.createElement('div');
+        userInfoDiv.className = 'user-info';
+        const userNameSpan = document.createElement('span');
+        userNameSpan.className = 'user-name';
+        userNameSpan.textContent = name;
+        const userQqSpan = document.createElement('span');
+        userQqSpan.className = 'user-qq';
+        userQqSpan.textContent = qq;
+        userInfoDiv.appendChild(userNameSpan);
+        userInfoDiv.appendChild(userQqSpan);
+        userItem.appendChild(avatarImg);
+        userItem.appendChild(userInfoDiv);
         return userItem;
       }
       function addUser(qq, name) {
