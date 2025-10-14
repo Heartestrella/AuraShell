@@ -8,7 +8,7 @@ from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter, QLabel
 from widgets.editor_widget import EditorWidget
 from qfluentwidgets import (NavigationInterface,  NavigationItemPosition, InfoBar,
-                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget,  Dialog)
+                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget, MessageBoxBase, SubtitleLabel, CheckBox, Dialog)
 from tools.animation_manager import PageTransitionAnimator
 from qfluentwidgets.common.config import qconfig
 from qframelesswindow import FramelessWindow, StandardTitleBar
@@ -65,6 +65,44 @@ mime_types = [
 def isDebugMode():
     """Check if the application is running under a debugger."""
     return sys.gettrace() is not None
+
+
+class PermissionDialog(MessageBoxBase):
+    def __init__(self, file_name: str, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
+
+        self.titleLabel = SubtitleLabel(file_name)
+        self.yesButton.setText(self.tr("Apply"))
+        self.cancelButton.setText(self.tr("Cancel"))
+
+        owner_group = QHBoxLayout()
+        owner_group.addWidget(QLabel("Owner: "))
+        self.owner_read = CheckBox("Read")
+        self.owner_write = CheckBox("Write")
+        self.owmer_exec = CheckBox("Execute")
+
+        group = QHBoxLayout()
+        group.addWidget(QLabel(
+            "Choose a group\nThe component costs money, so it won't be done for now."))
+
+        owner_group.addWidget(self.owner_read)
+        owner_group.addWidget(self.owner_write)
+        owner_group.addWidget(self.owmer_exec)
+
+        self.viewLayout.addWidget(self.titleLabel)
+        self.viewLayout.addLayout(owner_group)
+
+        self._parent = parent
+
+    def showEvent(self, event):
+        super().showEvent(event)
+
+        if self._parent:
+            parent_geometry = self._parent.geometry()
+            self.setGeometry(parent_geometry)
+            self.raise_()
+            self.activateWindow()
 
 
 class Window(FramelessWindow):
@@ -823,10 +861,19 @@ class Window(FramelessWindow):
                 print(f"Rename {full_path} to {copy_to}")
                 file_manager.rename(path=full_path, new_name=copy_to)
         elif action_type == "info":
-            paths_to_info = full_path if isinstance(
-                full_path, list) else [full_path]
-            for path in paths_to_info:
-                file_manager.get_file_info(path)
+            per_box = PermissionDialog("test.py", self)
+            if per_box.exec_():
+                read_checked = per_box.owner_read.isChecked()
+                write_checked = per_box.owner_write.isChecked()
+                exec_checked = per_box.owmer_exec.isChecked()
+
+            else:
+                pass
+
+            # paths_to_info = full_path if isinstance(
+            #     full_path, list) else [full_path]
+            # for path in paths_to_info:
+            #     file_manager.get_file_info(path)
         elif action_type == "mkdir":
             if full_path:
                 file_manager.mkdir(full_path)

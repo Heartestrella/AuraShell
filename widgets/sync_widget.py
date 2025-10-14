@@ -280,3 +280,12 @@ class SycnWidget(MessageBoxBase):
             parent_rect.center().x() - self_rect.width() // 2,
             parent_rect.center().y() - self_rect.height() // 2
         )
+
+    def showEvent(self, event):
+        super().showEvent(event)
+
+        if self._parent:
+            parent_geometry = self._parent.geometry()
+            self.setGeometry(parent_geometry)
+            self.raise_()
+            self.activateWindow()

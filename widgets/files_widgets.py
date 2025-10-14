@@ -792,7 +792,7 @@ class FileExplorer(QWidget):
                 FIF.DOWNLOAD, self.tr("Download (compression)")
             ),
             "copy_path": Action(FIF.FLAG, self.tr("Copy Path")),
-            "info": Action(FIF.INFO, self.tr("File Info")),
+            "info": Action(FIF.INFO, self.tr("File permissions settings")),
             "rename": Action(FIF.LABEL, self.tr("Rename")),
         }
 
