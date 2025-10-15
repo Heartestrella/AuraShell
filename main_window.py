@@ -71,17 +71,16 @@ class PermissionDialog(MessageBoxBase):
     def __init__(self, file_name: str, permission_num: int = None, parent=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
-
         self.titleLabel = SubtitleLabel(file_name)
         self.yesButton.setText(self.tr("Apply"))
         self.cancelButton.setText(self.tr("Cancel"))
 
         # Owner permissions
         owner_group = QHBoxLayout()
-        owner_group.addWidget(QLabel("Owner: "))
-        self.owner_read = CheckBox("Read")
-        self.owner_write = CheckBox("Write")
-        self.owner_exec = CheckBox("Execute")
+        owner_group.addWidget(QLabel(self.tr("Owner: ")))
+        self.owner_read = CheckBox(self.tr("Read"))
+        self.owner_write = CheckBox(self.tr("Write"))
+        self.owner_exec = CheckBox(self.tr("Execute"))
 
         owner_group.addWidget(self.owner_read)
         owner_group.addWidget(self.owner_write)
@@ -89,10 +88,10 @@ class PermissionDialog(MessageBoxBase):
 
         # Group permissions
         group = QHBoxLayout()
-        group.addWidget(QLabel("Group: "))
-        self.group_read = CheckBox("Read")
-        self.group_write = CheckBox("Write")
-        self.group_exec = CheckBox("Execute")
+        group.addWidget(QLabel(self.tr("Group: ")))
+        self.group_read = CheckBox(self.tr("Read"))
+        self.group_write = CheckBox(self.tr("Write"))
+        self.group_exec = CheckBox(self.tr("Execute"))
 
         group.addWidget(self.group_read)
         group.addWidget(self.group_write)
@@ -100,10 +99,10 @@ class PermissionDialog(MessageBoxBase):
 
         # Other permissions
         other = QHBoxLayout()
-        other.addWidget(QLabel("Other: "))
-        self.other_read = CheckBox("Read")
-        self.other_write = CheckBox("Write")
-        self.other_exec = CheckBox("Execute")
+        other.addWidget(QLabel(self.tr("Other: ")))
+        self.other_read = CheckBox(self.tr("Read"))
+        self.other_write = CheckBox(self.tr("Write"))
+        self.other_exec = CheckBox(self.tr("Execute"))
 
         other.addWidget(self.other_read)
         other.addWidget(self.other_write)
@@ -196,7 +195,8 @@ class PermissionDialog(MessageBoxBase):
         group_symbol = to_symbol(group_perm)
         other_symbol = to_symbol(other_perm)
 
-        display_text = f"当前权限: {owner_symbol}{group_symbol}{other_symbol} ({permission_num:03o})"
+        display_text = self.tr(
+            f"Current permissions: {owner_symbol}{group_symbol}{other_symbol} ({permission_num:03o})")
         self.permission_label.setText(display_text)
 
     def showEvent(self, event):
@@ -932,10 +932,30 @@ class Window(FramelessWindow):
             file_manager.download_path_async(
                 path, open_it=True, session_id=session_id)
 
+    def is_messagebox_showing(self):
+        """检查是否有模态对话框正在显示"""
+        # 方法1: 检查活跃模态窗口
+        active_modal = QApplication.activeModalWidget()
+        if active_modal and isinstance(active_modal, MessageBoxBase):
+            return True
+
+        # 方法2: 遍历所有顶层窗口
+        for widget in QApplication.topLevelWidgets():
+            if widget.isModal() and isinstance(widget, MessageBoxBase) and widget.isVisible():
+                return True
+
+        return False
+
     def _on_permission_info_got(self, file_path: str, permission_num: int, success: bool, error_msg: str, file_manager=None):
         """
         处理获取权限信息的回调
         """
+        file_name = os.path.basename(file_path)
+        if self.is_messagebox_showing():
+            print("其他模态对话框正在显示 跳过")
+            self._on_ssh_connected(True, self.tr(
+                f"Another modal dialog is showing. Skip the file {file_name}"))
+            return
         if success:
             # owner_perm = (permission_num >> 6) & 0o7
             # group_perm = (permission_num >> 3) & 0o7
@@ -950,7 +970,6 @@ class Window(FramelessWindow):
             #     f"🟥 其他用户权限: {other_perm:03o} (r:{bool(other_perm&4)}, w:{bool(other_perm&2)}, x:{bool(other_perm&1)})")
             # print(f"🔢 完整权限码: {permission_num:03o}")
 
-            file_name = os.path.basename(file_path)
             per_box = PermissionDialog(file_name, permission_num, self)
 
             if per_box.exec_():
@@ -999,9 +1018,9 @@ class Window(FramelessWindow):
 
             paths_to_info = full_path if isinstance(
                 full_path, list) else [full_path]
-            for path in paths_to_info:
-                # file_manager.get_file_info(path)
-                file_manager.get_permissions(path)
+
+            # file_manager.get_file_info(path)
+            file_manager.get_permissions(paths_to_info[-1])
 
         elif action_type == "mkdir":
             if full_path:
