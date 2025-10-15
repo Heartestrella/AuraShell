@@ -20,9 +20,10 @@ class RemoteFileManager(QThread):
     """
     Remote file manager, responsible for building and maintaining remote file trees
     """
-    # file_path, read, write, execute, success, error_msg
-    permission_finished = pyqtSignal(str, bool, bool, bool, bool, str)
-
+    permission_finished = pyqtSignal(
+        str, int, bool, str)  # file_path, permission_num, success, error_msg
+    # file_path, permission_num, success, error_msg
+    permission_got = pyqtSignal(str, int, bool, str)
     kill_finished = pyqtSignal(int, bool, str)
     file_tree_updated = pyqtSignal(dict, str)  # file tree , path
     error_occurred = pyqtSignal(str)
@@ -230,10 +231,11 @@ class RemoteFileManager(QThread):
                         elif ttype == 'set_permissions':
                             self._handle_permission_task(
                                 task['file_path'],
-                                task['read'],
-                                task['write'],
-                                task['execute']
+                                task['permission_num']
                             )
+                        elif ttype == 'get_permissions':
+                            self._handle_get_permission_task(task['file_path'])
+
                         elif ttype == 'rename':
                             self._handle_rename_task(
                                 task['path'],
@@ -504,25 +506,21 @@ class RemoteFileManager(QThread):
         self.condition.wakeAll()
         self.mutex.unlock()
 
-    def set_permissions(self, file_path: str, read: bool, write: bool, execute: bool):
+    def set_permissions(self, file_path: str, permission_num: int):
         """
-        Asynchronously sets permissions for a remote file or directory.
+        Asynchronously sets permissions for a remote file or directory using chmod numeric mode.
 
         This method queues a permission setting task to be executed in the background.
         When the operation is complete, the `permission_finished` signal is emitted.
 
         Args:
             file_path (str): The path of the file or directory to set permissions for.
-            read (bool): If True, sets read permission.
-            write (bool): If True, sets write permission.
-            execute (bool): If True, sets execute permission.
+            permission_num (int): The chmod numeric permission value (e.g., 755, 644).
 
         Signals:
-            permission_finished (str, bool, bool, bool, bool, str): Emitted upon completion with parameters:
+            permission_finished (str, int, bool, str): Emitted upon completion with parameters:
                 - file_path (str): The file path.
-                - read (bool): The requested read permission.
-                - write (bool): The requested write permission.
-                - execute (bool): The requested execute permission.
+                - permission_num (int): The requested permission value.
                 - success (bool): True if the operation succeeded, False otherwise.
                 - error_msg (str): Error message if the operation failed, empty string otherwise.
         """
@@ -530,9 +528,29 @@ class RemoteFileManager(QThread):
         self._tasks.append({
             'type': 'set_permissions',
             'file_path': file_path,
-            'read': read,
-            'write': write,
-            'execute': execute
+            'permission_num': permission_num
+        })
+        self.condition.wakeAll()
+        self.mutex.unlock()
+
+    def get_permissions(self, file_path: str):
+        """
+        Asynchronously gets permissions for a remote file or directory.
+
+        Args:
+            file_path (str): The path of the file or directory to get permissions for.
+
+        Signals:
+            permission_got (str, int, bool, str): Emitted upon completion with parameters:
+                - file_path (str): The file path.
+                - permission_num (int): The current permission value in numeric format.
+                - success (bool): True if the operation succeeded, False otherwise.
+                - error_msg (str): Error message if the operation failed, empty string otherwise.
+        """
+        self.mutex.lock()
+        self._tasks.append({
+            'type': 'get_permissions',
+            'file_path': file_path
         })
         self.condition.wakeAll()
         self.mutex.unlock()
@@ -784,7 +802,7 @@ class RemoteFileManager(QThread):
                         or mime_out.startswith("application/x-sharedlib")
                         or "x-mach-binary" in mime_out
                         or "pe" in mime_out  # covers various PE-like mimes
-                        ):
+                    ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
 
@@ -1287,7 +1305,56 @@ class RemoteFileManager(QThread):
             import traceback
             traceback.print_exc()
 
-    def _handle_permission_task(self, file_path: str, read: bool, write: bool, execute: bool):
+    def _handle_get_permission_task(self, file_path: str):
+        """
+        内部处理获取权限任务
+        """
+        if self.conn is None:
+            error_msg = "SSH 连接未就绪"
+            print(f"❌ 获取权限失败: {file_path}, {error_msg}")
+            self.permission_got.emit(file_path, 0, False, error_msg)
+            return
+
+        try:
+            # 检查文件/目录是否存在
+            path_type = self.check_path_type(file_path)
+            if not path_type:
+                error_msg = f"路径不存在: {file_path}"
+                print(f"❌ 获取权限失败: {error_msg}")
+                self.permission_got.emit(file_path, 0, False, error_msg)
+                return
+
+            # 使用 stat 命令获取文件权限
+            cmd = f'stat -c "%a" "{file_path}"'
+            print(f"🔍 执行获取权限命令: {cmd}")
+
+            # 执行获取权限命令
+            stdin, stdout, stderr = self.conn.exec_command(cmd)
+            exit_status = stdout.channel.recv_exit_status()
+            error_output = stderr.read().decode('utf-8').strip()
+            permission_output = stdout.read().decode('utf-8').strip()
+
+            if exit_status == 0 and permission_output:
+                permission_num = int(permission_output, 8)  # 将八进制字符串转换为整数
+                print(f"📊 获取权限成功: {file_path} -> {permission_num:03o}")
+                self.permission_got.emit(file_path, permission_num, True, "")
+            else:
+                error_msg = error_output if error_output else "获取权限失败"
+                print(f"❌ 获取权限失败: {error_msg}")
+                self.permission_got.emit(file_path, 0, False, error_msg)
+
+        except ValueError as e:
+            error_msg = f"权限格式解析错误: {str(e)}"
+            print(f"❌ 获取权限失败: {error_msg}")
+            self.permission_got.emit(file_path, 0, False, error_msg)
+        except Exception as e:
+            error_msg = f"获取权限过程错误: {str(e)}"
+            print(f"❌ 获取权限失败: {error_msg}")
+            import traceback
+            traceback.print_exc()
+            self.permission_got.emit(file_path, 0, False, error_msg)
+
+    def _handle_permission_task(self, file_path: str, permission_num: int):
         """
         内部处理权限设置任务
         """
@@ -1295,7 +1362,7 @@ class RemoteFileManager(QThread):
             error_msg = "SSH 连接未就绪"
             print(f"❌ 权限设置失败: {file_path}, {error_msg}")
             self.permission_finished.emit(
-                file_path, read, write, execute, False, error_msg)
+                file_path, permission_num, False, error_msg)
             return
 
         try:
@@ -1305,22 +1372,20 @@ class RemoteFileManager(QThread):
                 error_msg = f"路径不存在: {file_path}"
                 print(f"❌ 权限设置失败: {error_msg}")
                 self.permission_finished.emit(
-                    file_path, read, write, execute, False, error_msg)
+                    file_path, permission_num, False, error_msg)
                 return
 
             print(f"📁 设置权限的目标路径: {file_path} (类型: {path_type})")
 
-            # 计算权限数字
-            permission_num = 0
-            if read:
-                permission_num += 4
-            if write:
-                permission_num += 2
-            if execute:
-                permission_num += 1
+            # 调试信息
+            print(
+                f"🔧 权限数字 - 十进制: {permission_num}, 八进制: 0o{permission_num:03o}")
 
-            # 构建权限命令 (使用数字模式)
-            cmd = f'chmod {permission_num}00 "{file_path}"'  # 只设置所有者权限
+            # 关键修改：使用八进制数字传递给 chmod
+            # permission_num 是八进制数值，但 Python 中以十进制存储
+            # 需要格式化为八进制字符串，但不带 '0o' 前缀
+            # 使用 :03o 格式化为3位八进制
+            cmd = f'chmod {permission_num:03o} "{file_path}"'
             print(f"🔧 执行权限命令: {cmd}")
 
             # 执行权限设置命令
@@ -1329,10 +1394,9 @@ class RemoteFileManager(QThread):
             error_output = stderr.read().decode('utf-8').strip()
 
             if exit_status == 0:
-                print(
-                    f"✅ 权限设置成功: {file_path} -> {permission_num}00 (r:{read}, w:{write}, x:{execute})")
+                print(f"✅ 权限设置成功: {file_path} -> 0o{permission_num:03o}")
                 self.permission_finished.emit(
-                    file_path, read, write, execute, True, "")
+                    file_path, permission_num, True, "")
 
                 # 刷新文件所在目录
                 parent_dir = os.path.dirname(file_path)
@@ -1342,7 +1406,7 @@ class RemoteFileManager(QThread):
                 error_msg = error_output if error_output else "权限设置失败"
                 print(f"❌ 权限设置失败: {error_msg}")
                 self.permission_finished.emit(
-                    file_path, read, write, execute, False, error_msg)
+                    file_path, permission_num, False, error_msg)
 
         except Exception as e:
             error_msg = f"权限设置过程错误: {str(e)}"
@@ -1350,7 +1414,7 @@ class RemoteFileManager(QThread):
             import traceback
             traceback.print_exc()
             self.permission_finished.emit(
-                file_path, read, write, execute, False, error_msg)
+                file_path, permission_num, False, error_msg)
 
     def _exec_remote_command(self, command: str):
         """
@@ -1802,7 +1866,8 @@ class FileManagerHandler:
         fm.file_type_ready.connect(self._on_file_type_ready)
         fm.file_info_ready.connect(self._on_file_info_ready)
         fm.mkdir_finished.connect(partial(self._wrap_show_info, type_="mkdir"))
-
+        fm.permission_got.connect(
+            partial(self.parent._on_permission_info_got, file_manager=fm))
         # fm.start_to_compression.connect(
         #     partial(self._wrap_show_info, type_="compression"))
         # fm.start_to_uncompression.connect(

@@ -68,7 +68,7 @@ def isDebugMode():
 
 
 class PermissionDialog(MessageBoxBase):
-    def __init__(self, file_name: str, parent=None):
+    def __init__(self, file_name: str, permission_num: int = None, parent=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
 
@@ -76,24 +76,128 @@ class PermissionDialog(MessageBoxBase):
         self.yesButton.setText(self.tr("Apply"))
         self.cancelButton.setText(self.tr("Cancel"))
 
+        # Owner permissions
         owner_group = QHBoxLayout()
         owner_group.addWidget(QLabel("Owner: "))
         self.owner_read = CheckBox("Read")
         self.owner_write = CheckBox("Write")
-        self.owmer_exec = CheckBox("Execute")
-
-        group = QHBoxLayout()
-        group.addWidget(QLabel(
-            "Choose a group\nThe component costs money, so it won't be done for now."))
+        self.owner_exec = CheckBox("Execute")
 
         owner_group.addWidget(self.owner_read)
         owner_group.addWidget(self.owner_write)
-        owner_group.addWidget(self.owmer_exec)
+        owner_group.addWidget(self.owner_exec)
 
+        # Group permissions
+        group = QHBoxLayout()
+        group.addWidget(QLabel("Group: "))
+        self.group_read = CheckBox("Read")
+        self.group_write = CheckBox("Write")
+        self.group_exec = CheckBox("Execute")
+
+        group.addWidget(self.group_read)
+        group.addWidget(self.group_write)
+        group.addWidget(self.group_exec)
+
+        # Other permissions
+        other = QHBoxLayout()
+        other.addWidget(QLabel("Other: "))
+        self.other_read = CheckBox("Read")
+        self.other_write = CheckBox("Write")
+        self.other_exec = CheckBox("Execute")
+
+        other.addWidget(self.other_read)
+        other.addWidget(self.other_write)
+        other.addWidget(self.other_exec)
+
+        self.permission_label = QLabel("")
+        self.permission_label.setAlignment(Qt.AlignCenter)
+
+        # Add all to layout
         self.viewLayout.addWidget(self.titleLabel)
         self.viewLayout.addLayout(owner_group)
+        self.viewLayout.addLayout(group)
+        self.viewLayout.addLayout(other)
+        self.viewLayout.addWidget(self.permission_label)
 
         self._parent = parent
+
+        if permission_num is not None:
+            self.set_permission_state(permission_num)
+
+        self._connect_checkbox_signals()
+
+    def set_permission_state(self, permission_num: int):
+
+        owner_perm = (permission_num >> 6) & 0o7
+        group_perm = (permission_num >> 3) & 0o7
+        other_perm = permission_num & 0o7
+
+        self.owner_read.setChecked(bool(owner_perm & 4))
+        self.owner_write.setChecked(bool(owner_perm & 2))
+        self.owner_exec.setChecked(bool(owner_perm & 1))
+
+        self.group_read.setChecked(bool(group_perm & 4))
+        self.group_write.setChecked(bool(group_perm & 2))
+        self.group_exec.setChecked(bool(group_perm & 1))
+
+        self.other_read.setChecked(bool(other_perm & 4))
+        self.other_write.setChecked(bool(other_perm & 2))
+        self.other_exec.setChecked(bool(other_perm & 1))
+
+        self._update_permission_display()
+
+    def get_permission_num(self) -> int:
+        permission_num = 0
+
+        if self.owner_read.isChecked():
+            permission_num |= 0o400
+        if self.owner_write.isChecked():
+            permission_num |= 0o200
+        if self.owner_exec.isChecked():
+            permission_num |= 0o100
+
+        if self.group_read.isChecked():
+            permission_num |= 0o040
+        if self.group_write.isChecked():
+            permission_num |= 0o020
+        if self.group_exec.isChecked():
+            permission_num |= 0o010
+
+        if self.other_read.isChecked():
+            permission_num |= 0o004
+        if self.other_write.isChecked():
+            permission_num |= 0o002
+        if self.other_exec.isChecked():
+            permission_num |= 0o001
+
+        return permission_num
+
+    def _connect_checkbox_signals(self):
+        checkboxes = [
+            self.owner_read, self.owner_write, self.owner_exec,
+            self.group_read, self.group_write, self.group_exec,
+            self.other_read, self.other_write, self.other_exec
+        ]
+
+        for checkbox in checkboxes:
+            checkbox.stateChanged.connect(self._update_permission_display)
+
+    def _update_permission_display(self):
+        permission_num = self.get_permission_num()
+
+        owner_perm = (permission_num >> 6) & 0o7
+        group_perm = (permission_num >> 3) & 0o7
+        other_perm = permission_num & 0o7
+
+        def to_symbol(perm):
+            return f"{'r' if perm & 4 else '-'}{'w' if perm & 2 else '-'}{'x' if perm & 1 else '-'}"
+
+        owner_symbol = to_symbol(owner_perm)
+        group_symbol = to_symbol(group_perm)
+        other_symbol = to_symbol(other_perm)
+
+        display_text = f"当前权限: {owner_symbol}{group_symbol}{other_symbol} ({permission_num:03o})"
+        self.permission_label.setText(display_text)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -828,6 +932,37 @@ class Window(FramelessWindow):
             file_manager.download_path_async(
                 path, open_it=True, session_id=session_id)
 
+    def _on_permission_info_got(self, file_path: str, permission_num: int, success: bool, error_msg: str, file_manager=None):
+        """
+        处理获取权限信息的回调
+        """
+        if success:
+            # owner_perm = (permission_num >> 6) & 0o7
+            # group_perm = (permission_num >> 3) & 0o7
+            # other_perm = permission_num & 0o7
+
+            # print(f"\n📁 文件权限信息: {file_path}")
+            # print(
+            #     f"🟦 所有者权限: {owner_perm:03o} (r:{bool(owner_perm&4)}, w:{bool(owner_perm&2)}, x:{bool(owner_perm&1)})")
+            # print(
+            #     f"🟩 所属组权限: {group_perm:03o} (r:{bool(group_perm&4)}, w:{bool(group_perm&2)}, x:{bool(group_perm&1)})")
+            # print(
+            #     f"🟥 其他用户权限: {other_perm:03o} (r:{bool(other_perm&4)}, w:{bool(other_perm&2)}, x:{bool(other_perm&1)})")
+            # print(f"🔢 完整权限码: {permission_num:03o}")
+
+            file_name = os.path.basename(file_path)
+            per_box = PermissionDialog(file_name, permission_num, self)
+
+            if per_box.exec_():
+                new_permission_num = per_box.get_permission_num()
+                print(
+                    f"✅ 用户确认设置新权限: 十进制={new_permission_num}, 八进制=0{new_permission_num:03o}")
+
+                file_manager.set_permissions(file_path, new_permission_num)
+
+        else:
+            print(f"❌ 获取权限失败 [{file_path}]: {error_msg}")
+
     def _handle_files(self, action_type, full_path, copy_to, cut, widget_key):
         file_manager: RemoteFileManager = self.file_tree_object[widget_key]
         if action_type == "delete":
@@ -861,19 +996,13 @@ class Window(FramelessWindow):
                 print(f"Rename {full_path} to {copy_to}")
                 file_manager.rename(path=full_path, new_name=copy_to)
         elif action_type == "info":
-            per_box = PermissionDialog("test.py", self)
-            if per_box.exec_():
-                read_checked = per_box.owner_read.isChecked()
-                write_checked = per_box.owner_write.isChecked()
-                exec_checked = per_box.owmer_exec.isChecked()
 
-            else:
-                pass
+            paths_to_info = full_path if isinstance(
+                full_path, list) else [full_path]
+            for path in paths_to_info:
+                # file_manager.get_file_info(path)
+                file_manager.get_permissions(path)
 
-            # paths_to_info = full_path if isinstance(
-            #     full_path, list) else [full_path]
-            # for path in paths_to_info:
-            #     file_manager.get_file_info(path)
         elif action_type == "mkdir":
             if full_path:
                 file_manager.mkdir(full_path)
