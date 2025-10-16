@@ -27,7 +27,8 @@ class Session:
             'proxy_username': '',
             'proxy_password': '',
             "ssh_default_path": "",
-            "file_manager_default_path": ""
+            "file_manager_default_path": "",
+            "jump_server": ""
         }
         if session_data:
             for key, default_value in default_values.items():
@@ -58,7 +59,8 @@ class Session:
             'proxy_username': self.proxy_username,
             'proxy_password': self.proxy_password,
             "ssh_default_path": self.ssh_default_path,
-            "file_manager_default_path": self.file_manager_default_path
+            "file_manager_default_path": self.file_manager_default_path,
+            "jump_server": self.jump_server
         }
 
     def save(self, session_manager: 'SessionManager'):
@@ -132,7 +134,8 @@ class SessionManager:
             'proxy_username': '',
             'proxy_password': '',
             "ssh_default_path": "",
-            "file_manager_default_path": ""
+            "file_manager_default_path": "",
+            "jump_server": ""
         }
         migrated_data = session_data.copy()
         for field, default_value in current_fields.items():
@@ -148,9 +151,9 @@ class SessionManager:
 
     def create_session(self, name: str, host: str, username: str, port: int,
                        auth_type: str, password: str = '', key_path: str = '',
-                       host_key: str = '', processes_md5: str = '',
+                       host_key: str = '', processes_md5: str = '', history: list = [],
                        proxy_type: str = 'None', proxy_host: str = '', proxy_port: int = 0,
-                       proxy_username: str = '', proxy_password: str = '', ssh_default_path: str = '', file_manager_default_path: str = '') -> Session:
+                       proxy_username: str = '', proxy_password: str = '', ssh_default_path: str = '', file_manager_default_path: str = '', jump_server: str = "") -> Session:
         existing_names = [s.name for s in self.sessions_cache]
         if name in existing_names:
             raise ValueError(
@@ -166,7 +169,7 @@ class SessionManager:
             'key_path': key_path,
             'status': 'disconnected',
             'created_at': datetime.now().isoformat(),
-            'history': [],
+            'history': history,
             'console_content': f'Welcome to SSH Session: {name}\n{username}@{host}:~$ ',
             'host_key': host_key,
             'processes_md5': processes_md5,
@@ -176,7 +179,8 @@ class SessionManager:
             'proxy_username': proxy_username,
             'proxy_password': proxy_password,
             "ssh_default_path": ssh_default_path,
-            "file_manager_default_path": file_manager_default_path
+            "file_manager_default_path": file_manager_default_path,
+            "jump_server": jump_server
         })
         sessions = self.sessions_cache.copy()
         sessions.append(new_session)

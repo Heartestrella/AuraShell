@@ -79,6 +79,14 @@ class SessionDialog(MessageBoxBase):
         #     if self._font:
         #         w.setFont(self._font)
 
+        # Jump server
+        self.jump_server_combo = ComboBox()
+        self.jump_server_combo.addItem("None")
+        jump_server_layout = QHBoxLayout()
+        jump_server_layout.addWidget(QLabel(self.tr("Jump Server")))
+        jump_server_layout.addWidget(self.jump_server_combo)
+        jump_server_layout.setStretch(1, 1)
+
         # Session Name
         self.session_name.setPlaceholderText(self.tr("Enter session name"))
         session_name_layout = QHBoxLayout()
@@ -172,6 +180,7 @@ class SessionDialog(MessageBoxBase):
         self.widget.setMinimumWidth(400)
         self._on_auth_changed(0)  # Initialize to password authentication
 
+        self.viewLayout.addLayout(jump_server_layout)
         set_font_recursive(self, self._font)
 
     def _setup_proxy_ui(self):

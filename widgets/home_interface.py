@@ -251,8 +251,18 @@ class MainInterface(QWidget):
 
     def _create_edit_new_session(self, mode: str = "create", session_id: str = None):
         dialog = SessionDialog(self)
+        sessions = self.session_manager.sessions_cache
+        s_name = []
+        for s in sessions:
+            s_name.append(s.name)
+            # dialog.jump_server_combo.addItem(s.name)
+        dialog.jump_server_combo.addItems(s_name)
         if mode == "create":
-            pass
+            other_data = {
+                'history': [],
+                'host_key': "",
+                'processes_md5': "",
+            }
         elif mode == "edit":
             session = next(
                 (s for s in self.session_manager.sessions_cache if s.id == session_id), None)
@@ -260,6 +270,7 @@ class MainInterface(QWidget):
             if not session:
                 print(f"Session ID not found: {session_id}")
                 return
+
             dialog.session_name.setText(session.name)
             dialog.username.setText(session.username)
             dialog.host.setText(session.host)
@@ -267,6 +278,17 @@ class MainInterface(QWidget):
             dialog.ssh_default_path.setText(session.ssh_default_path)
             dialog.file_manager_default_path.setText(
                 session.file_manager_default_path)
+
+            other_data = {
+                'history': session.history,
+                'host_key': session.host_key,
+                'processes_md5': session.processes_md5,
+            }
+            try:
+                dialog.jump_server_combo.setCurrentText(session.jump_server)
+            except:
+                pass
+
             if session.auth_type == "password":
                 dialog._on_auth_changed(0)
                 dialog.password.setText(session.password)
@@ -311,9 +333,9 @@ class MainInterface(QWidget):
                     'proxy_username': dialog.proxy_username.text().strip(),
                     'proxy_password': dialog.proxy_password.text(),
                     "ssh_default_path": dialog.ssh_default_path.text(),
-                    "file_manager_default_path": dialog.file_manager_default_path.text()
+                    "file_manager_default_path": dialog.file_manager_default_path.text(),
                 }
-
+                session_data.update(other_data)
                 try:
                     content_mode = self.tr("New")
                     if mode == "edit":
@@ -334,7 +356,11 @@ class MainInterface(QWidget):
                         proxy_username=session_data['proxy_username'],
                         proxy_password=session_data['proxy_password'],
                         ssh_default_path=session_data["ssh_default_path"],
-                        file_manager_default_path=session_data["file_manager_default_path"]
+                        file_manager_default_path=session_data["file_manager_default_path"],
+                        history=session_data["history"],
+                        host_key=session_data["host_key"],
+                        processes_md5=session_data["processes_md5"],
+                        jump_server=dialog.jump_server_combo.currentText()
                     )
                     self._load_sessions()
                     # self.sessionClicked.emit(new_session.id)
