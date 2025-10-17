@@ -25,7 +25,7 @@
 - 历史指令复用  
 - 集成 AI 智能命令输入栏（目前支持 DeepSeek）  
 - 可调整字体与配色方案  
-
+- 支持通过已保存的跳板服务器(Jumpbox)连接到目标服务器 (特殊网络环境或其他需求可能有用)
 ---
 
 ### 📂 远程文件管理器  
@@ -50,7 +50,7 @@
 ### 🛜 网络与系统进程管理  
 - 支持查看并操作网络与系统进程  
 - 显示文件上传/下载进度，可中止操作  
-
+- 查看网路状态(Doing)
 ![进程管理示例](https://github.com/user-attachments/assets/c4fb44cf-910c-412b-b4a8-0e8d32c465b6)
 
 ---
@@ -67,7 +67,7 @@
 
 #### 📋 侧边栏高级模式
 提供更强大的 Shell 辅助功能：
-
+- 请配置ChatGpt Api 或 Deepseek 等兼容Openai协议的模型
 ![AI 侧边栏](https://github.com/user-attachments/assets/777c658b-1ac4-4742-9e65-6832b76157cd)
 
 ---
@@ -140,6 +140,7 @@ PSSH 仍在持续开发中：
 sudo apt install -y ss lsblk iostat
 ```
 （不同发行版请使用对应包管理器）
+若仍然有问题 请提交此Bug
 (此功能存在不兼容部分主机的问题 后续将考虑用可执行文件代替脚本)
 ---
 

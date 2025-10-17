@@ -26,7 +26,7 @@ Based on `xterm.js` and `QWebEngineView`, supporting:
 - Command history reuse  
 - AI-assisted command input (currently supports **DeepSeek**)  
 - Adjustable font size and color scheme  
-
+- Supports connecting to the target server via a saved jumpbox server (may be useful in special network environments or other requirements)
 ---
 
 ### 📂 Remote File Manager  
@@ -51,7 +51,7 @@ Based on `xterm.js` and `QWebEngineView`, supporting:
 ### 🛜 Network & Process Monitor  
 - View and manage network/system processes  
 - Monitor upload/download progress with cancel option  
-
+- Check network status (Doing)
 ![Process Management Example](https://github.com/user-attachments/assets/c4fb44cf-910c-412b-b4a8-0e8d32c465b6)
 
 ---
@@ -68,7 +68,7 @@ After enabling and configuring your AI key in settings:
 
 #### 📋 Sidebar Advanced Mode  
 Provides more powerful shell assistance and context-aware suggestions.
-
+- Please configure ChatGpt Api or Deepseek or other models compatible with OpenAI protocol
 ![AI Sidebar](https://github.com/user-attachments/assets/777c658b-1ac4-4742-9e65-6832b76157cd)
 
 ---
@@ -140,6 +140,7 @@ If the **left sidebar** information is missing, make sure these commands are ins
 ```bash
 sudo apt install -y ss lsblk iostat
 ```
+If you still have problems, please submit this bug
 (Use your package manager if not on Debian/Ubuntu)
 
 ---
