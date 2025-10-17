@@ -741,8 +741,9 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
+  background-color: transparent;
   z-index: 10000;
-  pointer-events: none;
+  pointer-events: auto;
 }
 .compression-modal {
   position: fixed;
