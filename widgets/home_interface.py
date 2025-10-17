@@ -257,12 +257,13 @@ class MainInterface(QWidget):
             s_name.append(s.name)
             # dialog.jump_server_combo.addItem(s.name)
         dialog.jump_server_combo.addItems(s_name)
+        other_data = {
+            'history': [],
+            'host_key': "",
+            'processes_md5': "",
+        }
         if mode == "create":
-            other_data = {
-                'history': [],
-                'host_key': "",
-                'processes_md5': "",
-            }
+            pass
         elif mode == "edit":
             session = next(
                 (s for s in self.session_manager.sessions_cache if s.id == session_id), None)
