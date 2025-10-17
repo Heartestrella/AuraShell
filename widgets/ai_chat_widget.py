@@ -183,7 +183,7 @@ class AIBridge(QObject):
                     return json.dumps({"status": "error", "content": error, "exit_code": exit_code}, ensure_ascii=False)
             def exe_shell(args: str = '', request_id: str = None):
                 """
-                <exe_shell><shell>{要执行的命令}</shell><cwd>{工作目录}</cwd></exe_shell>
+                <exe_shell><shell>{要执行的命令}</shell><cwd>{工作目录}</cwd><reason>{简单且易懂的执行理由或原因或目的}</reason></exe_shell>
                 """
                 if not args:
                     return json.dumps({"status": "error", "content": "No arguments provided."}, ensure_ascii=False)
@@ -738,6 +738,7 @@ class AiChatWidget(QWidget):
         from PyQt5.QtWebChannel import QWebChannel
         qqLoginUrl = "https://xui.ptlogin2.qq.com/cgi-bin/xlogin?pt_disable_pwd=1&appid=715030901&hide_close_icon=0&daid=73&pt_no_auth=1&s_url=https%3A%2F%2Fqun.qq.com%2F"
         self.qq_login_browser = QWebEngineView(self)
+        self.qq_login_browser.hide()
         self.qq_login_browser.page().setWebChannel(self.channel)
         self.qq_login_browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
         self.qq_login_browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)

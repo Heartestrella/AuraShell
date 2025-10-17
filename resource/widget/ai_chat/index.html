@@ -77,6 +77,20 @@
         <iframe id="online-user-iframe" src="iframe/onlineUser/index.html"></iframe>
       </div>
     </div>
+    <div id="compression-overlay" style="display: none;">
+      <div class="compression-modal">
+        <div class="compression-header">
+          <div class="compression-icon"></div>
+          <h3>警告:模型内容超限!压缩上下文中...</h3>
+        </div>
+        <div class="compression-progress">
+          <div class="progress-bar">
+            <div class="progress-fill"></div>
+          </div>
+          <div class="progress-text"><span id="current-message-index">0</span>/<span id="total-messages">0</span></div>
+        </div>
+      </div>
+    </div>
     <script>
       if (!Array.prototype.at) {
         Object.defineProperty(Array.prototype, 'at', {
@@ -95,6 +109,7 @@
     <script src="lib/marked/purify.min.js"></script>
     <script src="lib/marked/marked.min.js"></script>
     <script src="lib/marked/highlight.min.js"></script>
+    <script src="ai_compression.js"></script>
     <script src="ai_history.js"></script>
     <script src="script.js"></script>
   </body>
