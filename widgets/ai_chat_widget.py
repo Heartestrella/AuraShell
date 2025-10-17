@@ -738,6 +738,7 @@ class AiChatWidget(QWidget):
         from PyQt5.QtWebChannel import QWebChannel
         qqLoginUrl = "https://xui.ptlogin2.qq.com/cgi-bin/xlogin?pt_disable_pwd=1&appid=715030901&hide_close_icon=0&daid=73&pt_no_auth=1&s_url=https%3A%2F%2Fqun.qq.com%2F"
         self.qq_login_browser = QWebEngineView(self)
+        self.qq_login_browser.hide()
         self.qq_login_browser.page().setWebChannel(self.channel)
         self.qq_login_browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
         self.qq_login_browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
