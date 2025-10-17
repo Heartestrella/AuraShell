@@ -183,7 +183,7 @@ class AIBridge(QObject):
                     return json.dumps({"status": "error", "content": error, "exit_code": exit_code}, ensure_ascii=False)
             def exe_shell(args: str = '', request_id: str = None):
                 """
-                <exe_shell><shell>{要执行的命令}</shell><cwd>{工作目录}</cwd></exe_shell>
+                <exe_shell><shell>{要执行的命令}</shell><cwd>{工作目录}</cwd><reason>{简单且易懂的执行理由或原因或目的}</reason></exe_shell>
                 """
                 if not args:
                     return json.dumps({"status": "error", "content": "No arguments provided."}, ensure_ascii=False)

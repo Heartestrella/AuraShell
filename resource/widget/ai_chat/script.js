@@ -3,6 +3,15 @@ function generateUniqueId() {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
+function isContextLengthError(errorJson) {
+  if (errorJson.error?.code === 'context_length_exceeded') {
+    return true;
+  }
+  const message = (errorJson.error?.message || '').toLowerCase();
+  const keywords = ['maximum context length', 'context length', 'context window', 'token limit', 'tokens exceed', 'too many tokens', 'requested too many tokens'];
+  return keywords.some((keyword) => message.includes(keyword));
+}
+
 function cleanupRequest(requestId) {
   const request = pendingRequests.get(requestId);
   if (request && request.handler) {
@@ -1626,8 +1635,12 @@ async function requestAiChat(onStream, onDone, signal) {
       response = await proxiedFetch(allModels[window.currentModel].api_url + '/chat/completions', options);
       if (response.status === 429) {
         if (retryCount >= maxRetries) {
+          const errorMessage = `❌ **请求频率限制**\n\n服务器返回了 429 错误(请求过于频繁),已重试 ${maxRetries} 次后仍然失败。\n\n**建议:**\n- 请稍等片刻后再试\n- 或者切换到其他 API 模型`;
+          if (onStream) {
+            onStream(errorMessage);
+          }
           if (onDone) {
-            onDone(new Error(`Rate limit exceeded (429) after ${maxRetries} attempts.`));
+            onDone(errorMessage);
           }
           return;
         }
@@ -1639,13 +1652,58 @@ async function requestAiChat(onStream, onDone, signal) {
         }
         continue;
       }
+      if (!response.ok) {
+        const errorText = await response.text();
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (isContextLengthError(errorJson)) {
+            if (retryCount >= maxRetries) {
+              const errorMessage = `❌ **上下文长度超限**\n\n已尝试压缩上下文 ${maxRetries} 次，但仍然超出模型限制。\n\n**建议:**\n- 开启新对话\n- 或手动删除部分历史消息\n- 或切换到支持更长上下文的模型`;
+              if (onStream) {
+                onStream(errorMessage);
+              }
+              if (onDone) {
+                onDone(errorMessage);
+              }
+              return;
+            }
+            let obj = await compressContext(aiChatApiOptionsBody, window.messagesHistory);
+            if (obj) {
+              aiChatApiOptionsBody = obj.aiChatApiOptionsBody;
+              window.messagesHistory = obj.messagesHistory;
+              retryCount++;
+              continue;
+            }
+          }
+        } catch (e) {}
+      }
       break;
     }
     if (!response.ok) {
       const errorText = await response.text();
-      const error = new Error(`${response.status} ${response.statusText}\n${errorText}`);
+      let errorMessage = `❌ **请求失败 (${response.status} ${response.statusText})**\n\n`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        if (errorJson.error && errorJson.error.message) {
+          errorMessage += `**错误详情:**\n${errorJson.error.message}\n\n`;
+          if (errorJson.error.type) {
+            errorMessage += `**错误类型:** ${errorJson.error.type}\n`;
+          }
+          if (errorJson.error.code) {
+            errorMessage += `**错误代码:** ${errorJson.error.code}\n`;
+          }
+        } else {
+          errorMessage += errorText;
+        }
+      } catch (e) {
+        errorMessage += errorText;
+      }
+      errorMessage += `\n**建议:** 请检查请求参数或稍后重试`;
+      if (onStream) {
+        onStream(errorMessage);
+      }
       if (onDone) {
-        onDone(error);
+        onDone(errorMessage);
       }
       return;
     }
