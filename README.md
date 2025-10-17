@@ -1,5 +1,7 @@
 ## [English Documentation](README_en.md)
 
+# ⚠ 请勿运行在包含中文的路径中!!!
+
 # 🖥️ PSSH — Win11 风格 SSH 终端
 
 一个基于 **[PyQt](https://riverbankcomputing.com/software/pyqt/intro)** 与 **[QFluentWidgets](https://qfluentwidgets.com/)** 开发的跨平台 SSH 客户端，  
@@ -8,7 +10,6 @@
 内置 **远程文件管理器** 与 **集成终端**，提供现代化、优雅且高效的远程管理体验。
 
 > 💡 请先阅读本文件，大部分常见问题都能在这里找到答案。
-
 ---
 
 ## ✨ 功能特点
