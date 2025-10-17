@@ -1,7 +1,48 @@
+function showCompressionUI(totalMessages) {
+  var overlay = document.getElementById('compression-overlay');
+  overlay.style.display = 'flex';
+  document.getElementById('total-messages').textContent = totalMessages;
+  document.getElementById('current-message-index').textContent = '0';
+}
+function updateCompressionProgress(currentIndex, totalMessages, compressedCount, removedCount) {
+  var progressFill = document.querySelector('.progress-fill');
+  var progress = (currentIndex / totalMessages) * 100;
+  progressFill.style.width = progress + '%';
+  document.getElementById('current-message-index').textContent = currentIndex;
+}
+function highlightMessage(index) {
+  document.querySelectorAll('.message-group.compressing').forEach(function (el) {
+    el.classList.remove('compressing');
+  });
+  var messageElement = document.querySelector('[data-message-index="' + index + '"]');
+  if (messageElement) {
+    messageElement.classList.add('compressing');
+    messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+function hideCompressionUI() {
+  var overlay = document.getElementById('compression-overlay');
+  overlay.style.animation = 'fadeOut 0.3s ease';
+  setTimeout(function () {
+    overlay.style.display = 'none';
+    overlay.style.animation = '';
+  }, 300);
+  document.querySelectorAll('.message-group.compressing').forEach(function (el) {
+    el.classList.remove('compressing');
+  });
+}
+function delay(ms) {
+  return new Promise(function (resolve) {
+    setTimeout(resolve, ms);
+  });
+}
 function compressContext(aiChatApiOptionsBody, messagesHistory) {
   return new Promise(async (resolve) => {
     try {
+      showCompressionUI(aiChatApiOptionsBody.messages.length);
+      await delay(500);
       var compressedCount = 0;
+      var removedToolsCount = 0;
       var lastMcpIndex = -1;
       for (var i = aiChatApiOptionsBody.messages.length - 1; i >= 0; i--) {
         var msg = aiChatApiOptionsBody.messages[i];
@@ -27,6 +68,9 @@ function compressContext(aiChatApiOptionsBody, messagesHistory) {
       }
       var newMessages = [];
       for (var i = 0; i < aiChatApiOptionsBody.messages.length; i++) {
+        updateCompressionProgress(i + 1, aiChatApiOptionsBody.messages.length, compressedCount, removedToolsCount);
+        highlightMessage(i);
+        await delay(200);
         var msg = aiChatApiOptionsBody.messages[i];
         var shouldSkip = false;
         if (msg.role === 'assistant' && typeof msg.content === 'string') {
@@ -45,6 +89,7 @@ function compressContext(aiChatApiOptionsBody, messagesHistory) {
                       content: cleanedContent,
                     });
                   } else {
+                    removedToolsCount++;
                     shouldSkip = true;
                   }
                 } else {
@@ -157,8 +202,8 @@ function compressContext(aiChatApiOptionsBody, messagesHistory) {
           newHistory.push(item);
         }
       }
-      console.log('压缩完成');
-      console.log('已压缩', compressedCount, '个MCP工具执行结果');
+      await delay(500);
+      hideCompressionUI();
       resolve({
         aiChatApiOptionsBody: {
           model: aiChatApiOptionsBody.model,
@@ -170,8 +215,8 @@ function compressContext(aiChatApiOptionsBody, messagesHistory) {
         messagesHistory: newHistory,
       });
     } catch (error) {
+      hideCompressionUI();
       console.error('压缩上下文时出错:', error);
-      debugger;
       throw error;
     }
   });

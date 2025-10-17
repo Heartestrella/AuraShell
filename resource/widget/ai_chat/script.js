@@ -336,13 +336,22 @@ class AIBubble {
     return this.contentElement.innerHTML;
   }
   setHTML(markdown) {
-    this.isStreaming = false;
-    this.fullContent = markdown;
-    const dirtyHtml = marked.parse(markdown);
-    const cleanHtml = DOMPurify.sanitize(dirtyHtml);
-    this.contentElement.innerHTML = cleanHtml;
-    if (this.chatController && !this.chatController.userHasScrolled) {
-      this.chatController.scrollToBottom();
+    if (isEmptyObject(markdown)) {
+      return;
+    }
+    try {
+      this.isStreaming = false;
+      this.fullContent = markdown;
+      const dirtyHtml = marked.parse(markdown);
+      const cleanHtml = DOMPurify.sanitize(dirtyHtml);
+      this.contentElement.innerHTML = cleanHtml;
+      if (this.chatController && !this.chatController.userHasScrolled) {
+        this.chatController.scrollToBottom();
+      }
+    } catch (e) {
+      console.log(e);
+      debugger;
+      throw new Error('setHTML error');
     }
   }
   updateStream(chunk) {
@@ -838,6 +847,13 @@ function deleteAIMessage(bubbleElement) {
     return;
   }
   truncateFromMessage(messageIndex, historyIndex);
+}
+function isEmptyObject(obj) {
+  const isPlainObject = Object.prototype.toString.call(obj) === '[object Object]';
+  if (!isPlainObject) {
+    return false;
+  }
+  return Object.keys(obj).length === 0;
 }
 function renderImagePreviews() {
   const inputArea = document.querySelector('.input-area');
