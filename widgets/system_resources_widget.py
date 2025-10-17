@@ -17,7 +17,8 @@ class ProcessTable(QFrame):
                 border-radius: 12px;
             }
         """)
-        self.setMinimumHeight(120)
+        self.setMinimumHeight(130)
+        self.setFixedHeight(150)
         self.setMinimumWidth(300)
 
         self.progress = {'cpu': 0.0, 'ram': 0.0}

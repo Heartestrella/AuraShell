@@ -643,7 +643,7 @@ class SSHWidget(QWidget):
                     background-color: {hover_color};
                 }}
             """
-            self.leftSplitter.setStyleSheet(vertical_stylesheet)
+            # self.leftSplitter.setStyleSheet(vertical_stylesheet)
             self.rsplitter.setStyleSheet(vertical_stylesheet)
             self.file_splitter.setStyleSheet(horizontal_stylesheet)
         except Exception as e:

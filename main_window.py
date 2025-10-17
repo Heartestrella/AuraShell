@@ -384,10 +384,48 @@ class Window(FramelessWindow):
                     disk_usage = result["disk_usage"]
 
                     # 先用第一个切出来的网卡测试 后面加切换网卡
-                    if net_usage:
-                        upload, download = net_usage[1]["tx_kbps"], net_usage[1]["rx_kbps"]
-                        widget.task.netmonitor.update_speed(
-                            upload, download)
+                    try:
+                        if not widget.task.netmonitor.init_interface and net_usage:
+                            interfaces = []
+                            for i in net_usage:
+                                name = i.get("iface")
+                                if name and name not in interfaces:  # 去重
+                                    interfaces.append(name)
+
+                            if interfaces:  # 确保有有效的网卡
+                                success = widget.task.netmonitor.initialize_interfaces(
+                                    interfaces)
+                                if success:
+                                    widget.task.netmonitor.init_interface = True
+                                    print(f"初始化网卡成功: {interfaces}")
+
+                        if net_usage:
+                            current_interface = widget.task.netmonitor.interface_combo.currentText()
+
+                            # 安全地查找当前网卡数据
+                            target_dict = next((item for item in net_usage if item.get(
+                                'iface') == current_interface), None)
+
+                            if target_dict:
+                                upload = target_dict.get("tx_kbps", 0)
+                                download = target_dict.get("rx_kbps", 0)
+                                widget.task.netmonitor.update_speed(
+                                    upload, download, current_interface)
+                            else:
+                                # 如果找不到当前网卡数据，使用第一个网卡的数据
+                                if net_usage:
+                                    first_interface = net_usage[0].get('iface')
+                                    if first_interface:
+                                        widget.task.netmonitor.interface_combo.setCurrentText(
+                                            first_interface)
+                                        upload = net_usage[0].get("tx_kbps", 0)
+                                        download = net_usage[0].get(
+                                            "rx_kbps", 0)
+                                        widget.task.netmonitor.update_speed(
+                                            upload, download, first_interface)
+                    except:
+                        pass
+
                     widget.sys_resources.set_progress("cpu", cpu_percent)
                     widget.sys_resources.set_progress("ram", mem_percent)
                     for processes in top_processes:
