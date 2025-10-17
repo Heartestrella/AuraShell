@@ -14,6 +14,7 @@ import shlex
 from PyQt5.QtCore import Qt
 from functools import partial
 import time
+from tools.session_manager import Session
 
 
 class RemoteFileManager(QThread):
@@ -55,7 +56,7 @@ class RemoteFileManager(QThread):
     start_to_uncompression = pyqtSignal(str)
     compression_finished = pyqtSignal(str, str)
 
-    def __init__(self, session_info, parent=None, child_key=None):
+    def __init__(self, session_info, parent=None, child_key=None, jumpbox=None):
         super().__init__(parent)
         self.session_info = session_info
         self.host = session_info.host
@@ -64,6 +65,7 @@ class RemoteFileManager(QThread):
         self.port = session_info.port
         self.auth_type = session_info.auth_type
         self.key_path = session_info.key_path
+        self.jumpbox = jumpbox
         self.proxy_type = getattr(session_info, 'proxy_type', 'None')
         self.proxy_host = getattr(session_info, 'proxy_host', '')
         self.proxy_port = getattr(session_info, 'proxy_port', 0)
@@ -128,33 +130,107 @@ class RemoteFileManager(QThread):
             raise e
 
     def _create_ssh_connection(self):
-        """Helper function to create and configure an SSH connection."""
+        """Helper function to create and configure an SSH connection with jumpbox support."""
         conn = paramiko.SSHClient()
         conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         sock = self._create_socket()
-        if self.auth_type == "password":
-            conn.connect(
-                self.host,
-                port=self.port,
-                username=self.user,
-                password=self.password,
-                timeout=30,
-                banner_timeout=30,
-                sock=sock
+
+        if isinstance(self.jumpbox, Session):
+            jumpbox_conn = paramiko.SSHClient()
+            jumpbox_conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+            host = self.jumpbox.host
+            user = self.jumpbox.username
+            port = self.jumpbox.port
+            password = self.jumpbox.password
+            auth_type = self.jumpbox.auth_type
+            key_path = self.jumpbox.key_path
+
+            print(f"🔗 连接到跳板机: {user}@{host}:{port}")
+
+            if auth_type == "password":
+                jumpbox_conn.connect(
+                    host, port, user, password,
+                    timeout=30, banner_timeout=30, sock=sock
+                )
+            else:
+                jumpbox_conn.connect(
+                    host, port, user, key_filename=key_path,
+                    timeout=30, banner_timeout=30, sock=sock
+                )
+
+            print("✅ 跳板机连接成功")
+
+            print(f"🔄 创建到目标服务器 {self.host}:{self.port} 的隧道")
+            jumpbox_transport = jumpbox_conn.get_transport()
+            dest_addr = (self.host, self.port)
+            jumpbox_channel = jumpbox_transport.open_channel(
+                kind="direct-tcpip",
+                dest_addr=dest_addr,
+                src_addr=(host, port)
             )
+
+            print("✅ 隧道创建成功")
+
+            print(f"🔗 通过隧道连接到目标服务器: {self.user}@{self.host}:{self.port}")
+            try:
+                if self.auth_type == "password":
+                    conn.connect(
+                        self.host,
+                        port=self.port,
+                        username=self.user,
+                        password=self.password,
+                        timeout=30,
+                        banner_timeout=30,
+                        sock=jumpbox_channel
+                    )
+                else:
+                    conn.connect(
+                        self.host,
+                        port=self.port,
+                        username=self.user,
+                        key_filename=self.key_path,
+                        timeout=30,
+                        banner_timeout=30,
+                        sock=jumpbox_channel
+                    )
+                print("✅ 目标服务器连接成功")
+
+            except Exception as e:
+                self.error_occurred.emit(e)
+                jumpbox_conn.close()
+                raise e
+
+            self.jumpbox_conn = jumpbox_conn
+
         else:
-            conn.connect(
-                self.host,
-                port=self.port,
-                username=self.user,
-                key_filename=self.key_path,
-                timeout=30,
-                banner_timeout=30,
-                sock=sock
-            )
-        # self.heart_timer.start(5000)
+            print(f"🔗 直接连接到服务器: {self.user}@{self.host}:{self.port}")
+            if self.auth_type == "password":
+                conn.connect(
+                    self.host,
+                    port=self.port,
+                    username=self.user,
+                    password=self.password,
+                    timeout=30,
+                    banner_timeout=30,
+                    sock=sock
+                )
+            else:
+                conn.connect(
+                    self.host,
+                    port=self.port,
+                    username=self.user,
+                    key_filename=self.key_path,
+                    timeout=30,
+                    banner_timeout=30,
+                    sock=sock
+                )
+            print("✅ 直接连接成功")
+
         transport = conn.get_transport()
         transport.set_keepalive(30)
+
+        # self.heart_timer.start(5000)
         return conn
 
     def run(self):
@@ -802,7 +878,7 @@ class RemoteFileManager(QThread):
                         or mime_out.startswith("application/x-sharedlib")
                         or "x-mach-binary" in mime_out
                         or "pe" in mime_out  # covers various PE-like mimes
-                    ):
+                        ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
 

@@ -759,7 +759,13 @@ class Window(FramelessWindow):
     def _start_ssh_connect(self, widget_key):
         parent_key = widget_key.split("-")[0].strip()
         session = self.sessionmanager.get_session_by_name(parent_key)
+        jumpbox = None
         processes = None
+
+        if session.jump_server != "None" and session.jump_server:
+            print(f"{session.name} use Jumpbox")
+            jumpbox = self.sessionmanager.get_session_by_name(
+                session.jump_server)
 
         def on_auth_error(e=None):
             update_password, reshow = self.verify_password(
@@ -840,7 +846,7 @@ class Window(FramelessWindow):
             self.file_tree_object[widget_key] = file_manager
             self.file_tree_object[f"{widget_key}-handler"] = handler
 
-            worker = SSHWorker(session, for_resources=False)
+            worker = SSHWorker(session, for_resources=False, jumpbox=jumpbox)
             self.ssh_session[widget_key] = worker
             worker.connected.connect(
                 lambda success, msg: self._on_ssh_connected(success, msg))
@@ -872,7 +878,7 @@ class Window(FramelessWindow):
 
         def start_processes():
             nonlocal processes
-            processes = SSHWorker(session, for_resources=True)
+            processes = SSHWorker(session, for_resources=True, jumpbox=jumpbox)
             processes.auth_error.connect(lambda e: on_auth_error(e))
             self.ssh_session[f'{widget_key}-processes'] = processes
             processes.key_verification.connect(key_verification)

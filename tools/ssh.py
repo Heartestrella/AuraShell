@@ -11,6 +11,7 @@ import socks
 import socket
 import uuid
 import time
+from tools.session_manager import Session
 
 
 class SSHWorker(QThread):
@@ -26,7 +27,7 @@ class SSHWorker(QThread):
     command_output_ready = pyqtSignal(str, int)
     force_complete = pyqtSignal(str)
 
-    def __init__(self, session_info, parent=None, for_resources=False, for_file=False):
+    def __init__(self, session_info, parent=None, for_resources=False, for_file=False, jumpbox=False):
         super().__init__(parent)
         self.host = session_info.host
         self.user = session_info.username
@@ -34,6 +35,7 @@ class SSHWorker(QThread):
         self.password = session_info.password
         self.auth_type = session_info.auth_type
         self.key_path = session_info.key_path
+        self.jumpbox: Session = jumpbox
         self.proxy_type = getattr(session_info, 'proxy_type', 'None')
         self.proxy_host = getattr(session_info, 'proxy_host', '')
         self.proxy_port = getattr(session_info, 'proxy_port', 0)
@@ -100,28 +102,119 @@ class SSHWorker(QThread):
             self.conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
             sock = self._create_socket()
-            try:
-                if self.auth_type == "password":
-                    self.conn.connect(self.host, username=self.user,
-                                      password=self.password, timeout=10, port=self.port, sock=sock)
+
+            if isinstance(self.jumpbox, Session):  # jumbox maybe is None:str
+                self.jumpbox_ssh = paramiko.SSHClient()
+                self.jumpbox_ssh.set_missing_host_key_policy(
+                    paramiko.AutoAddPolicy())
+
+                host = self.jumpbox.host
+                user = self.jumpbox.username
+                port = self.jumpbox.port
+                password = self.jumpbox.password
+                auth_type = self.jumpbox.auth_type
+                key_path = self.jumpbox.key_path
+
+                print(f"🔗 连接到跳板机: {user}@{host}:{port}")
+
+                # 连接到跳板机
+                if auth_type == "password":
+                    self.jumpbox_ssh.connect(
+                        host, port, user, password, timeout=10, sock=sock)
                 else:
-                    self.conn.connect(self.host, username=self.user,
-                                      key_filename=self.key_path, timeout=10, port=self.port, sock=sock)
-            except paramiko.AuthenticationException as e:
-                error_msg = self.tr(f"Identity verification failed {e}")
-                self.auth_error.emit(error_msg)
-                self._cleanup()
-            except (socket.timeout, paramiko.SSHException) as e:
-                error_msg = self.tr(f"Connection failed: {e}")
-                self.auth_error.emit(error_msg)
-                self._cleanup()
+                    self.jumpbox_ssh.connect(
+                        host, port, user, key_filename=key_path, timeout=10, sock=sock)
+
+                print("✅ 跳板机连接成功")
+
+                print(f"🔄 创建到目标服务器 {self.host}:{self.port} 的隧道")
+                jumpbox_transport = self.jumpbox_ssh.get_transport()
+                dest_addr = (self.host, self.port)
+                jumpbox_channel = jumpbox_transport.open_channel(
+                    kind="direct-tcpip",
+                    dest_addr=dest_addr,
+                    src_addr=(host, port)
+                )
+
+                print("✅ 隧道创建成功")
+
+                print(f"🔗 通过隧道连接到目标服务器: {self.user}@{self.host}:{self.port}")
+                try:
+                    if self.auth_type == "password":
+                        self.conn.connect(
+                            self.host,
+                            username=self.user,
+                            password=self.password,
+                            timeout=10,
+                            port=self.port,
+                            sock=jumpbox_channel
+                        )
+                    else:
+                        self.conn.connect(
+                            self.host,
+                            username=self.user,
+                            key_filename=self.key_path,
+                            timeout=10,
+                            port=self.port,
+                            sock=jumpbox_channel
+                        )
+                    print("✅ 目标服务器连接成功")
+
+                except paramiko.AuthenticationException as e:
+                    error_msg = self.tr(
+                        f"Target server authentication failed: {e}")
+                    self.auth_error.emit(error_msg)
+                    self._cleanup()
+                    return
+                except (socket.timeout, paramiko.SSHException) as e:
+                    error_msg = self.tr(
+                        f"Target server connection failed: {e}")
+                    self.auth_error.emit(error_msg)
+                    self._cleanup()
+                    return
+
+            else:
+                print(
+                    f"🔗 Connect directly to the server: {self.user}@{self.host}:{self.port}")
+                try:
+                    if self.auth_type == "password":
+                        self.conn.connect(
+                            self.host,
+                            username=self.user,
+                            password=self.password,
+                            timeout=10,
+                            port=self.port,
+                            sock=sock
+                        )
+                    else:
+                        self.conn.connect(
+                            self.host,
+                            username=self.user,
+                            key_filename=self.key_path,
+                            timeout=10,
+                            port=self.port,
+                            sock=sock
+                        )
+                    print("✅ Direct connection successful")
+
+                except paramiko.AuthenticationException as e:
+                    error_msg = self.tr(f"Authentication failed: {e}")
+                    self.auth_error.emit(error_msg)
+                    self._cleanup()
+                    return
+                except (socket.timeout, paramiko.SSHException) as e:
+                    error_msg = self.tr(f"Connection failed: {e}")
+                    self.auth_error.emit(error_msg)
+                    self._cleanup()
+                    return
+
             transport = self.conn.get_transport()
             transport.set_keepalive(30)
             self.channel = transport.open_session()
             self.channel.get_pty(term='xterm', width=120, height=30)
             self.channel.invoke_shell()
 
-            # ---------- resources handling: ensure ./ .ssh/processes exists & is executable ----------
+            # ---------- resources handling ----------
             if self.for_resources:
                 try:
                     sftp = self.conn.open_sftp()
@@ -180,16 +273,17 @@ class SSHWorker(QThread):
                 cd_folder: str = self.ssh_default_path.replace("\\", "/")
                 if "/" in cd_folder:
                     self.run_command(f"cd {cd_folder}")
-                self.connected.emit(True, "Connect Succes")
+                self.connected.emit(True, "Connect Success")
+
             self.timer = QTimer()
             self.stop_timer_sig.connect(self.timer.stop)
             self.timer.timeout.connect(self._check_output)
             self.timer.start(100)
+
             if self.for_resources:
                 md5 = self.get_remote_md5(self.remote_proc)
                 host_key = self.get_hostkey_fp_hex()
                 self.key_verification.emit(md5, host_key)
-                # print(md5, host_key)
                 script_path = self.remote_proc
                 check_cmd = f"test -x {script_path} && echo 'EXISTS' || echo 'NOT_FOUND'"
                 self.run_command(check_cmd)
@@ -205,17 +299,16 @@ class SSHWorker(QThread):
                 except Exception as e:
                     print(f"启动 processes 失败：{e}")
                     self.error_occurred.emit(f"启动 processes 失败：{e}")
+
             self.exec_()
             self._cleanup()
 
         except socks.ProxyError as e:
             error_msg = f"Proxy Error: {e}"
             self.error_occurred.emit(error_msg)
-            # self._cleanup()
         except Exception as e:
             tb = traceback.format_exc()
             self.error_occurred.emit(f"{e}\n{tb}")
-            # self._cleanup()
 
     def _create_socket(self):
         if self.proxy_type == 'None' or not self.proxy_host or not self.proxy_port:
