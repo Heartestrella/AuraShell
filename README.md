@@ -2,7 +2,7 @@
 
 # ⚠ 请勿运行在包含中文的路径中!!!
 
-# 🖥️ PSSH — Win11 风格 SSH 终端
+# 🖥️ NeoSSH — 新时代 Win11 风格 SSH 终端
 
 一个基于 **[PyQt](https://riverbankcomputing.com/software/pyqt/intro)** 与 **[QFluentWidgets](https://qfluentwidgets.com/)** 开发的跨平台 SSH 客户端，  
 界面风格贴近 **Windows 11 Fluent Design**。
@@ -107,7 +107,6 @@
 ## 🌐 多语言国际化（i18n）
 
 目前仅支持 **中 / 英** 两种语言。  
-计划在未来版本中引入完整的国际化系统，使 PSSH 可面向全球用户。
 
 > ⚠️ **关于中文汉化**
 > - 每隔一个大版本 会更新一次汉化
@@ -154,9 +153,7 @@ sudo apt install -y ss lsblk iostat
 ## 🔮 未来发展方向
 
 - ✅ 完全 Python 实现终端渲染  
-  当前终端依赖 `xterm.js`，未来计划使用纯 PyQt 渲染方案  
-- 🧠 更深入的 AI Shell 辅助模式  
-- 🌍 多语言与主题自定义支持  
+  当前终端依赖 `xterm.js`，未来计划使用纯 PyQt 渲染方案
 - 🧱 插件式扩展架构  
 
 ---

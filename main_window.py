@@ -241,7 +241,7 @@ class Window(FramelessWindow):
         self.setMinimumSize(800, 600)
         self.setTitleBar(StandardTitleBar(self))
         self._bg_ratio = None
-        self.setWindowTitle("AuraShell Beta")
+        self.setWindowTitle("NeoSSH Beta")
         icon = QIcon(resource_path("resource/icons/icon.ico"))
         self.setWindowIcon(icon)
         QApplication.setWindowIcon(icon)
@@ -383,7 +383,6 @@ class Window(FramelessWindow):
                     all_processes = result["all_processes"]
                     disk_usage = result["disk_usage"]
 
-                    # 先用第一个切出来的网卡测试 后面加切换网卡
                     try:
                         if not widget.task.netmonitor.init_interface and net_usage:
                             interfaces = []
@@ -392,7 +391,7 @@ class Window(FramelessWindow):
                                 if name and name not in interfaces:  # 去重
                                     interfaces.append(name)
 
-                            if interfaces:  # 确保有有效的网卡
+                            if interfaces:
                                 success = widget.task.netmonitor.initialize_interfaces(
                                     interfaces)
                                 if success:
@@ -402,7 +401,6 @@ class Window(FramelessWindow):
                         if net_usage:
                             current_interface = widget.task.netmonitor.interface_combo.currentText()
 
-                            # 安全地查找当前网卡数据
                             target_dict = next((item for item in net_usage if item.get(
                                 'iface') == current_interface), None)
 
@@ -428,6 +426,7 @@ class Window(FramelessWindow):
 
                     widget.sys_resources.set_progress("cpu", cpu_percent)
                     widget.sys_resources.set_progress("ram", mem_percent)
+                    print(mem_percent)
                     for processes in top_processes:
                         processes_cpu_percent = processes["cpu"]
                         processes_name = processes["name"]

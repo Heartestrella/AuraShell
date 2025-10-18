@@ -84,7 +84,7 @@ while true; do
     cpu_percent=$(LC_ALL=C top -bn2 -d0.2 | grep "Cpu(s)" | tail -n1 | awk '{print 100 - $8}')
 
     # --- 内存使用率 ---
-    mem_percent=$(free | awk '/Mem/ {printf("%.1f", $3/$2 * 100)}')
+    mem_percent=$(free | head -2 | tail -1 | awk '{printf("%.1f\n", $3/$2 * 100)}')
 
     # --- 前 N 个进程 ---
     processes=$(ps -eo pid,comm,%cpu,%mem --sort=-%cpu \
