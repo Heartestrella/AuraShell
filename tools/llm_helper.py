@@ -9,7 +9,7 @@ config = configer.read_config()
 MODEL_URL = {
     "DeepSeek": "https://api.deepseek.com",
     "ChatGPT": "https://api.openai.com",
-    "Local ollama": "http://127.0.0.1"
+    "Local ollama": "http://localhost:11434/v1/"
 }
 MODEL_NAME = {
     "DeepSeek": "deepseek-chat"

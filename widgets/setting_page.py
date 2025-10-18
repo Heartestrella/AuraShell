@@ -67,7 +67,7 @@ class Config(QConfig):
     default_view = OptionsConfigItem(
         "Files", "DefaultView", "Icon", OptionsValidator(["Icon", "Info"]), restart=False
     )
-    
+
     page_animation = OptionsConfigItem(
         "MainWindow", "PageAnimation", "Slide Fade",
         OptionsValidator([
@@ -438,17 +438,18 @@ class FontSelectorDialog(QDialog):
 class ColorExtractionWorker(QThread):
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
-    
+
     def __init__(self, image_path: str, num_colors: int = 5):
         super().__init__()
         self.image_path = image_path
         self.num_colors = num_colors
-    
+
     def run(self):
         try:
             from tools.image_color_extractor import ImageColorExtractor
             extractor = ImageColorExtractor()
-            color_info = extractor.get_color_info(self.image_path, self.num_colors)
+            color_info = extractor.get_color_info(
+                self.image_path, self.num_colors)
             if color_info:
                 self.finished.emit(color_info)
             else:
@@ -555,11 +556,13 @@ class SettingPage(ScrollArea):
         self.right_panel_ai_chat_card = SwitchSettingCard(
             icon=FluentIcon.CHAT,
             title=self.tr("Enable Right Panel AI Chat"),
-            content=self.tr("Enable the AI chat panel on the right side (requires restart)"),
+            content=self.tr(
+                "Enable the AI chat panel on the right side (requires restart)"),
             parent=self
         )
         self.right_panel_ai_chat_card.checkedChanged.connect(
-            lambda checked: configer.revise_config("right_panel_ai_chat", checked)
+            lambda checked: configer.revise_config(
+                "right_panel_ai_chat", checked)
         )
         layout.addWidget(self.right_panel_ai_chat_card)
         self._register_searchable(self.right_panel_ai_chat_card, self.tr("Enable Right Panel AI Chat"), [
@@ -684,7 +687,8 @@ class SettingPage(ScrollArea):
         self.single_click_card = SwitchSettingCard(
             icon=FluentIcon.FINGERPRINT,
             title=self.tr("Single-click to open items"),
-            content=self.tr("When enabled, single-clicking an item in the file tree will open it."),
+            content=self.tr(
+                "When enabled, single-clicking an item in the file tree will open it."),
             parent=self
         )
         self.single_click_card.checkedChanged.connect(
@@ -760,7 +764,8 @@ class SettingPage(ScrollArea):
         self.external_editor_card = SettingCard(
             FluentIcon.EDIT,
             self.tr("External Editor"),
-            self.tr("Set the path to external editor executable (e.g., C:\\Program Files\\Notepad++\\notepad++.exe)"),
+            self.tr(
+                "Set the path to external editor executable (e.g., C:\\Program Files\\Notepad++\\notepad++.exe)"),
         )
         self.external_editor_edit = LineEdit(self.external_editor_card)
         self.external_editor_edit.setPlaceholderText(
@@ -966,14 +971,15 @@ class SettingPage(ScrollArea):
 
         self.aigc.Max_lengthEdit.setText(
             str(self.config.get("aigc_max_length", 10)))
-        
+
         animation_map = {
             "slide_fade": 0, "zoom_in": 1, "zoom_out": 2, "cross_fade": 3,
             "bounce": 4, "elastic": 5, "fade_scale": 6, "slide_scale": 7, "stack": 8
         }
         animation_type = self.config.get("page_animation", "slide_fade")
-        self.animation_card.comboBox.setCurrentIndex(animation_map.get(animation_type, 0))
-        
+        self.animation_card.comboBox.setCurrentIndex(
+            animation_map.get(animation_type, 0))
+
         update_channel_map = {"none": 0, "stable": 1, "insider": 2}
         current_channel = self.config.get("update_channel", "none")
         self.update_channel_card.comboBox.setCurrentIndex(
@@ -1037,13 +1043,13 @@ class SettingPage(ScrollArea):
             configer.revise_config("bg_pic", path)
             self.parent_class.set_global_background(path)
             self._extract_and_save_theme_colors(path)
-    
+
     def _extract_and_save_theme_colors(self, image_path: str):
         self._color_worker = ColorExtractionWorker(image_path, num_colors=5)
         self._color_worker.finished.connect(self._on_color_extraction_finished)
         self._color_worker.error.connect(self._on_color_extraction_error)
         self._color_worker.start()
-    
+
     def _on_color_extraction_finished(self, color_info: dict):
         try:
             dominant_hex = color_info['dominant_color']['hex']
@@ -1053,10 +1059,11 @@ class SettingPage(ScrollArea):
             pass
         finally:
             self._color_worker.deleteLater()
-    
+
     def _on_color_extraction_error(self, error_msg: str):
         if "缺少必要的库" in error_msg or "ImportError" in error_msg:
-            content = self.tr('Please install required libraries:\npip install Pillow scikit-learn numpy')
+            content = self.tr(
+                'Please install required libraries:\npip install Pillow scikit-learn numpy')
         else:
             content = error_msg
         InfoBar.warning(
@@ -1076,7 +1083,8 @@ class SettingPage(ScrollArea):
             if not os.path.isfile(path):
                 InfoBar.error(
                     title=self.tr('Invalid file path'),
-                    content=self.tr('The specified file does not exist or is not a valid file'),
+                    content=self.tr(
+                        'The specified file does not exist or is not a valid file'),
                     orient=Qt.Horizontal,
                     isClosable=True,
                     position=InfoBarPosition.TOP_RIGHT,

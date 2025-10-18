@@ -131,7 +131,7 @@ class SycnWidget(MessageBoxBase):
         super().__init__(parent)
         font_ = font_config()
         self._font = font_.get_font()
-
+        self._parent = self.window()
         self.sync_mode = "sync_up"  # or "sync_dl"
 
         self.titleLabel = SubtitleLabel(self.tr('Sycn Settings'))

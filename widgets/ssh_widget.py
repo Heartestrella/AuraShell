@@ -24,6 +24,7 @@ from widgets.command_input import CommandInput
 from tools.session_manager import SessionManager
 from widgets.task_detaile import ProcessMonitor
 from widgets.disk_usage_item import DiskMonitor
+from widgets.scripts_widget import CommandScriptWidget
 CONFIGER = SCM()
 session_manager = SessionManager()
 
@@ -431,6 +432,8 @@ class SSHWidget(QWidget):
             }
         """)
 
+        # self.disk_storage.setSizePolicy(
+        #     QSizePolicy.Expanding, QSizePolicy.Preferred)
         # file_explorer
         self.file_explorer = FileExplorer(
             self.file_splitter)
@@ -469,6 +472,11 @@ class SSHWidget(QWidget):
         connect_file_explorer()
         self.task_detaile = ProcessMonitor()
         self.net_monitor = NetProcessMonitor()
+        # scripts book
+        self.command_script_widget = CommandScriptWidget(self.file_splitter)
+        self.command_script_widget.scriptExecuteRequested.connect(
+            lambda s: self.send_command_to_ssh(s))
+        self.command_script_widget.setObjectName("command_script")
 
         self.file_explorer.dataRefreshed.connect(
             lambda: self.stop_loading_animation("file_explorer"))
@@ -484,7 +492,8 @@ class SSHWidget(QWidget):
         file_manage_layout.addWidget(self.net_monitor)
         self.task_detaile.hide()
         file_manage_layout.addWidget(self.task_detaile)
-
+        self.command_script_widget.hide()
+        file_manage_layout.addWidget(self.command_script_widget)
         self.now_ui = "file_explorer"
         file_manage_layout.addWidget(self.file_splitter, 1)
 
@@ -691,6 +700,7 @@ class SSHWidget(QWidget):
         self.net_monitor.hide()
         self.task_detaile.hide()
         self.file_splitter.hide()
+        self.command_script_widget.hide()
         if router == "file_explorer" and self.now_ui != "file_explorer":
             # self.net_monitor.hide()
             # self.task_detaile.hide()
@@ -706,6 +716,10 @@ class SSHWidget(QWidget):
             # self.net_monitor.hide()
             self.task_detaile.show()
             self.now_ui = "task"
+
+        elif router == "command" and self.now_ui != "command":
+            self.command_script_widget.show()
+            self.now_ui = "command"
 
     def _clear_history(self):
         session_manager.clear_history(self.parentkey)

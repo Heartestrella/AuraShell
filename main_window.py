@@ -426,7 +426,7 @@ class Window(FramelessWindow):
 
                     widget.sys_resources.set_progress("cpu", cpu_percent)
                     widget.sys_resources.set_progress("ram", mem_percent)
-                    print(mem_percent)
+                    # print(mem_percent)
                     for processes in top_processes:
                         processes_cpu_percent = processes["cpu"]
                         processes_name = processes["name"]
