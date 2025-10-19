@@ -919,6 +919,96 @@ class AIBridge(QObject):
     def getQQUserInfo(self):
         return {"qq_name": self.qq_name, "qq_number": self.qq_number}
 
+    @pyqtSlot(str)
+    def showFileDiff(self, args_str: str):
+        def _show_diff():
+            try:
+                path_match = re.search(r'<path>(.*?)</path>', args_str, re.DOTALL)
+                if not path_match:
+                    print("Error: Missing <path> tag")
+                    return
+                file_path = path_match.group(1).strip()
+                start_match = re.search(r'<start_line>(\d+)</start_line>', args_str)
+                end_match = re.search(r'<end_line>(\d+)</end_line>', args_str)
+                if not (start_match and end_match):
+                    print("Error: Missing line number tags")
+                    return
+                start_line = int(start_match.group(1))
+                end_line = int(end_match.group(1))
+                original_match = re.search(r'<originalcontent>(.*?)</originalcontent>', args_str, re.DOTALL)
+                replace_match = re.search(r'<replace>(.*?)</replace>', args_str, re.DOTALL)
+                if not (original_match and replace_match):
+                    print("Error: Missing content tags")
+                    return
+                original_block = original_match.group(1)
+                replace_block = replace_match.group(1)
+                if not self.main_window:
+                    return
+                active_widget = self.main_window.get_active_ssh_widget()
+                if not active_widget or not hasattr(active_widget, 'diff_widget'):
+                    return
+                worker = None
+                if hasattr(active_widget, 'ssh_widget') and hasattr(active_widget.ssh_widget, 'bridge'):
+                    worker = active_widget.ssh_widget.bridge.worker
+                if not worker:
+                    print("Error: SSH worker not found")
+                    return
+                safe_path = shlex.quote(file_path)
+                file_size_cmd = f"stat -c%s {safe_path} 2>/dev/null || stat -f%z {safe_path} 2>/dev/null"
+                size_output, size_error, size_exit_code = worker.execute_silent_command(file_size_cmd)
+                if size_exit_code == 0:
+                    try:
+                        file_size = int(size_output.strip())
+                        if file_size > 1048576:
+                            print(f"文件大小超过1MB({file_size} bytes),跳过diff检测")
+                            return
+                    except ValueError:
+                        print(f"无法解析文件大小: {size_output}")
+                        return
+                read_file_handler = None
+                if hasattr(self.mcp_manager, 'tools') and 'Linux终端' in self.mcp_manager.tools:
+                    read_file_handler = self.mcp_manager.tools['Linux终端'].get('read_file', {}).get('handler')
+                if not read_file_handler:
+                    print("Error: read_file handler not found")
+                    return
+                remote_content_result = read_file_handler([file_path])
+                try:
+                    remote_data = json.loads(remote_content_result)
+                    if remote_data.get("status") == "error":
+                        print(f"Error reading file: {remote_data.get('content')}")
+                        return
+                    remote_full_content = remote_data.get("content", "")
+                except (json.JSONDecodeError, AttributeError):
+                    remote_full_content = remote_content_result
+                if hasattr(active_widget, 'file_bar') and hasattr(active_widget.file_bar, 'pivot'):
+                    active_widget.file_bar.pivot.items["diff"].show()
+                    QTimer.singleShot(0, lambda: active_widget.file_bar.pivot.setCurrentItem('diff'))
+                remote_full_content = remote_full_content.replace('\r', '')
+                lines = remote_full_content.splitlines(True)
+                replace_block_stripped = replace_block.strip()
+                new_content_parts = []
+                if replace_block_stripped:
+                    original_last_line = lines[end_line - 1] if end_line <= len(lines) else '\n'
+                    line_ending = '\n'
+                    if original_last_line.endswith('\r\n'):
+                        line_ending = '\r\n'
+                    replace_lines = replace_block_stripped.splitlines()
+                    new_content_parts = [line + line_ending for line in replace_lines]
+                modified_lines = lines[:start_line - 1] + new_content_parts + lines[end_line:]
+                modified_full_content = "".join(modified_lines)
+                active_widget.diff_widget.set_left_content(remote_full_content)
+                active_widget.diff_widget.set_right_content(modified_full_content)
+                if hasattr(active_widget.diff_widget, 'left_label'):
+                    active_widget.diff_widget.left_label.setText(f"原内容:{file_path}")
+                if hasattr(active_widget.diff_widget, 'right_label'):
+                    active_widget.diff_widget.right_label.setText(f"修改后:{file_path}")
+                QTimer.singleShot(100, active_widget.diff_widget.compare_diff)
+            except Exception as e:
+                print(f"Error showing diff: {e}")
+                import traceback
+                traceback.print_exc()
+        QTimer.singleShot(0, _show_diff)
+
 class AiChatWidget(QWidget):
 
     def qqLoginUrlBrowser(self):

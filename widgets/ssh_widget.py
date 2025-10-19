@@ -2,6 +2,7 @@ from PyQt5.QtWidgets import (
     QWidget, QStackedWidget, QVBoxLayout, QHBoxLayout, QFrame,
     QLabel, QSizePolicy, QSplitter
 )
+from widgets.diff_viewer_widget import DiffViewerWidget
 from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QTimer, QSize, QPropertyAnimation, QEasingCurve,  pyqtProperty
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QPainterPath
 import time
@@ -478,6 +479,9 @@ class SSHWidget(QWidget):
             lambda s: self.send_command_to_ssh(s))
         self.command_script_widget.setObjectName("command_script")
 
+        self.diff_widget = DiffViewerWidget(self.file_manage)
+        self.diff_widget.setObjectName("diff_widget")
+
         self.file_explorer.dataRefreshed.connect(
             lambda: self.stop_loading_animation("file_explorer"))
         self.net_monitor.dataRefreshed.connect(
@@ -494,6 +498,8 @@ class SSHWidget(QWidget):
         file_manage_layout.addWidget(self.task_detaile)
         self.command_script_widget.hide()
         file_manage_layout.addWidget(self.command_script_widget)
+        self.diff_widget.hide()
+        file_manage_layout.addWidget(self.diff_widget)
         self.now_ui = "file_explorer"
         file_manage_layout.addWidget(self.file_splitter, 1)
 
@@ -701,25 +707,24 @@ class SSHWidget(QWidget):
         self.task_detaile.hide()
         self.file_splitter.hide()
         self.command_script_widget.hide()
+        self.diff_widget.hide()
+        self.file_bar.pivot.items["diff"].hide()
+            
         if router == "file_explorer" and self.now_ui != "file_explorer":
-            # self.net_monitor.hide()
-            # self.task_detaile.hide()
             self.file_splitter.show()
             self.now_ui = "file_explorer"
         elif router == "net" and self.now_ui != "net":
-            # self.file_explorer.hide()
-            # self.task_detaile.hide()
             self.net_monitor.show()
             self.now_ui = "net"
         elif router == "task" and self.now_ui != "task":
-            # self.file_explorer.hide()
-            # self.net_monitor.hide()
             self.task_detaile.show()
             self.now_ui = "task"
-
         elif router == "command" and self.now_ui != "command":
             self.command_script_widget.show()
             self.now_ui = "command"
+        elif router == "diff" and self.now_ui != "diff":
+            self.diff_widget.show()
+            self.now_ui = "diff"
 
     def _clear_history(self):
         session_manager.clear_history(self.parentkey)

@@ -436,7 +436,6 @@ body {
 #message-input {
   position: relative;
   width: 100%;
-  height: 100%;
   background-color: transparent;
   border: none;
   color: var(--text-color);

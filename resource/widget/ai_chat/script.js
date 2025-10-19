@@ -701,6 +701,9 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
             if (toolCall['auto_approve'] === true) {
               userDecision = 'approved';
             } else {
+              if (toolCall.tool_name === 'edit_file') {
+                backend.showFileDiff(toolCall.arguments);
+              }
               userDecision = await systemBubble.requireApproval();
             }
             if (userDecision === 'approved') {
@@ -928,6 +931,10 @@ function adjustTextareaHeight() {
   if (!textarea) {
     return;
   }
+  if (textarea.value === '') {
+    textarea.style.height = '70px';
+    return;
+  }
   textarea.style.height = 'auto';
   const newHeight = Math.min(Math.max(textarea.scrollHeight, 70), 250);
   textarea.style.height = newHeight + 'px';
@@ -948,9 +955,6 @@ function updateHighlights() {
   highlightLayer.scrollTop = textarea.scrollTop;
   highlightLayer.scrollLeft = textarea.scrollLeft;
   adjustTextareaHeight();
-}
-function highlightMentions(inputElement) {
-  updateHighlights();
 }
 function handlePaste(event) {
   event.preventDefault();
@@ -1288,7 +1292,6 @@ document.addEventListener('DOMContentLoaded', function () {
     messageInput.addEventListener('scroll', function () {
       updateHighlights();
     });
-
     const mentionItemsMap = {
       Dir: (parentItem) => {
         return new Promise((resolve) => {
