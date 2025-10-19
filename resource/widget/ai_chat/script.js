@@ -707,12 +707,14 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
             }
             if (userDecision === 'approved') {
               const toolRequestId = generateUniqueId();
-              const abortHandler = () => {
-                cancelButtonContainer.style.display = 'none';
+              const mcpToolContainer = document.getElementById('mcp-tool-control-container');
+              const abortToolButton = mcpToolContainer.querySelector('.abort-tool-button');
+              const continueButton = mcpToolContainer.querySelector('.continue-button');
+              const abortToolHandler = () => {
+                mcpToolContainer.style.display = 'none';
                 cancelMcpRequest(toolRequestId);
               };
-              cancelButton.addEventListener('click', abortHandler);
-              const continueButton = cancelButtonContainer.querySelector('.continue-button');
+              abortToolButton.addEventListener('click', abortToolHandler);
               const continueHandler = () => {
                 backend.forceContinueTool(toolRequestId);
               };
@@ -722,7 +724,7 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
               } else {
                 continueButton.style.display = 'none';
               }
-              cancelButtonContainer.style.display = 'flex';
+              mcpToolContainer.style.display = 'flex';
               sendButton.disabled = true;
               try {
                 const executionResultStr = await executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments), toolRequestId);
@@ -737,8 +739,9 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
                 aiChatApiOptionsBody.messages.push(mcpMessages);
                 messagesHistory.push({ messages: mcpMessages, isMcp: true });
                 saveHistory(window.firstUserMessage, messagesHistory);
-                cancelButton.removeEventListener('click', abortHandler);
+                abortToolButton.removeEventListener('click', abortToolHandler);
                 continueButton.removeEventListener('click', continueHandler);
+                mcpToolContainer.style.display = 'none';
                 const newController = new AbortController();
                 const newAbortHandler = () => {
                   cancelButtonContainer.style.display = 'none';
@@ -756,19 +759,17 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
                 const newAiBubble = chat.addAIBubble(newAiMessageIndex, newAiHistoryIndex);
                 newAiBubble.updateStream('');
                 const newHandler = createAIResponseHandler(newAiBubble, messageOffset, newAiMessageIndex, newAiHistoryIndex, newController, newOnComplete);
-                if (continueButton) {
-                  continueButton.style.display = 'none';
-                }
+                cancelButtonContainer.style.display = 'flex';
                 requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newHandler, newController.signal);
                 return;
               } catch (error) {
                 systemBubble.setResult('rejected', `执行已取消:${error.message}`);
-                cancelButtonContainer.style.display = 'none';
+                mcpToolContainer.style.display = 'none';
                 if (onComplete) {
                   onComplete();
                 }
               } finally {
-                cancelButton.removeEventListener('click', abortHandler);
+                abortToolButton.removeEventListener('click', abortToolHandler);
                 continueButton.removeEventListener('click', continueHandler);
               }
             } else {
@@ -819,8 +820,6 @@ function retryAIMessage(bubbleElement) {
     controller.abort();
   };
   cancelButton.addEventListener('click', abortRequest);
-  const continueButton = cancelButtonContainer.querySelector('.continue-button');
-  continueButton.style.display = 'none';
   cancelButtonContainer.style.display = 'flex';
   const onComplete = () => {
     sendButton.disabled = false;
@@ -1275,8 +1274,6 @@ document.addEventListener('DOMContentLoaded', function () {
       };
       const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
       cancelButton.addEventListener('click', abortRequest);
-      const continueButton = cancelButtonContainer.querySelector('.continue-button');
-      continueButton.style.display = 'none';
       cancelButtonContainer.style.display = 'flex';
       const onComplete = () => {
         isRequesting = false;
