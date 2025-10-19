@@ -1,4 +1,9 @@
 const pendingRequests = new Map();
+const ABORTABLE_TOOLS_WHITELIST = ['exe_shell', 'fetchWeb'];
+function isToolAbortable(toolName) {
+  const normalizedToolName = toolName.includes('->') ? toolName.split('->')[1].trim() : toolName;
+  return ABORTABLE_TOOLS_WHITELIST.includes(normalizedToolName);
+}
 function generateUniqueId() {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
@@ -719,12 +724,23 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
                 backend.forceContinueTool(toolRequestId);
               };
               continueButton.addEventListener('click', continueHandler, { once: true });
-              if (toolCall.tool_name === 'exe_shell') {
+              const showContinueButton = toolCall.tool_name === 'exe_shell';
+              if (showContinueButton) {
                 continueButton.style.display = 'block';
               } else {
                 continueButton.style.display = 'none';
               }
-              mcpToolContainer.style.display = 'flex';
+              const showAbortButton = isToolAbortable(toolCall.tool_name);
+              if (showAbortButton) {
+                abortToolButton.style.display = 'block';
+              } else {
+                abortToolButton.style.display = 'none';
+              }
+              if (showContinueButton || showAbortButton) {
+                mcpToolContainer.style.display = 'flex';
+              } else {
+                mcpToolContainer.style.display = 'none';
+              }
               sendButton.disabled = true;
               try {
                 const executionResultStr = await executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments), toolRequestId);
