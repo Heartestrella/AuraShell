@@ -50,7 +50,110 @@ class AIBridge(QObject):
         self._register_tool_handlers()
 
     def _register_tool_handlers(self):
+        def 超级内容():
+            ApiKey = "ctx7sk-e56f0c2f-317c-4da3-9aa7-0a207313118e"
+            def _execute_context7_tool(tool_name: str, args: str, request_id: str):
+                if request_id:
+                    self.active_requests[request_id] = {'cancelled': False}
+                def _worker():
+                    try:
+                        if self.active_requests.get(request_id, {}).get('cancelled'):
+                            return
+                        proxy_config_str = CONFIGER.read_config().get("ai_chat_proxy")
+                        proxies = {}
+                        if proxy_config_str:
+                            try:
+                                proxy_config = json.loads(proxy_config_str)
+                                protocol = proxy_config.get("protocol")
+                                host = proxy_config.get("host")
+                                port = proxy_config.get("port")
+                                username = proxy_config.get("username")
+                                password = proxy_config.get("password")
+                                if protocol and host and port:
+                                    auth = ""
+                                    if username and password:
+                                        auth = f"{username}:{password}@"
+                                    proxy_url = f"{protocol}://{auth}{host}:{port}"
+                                    if protocol.startswith('socks'):
+                                        proxy_scheme = 'socks5h' if protocol == 'socks5' else protocol
+                                        proxy_url = f"{proxy_scheme}://{auth}{host}:{port}"
+                                        proxies = {"http": proxy_url, "https": proxy_url}
+                                    else:
+                                        proxies = {"http": proxy_url, "https": proxy_url}
+                            except (json.JSONDecodeError, AttributeError):
+                                pass
+                        headers = {
+                            "Authorization": f"Bearer {ApiKey}"
+                        }
+                        if tool_name == "resolve-library-id":
+                            library_match = re.search(r'<libraryName>(.*?)</libraryName>', args, re.DOTALL)
+                            if not library_match:
+                                raise ValueError("Missing libraryName parameter")
+                            library_name = library_match.group(1).strip()
+                            search_url = f"https://context7.com/api/v1/search?query={requests.utils.quote(library_name)}"
+                            response = requests.get(search_url, headers=headers, timeout=120, proxies=proxies)
+                        elif tool_name == "get-library-docs":
+                            library_id_match = re.search(r'<context7CompatibleLibraryID>(.*?)</context7CompatibleLibraryID>', args, re.DOTALL)
+                            if not library_id_match:
+                                raise ValueError("Missing context7CompatibleLibraryID parameter")
+                            library_id = library_id_match.group(1).strip().lstrip('/')
+                            topic_match = re.search(r'<topic>(.*?)</topic>', args, re.DOTALL)
+                            tokens_match = re.search(r'<tokens>(\d+)</tokens>', args, re.DOTALL)
+                            params = {"type": "json"}
+                            if topic_match:
+                                params["topic"] = topic_match.group(1).strip()
+                            if tokens_match:
+                                params["tokens"] = tokens_match.group(1)
+                            else:
+                                params["tokens"] = str(5000*4)
+                            docs_url = f"https://context7.com/api/v1/{library_id}"
+                            response = requests.get(docs_url, headers=headers, params=params, timeout=120, proxies=proxies)
+                        else:
+                            raise ValueError(f"Unknown tool: {tool_name}")
+                        response.raise_for_status()
+                        if not self.active_requests.get(request_id, {}).get('cancelled'):
+                            self.toolResultReady.emit(request_id, response.text)
+                    except requests.exceptions.RequestException as e:
+                        if not self.active_requests.get(request_id, {}).get('cancelled'):
+                            self.toolResultReady.emit(request_id, str(e))
+                    except Exception as e:
+                        if not self.active_requests.get(request_id, {}).get('cancelled'):
+                            self.toolResultReady.emit(request_id, str(e))
+                    finally:
+                        if request_id in self.active_requests:
+                            del self.active_requests[request_id]
+                thread = threading.Thread(target=_worker)
+                thread.daemon = True
+                thread.start()
+                return "Executing..."
 
+            def resolve_library_id(args: str = '', request_id: str = None):
+                """
+                <libraryName>Library name to search for and retrieve a Context7-compatible library ID.</libraryName>
+                """
+                return _execute_context7_tool("resolve-library-id", args, request_id)
+            
+            def get_library_docs(args: str = '', request_id: str = None):
+                """
+                <context7CompatibleLibraryID>Exact Context7-compatible library ID (e.g., '/mongodb/docs', '/vercel/next.js', '/supabase/supabase', '/vercel/next.js/v14.3.0-canary.87') retrieved from 'resolve-library-id' or directly from user query in the format '/org/project' or '/org/project/version'.</context7CompatibleLibraryID>
+                <topic>Topic to focus documentation on (e.g., 'hooks', 'routing').</topic>
+                """
+                return _execute_context7_tool("get-library-docs", args, request_id)
+            
+            self.mcp_manager.register_tool_handler(
+                server_name="超级内容",
+                tool_name="resolve_library_id",
+                handler=resolve_library_id,
+                description="Resolves a package/product name to a Context7-compatible library ID and returns a list of matching libraries. You MUST call this function before 'get-library-docs' to obtain a valid Context7-compatible library ID UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query. Selection Process: 1. Analyze the query to understand what library/package the user is looking for 2. Return the most relevant match based on: - Name similarity to the query (exact matches prioritized) - Description relevance to the query's intent - Documentation coverage (prioritize libraries with higher Code Snippet counts) - Trust score (consider libraries with scores of 7-10 more authoritative) Response Format: - Return the selected library ID in a clearly marked section - Provide a brief explanation for why this library was chosen - If multiple good matches exist, acknowledge this but proceed with the most relevant one - If no good matches exist, clearly state this and suggest query refinements For ambiguous queries, request clarification before proceeding with a best-guess match.",
+                auto_approve=True
+            )
+            self.mcp_manager.register_tool_handler(
+                server_name="超级内容",
+                tool_name="get_library_docs",
+                handler=get_library_docs,
+                description="Fetches up-to-date documentation for a library. You must call 'resolve-library-id' first to obtain the exact Context7-compatible library ID required to use this tool, UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.",
+                auto_approve=True
+            )
         def 通用():
             def fetchWeb(url: str, method: str = "GET", body: str = None, headers: dict = None, only_body: bool = True, request_id: str = None) -> str:
                 effective_headers = headers.copy() if headers is not None else {}
@@ -545,6 +648,7 @@ class AIBridge(QObject):
             )
         Linux终端()
         通用()
+        超级内容()
         # print(self.getSystemPrompt())
 
     @pyqtSlot(result=str)
