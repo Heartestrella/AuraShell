@@ -1186,6 +1186,11 @@ document.addEventListener('DOMContentLoaded', function () {
     return name.substring(0, 16);
   }
   async function sendMessage() {
+    if (isRequesting) {
+      return;
+    }
+    isRequesting = true;
+    sendButton.disabled = true;
     let sshCwd = JSON.parse(await backend.get_current_cwd()).cwd;
     let fileManagerCwd = JSON.parse(await backend.get_file_manager_cwd()).cwd;
     let systemInfo = JSON.stringify(JSON.parse(await backend.get_system_info()).content);
@@ -1197,17 +1202,12 @@ document.addEventListener('DOMContentLoaded', function () {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
     }
-    if (isRequesting) {
-      return;
-    }
     const message = messageInput.textContent;
     if (message || pastedImageDataUrls.length > 0) {
       chatHistoryContainer.style.display = 'none';
       if (window.firstUserMessage === '') {
         window.firstUserMessage = _sanitize_filename(message) + '_' + Date.now().toString();
       }
-      isRequesting = true;
-      sendButton.disabled = true;
       chat.chatBody.classList.add('request-in-progress');
       const hasSystemMessage = aiChatApiOptionsBody.messages.length > 0 && aiChatApiOptionsBody.messages[0].role === 'system';
       const messageOffset = hasSystemMessage ? 0 : 1;

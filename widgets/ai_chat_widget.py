@@ -269,7 +269,7 @@ class AIBridge(QObject):
                     return json.dumps({"status": "error", "content": f"An unexpected error occurred during file creation: {e}"}, ensure_ascii=False)
             def edit_file(args:str = None):
                 """
-                <edit_file><path>{文件绝对路径}</path><start_line>{开始行号}</start_line><end_line>{结束行号}</end_line><search>{要查找的原始内容}</search><replace>{替换成的新内容}</replace></edit_file>
+                <edit_file><path>{文件绝对路径(必填)}</path><start_line>{开始行号(必填)}</start_line><end_line>{结束行号(必填)}</end_line><originalcontent>{要查找的原始内容(必填)}</originalcontent><replace>{替换成的新内容(必填)}</replace></edit_file>
                 """
                 if not args:
                     return json.dumps({"status": "error", "content": "No arguments provided for edit_file."}, ensure_ascii=False)
@@ -282,9 +282,9 @@ class AIBridge(QObject):
                     file_path = path_match.group(1).strip()
                     start_line = int(start_line_match.group(1))
                     end_line = int(end_line_match.group(1))
-                    search_content = re.search(r'<search>(.*?)</search>', args, re.DOTALL)
+                    search_content = re.search(r'<originalcontent>(.*?)</originalcontent>', args, re.DOTALL)
                     if search_content is None:
-                         return json.dumps({"status": "error", "content": "Missing <search> tag."}, ensure_ascii=False)
+                        return json.dumps({"status": "error", "content": "Missing <originalcontent> tag."}, ensure_ascii=False)
                     search_block = search_content.group(1)
                     replace_content = re.search(r'<replace>(.*?)</replace>', args, re.DOTALL)
                     if replace_content is None:
