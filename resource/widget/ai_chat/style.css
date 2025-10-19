@@ -425,11 +425,13 @@ body {
   z-index: 1;
 }
 #highlight-layer mark {
-  background-color: rgba(58, 150, 247, 0.3);
   color: transparent;
-  border-radius: 3px;
+  border-radius: 6px;
   padding: 0;
   margin: 0;
+  background: linear-gradient(90deg, #af01ff, #0000ff, #4b0082, #8b00ff);
+  background-size: 400% 400%;
+  animation: rainbow-background-animation 10s linear infinite;
 }
 #message-input {
   position: relative;
