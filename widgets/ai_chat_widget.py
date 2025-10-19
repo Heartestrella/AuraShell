@@ -290,7 +290,7 @@ class AIBridge(QObject):
                     if replace_content is None:
                         return json.dumps({"status": "error", "content": "Missing <replace> tag."}, ensure_ascii=False)
                     replace_block = replace_content.group(1)
-                    remote_content_json = read_file(file_path)
+                    remote_content_json = read_file([file_path])
                     try:
                         remote_data = json.loads(remote_content_json)
                         if remote_data.get("status") == "error":
