@@ -197,17 +197,34 @@ class AIBridge(QObject):
                     return _internal_execute_interactive_shell(shell, cwd, request_id)
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"An unexpected error occurred: {e}"}, ensure_ascii=False)
-            def read_file(file_path: str = None, show_line: bool = False):
+            def read_file(file_path: list = None, show_line: bool = False):
                 if not file_path:
-                    return json.dumps({"status": "error", "content": "No file path provided."}, ensure_ascii=False)
+                    return json.dumps({"status": "error", "content": "No file path provided or list is empty."}, ensure_ascii=False)
                 try:
-                    safe_path = _safe_quote(file_path)
-                    command = f"cat {safe_path}"
-                    if show_line:
-                        command = f"awk '{{print NR\"|\" $0}}' {safe_path}"
-                    return _internal_execute_silent_shell(command)
+                    if len(file_path) == 1:
+                        safe_path = _safe_quote(file_path[0])
+                        command = f"cat {safe_path}"
+                        if show_line:
+                            command = f"awk '{{print NR\"|\" $0}}' {safe_path}"
+                        return _internal_execute_silent_shell(command)
+                    else:
+                        results = []
+                        for path in file_path:
+                            safe_path = _safe_quote(path)
+                            command = f"cat {safe_path}"
+                            if show_line:
+                                command = f"awk '{{print NR\"|\" $0}}' {safe_path}"
+                            content = _internal_execute_silent_shell(command)
+                            try:
+                                error_data = json.loads(content)
+                                if isinstance(error_data, dict) and error_data.get("status") == "error":
+                                    content = error_data.get("content", "Unknown error")
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                            results.append(f"<filePath={path}>\n{content}\n<filePath>")
+                        return "\n".join(results)
                 except Exception as e:
-                    return json.dumps({"status": "error", "content": f"Failed to read file: {e}"}, ensure_ascii=False)
+                    return json.dumps({"status": "error", "content": f"Failed to read file(s): {e}"}, ensure_ascii=False)
             def write_file(args:str = None):
                 """
                 <write_to_file><path>{文件绝对路径}</path><content>{文件内容}</content></write_to_file>
@@ -351,9 +368,9 @@ class AIBridge(QObject):
                 try:
                     safe_path = _safe_quote(path)
                     if recursive:
-                        command = f"ls -RFa {safe_path}"
+                        command = f"ls -RFA {safe_path}"
                     else:
-                        command = f"ls -Fa {safe_path}"
+                        command = f"ls -FA {safe_path}"
                     r = _internal_execute_silent_shell(command)
                     if r == '':
                         r = '空目录'
