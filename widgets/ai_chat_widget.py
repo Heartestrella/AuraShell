@@ -52,10 +52,14 @@ class AIBridge(QObject):
     def _register_tool_handlers(self):
 
         def 通用():
-            def fetchWeb(url: str, headers: dict = None, only_body: bool = True, request_id: str = None) -> str:
+            def fetchWeb(url: str, method: str = "GET", body: str = None, headers: dict = None, only_body: bool = True, request_id: str = None) -> str:
                 effective_headers = headers.copy() if headers is not None else {}
+                if request_id:
+                    self.active_requests[request_id] = {'cancelled': False}
                 def _fetch_worker():
                     try:
+                        if self.active_requests.get(request_id, {}).get('cancelled'):
+                            return
                         proxy_config_str = CONFIGER.read_config().get("ai_chat_proxy")
                         proxies = {}
                         if proxy_config_str:
@@ -79,27 +83,40 @@ class AIBridge(QObject):
                                         proxies = {"http": proxy_url, "https": proxy_url}
                             except (json.JSONDecodeError, AttributeError):
                                 pass
-
                         if "User-Agent" not in effective_headers:
                             effective_headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-                        
-                        response = requests.get(url, headers=effective_headers, timeout=10, proxies=proxies, allow_redirects=True)
+                        response = requests.request(method.upper(), url, headers=effective_headers, data=body, timeout=10, proxies=proxies, allow_redirects=True, stream=True)
                         response.raise_for_status()
+                        content_chunks = []
+                        for chunk in response.iter_content(chunk_size=8192):
+                            if self.active_requests.get(request_id, {}).get('cancelled'):
+                                return
+                            content_chunks.append(chunk)
+                        if self.active_requests.get(request_id, {}).get('cancelled'):
+                            return
+                        full_content = b''.join(content_chunks).decode('utf-8', errors='ignore')
                         content = ""
                         if only_body:
-                            soup = BeautifulSoup(response.text, 'html.parser')
+                            soup = BeautifulSoup(full_content, 'html.parser')
                             if soup.body:
                                 content = soup.body.decode_contents()
                             else:
                                 content = "HTML中未找到body标签"
                         else:
-                            content = response.text
-                        self.toolResultReady.emit(request_id, content)
+                            content = full_content
+                        if not self.active_requests.get(request_id, {}).get('cancelled'):
+                            self.toolResultReady.emit(request_id, content)
                     except requests.exceptions.RequestException as e:
-                        self.toolResultReady.emit(request_id, str(e))
+                        if not self.active_requests.get(request_id, {}).get('cancelled'):
+                            self.toolResultReady.emit(request_id, str(e))
                     except Exception as e:
-                        self.toolResultReady.emit(request_id, str(e))
+                        if not self.active_requests.get(request_id, {}).get('cancelled'):
+                            self.toolResultReady.emit(request_id, str(e))
+                    finally:
+                        if request_id in self.active_requests:
+                            del self.active_requests[request_id]
                 thread = threading.Thread(target=_fetch_worker)
+                thread.daemon = True
                 thread.start()
                 return "Executing..."
             self.mcp_manager.register_tool_handler(
@@ -502,6 +519,12 @@ class AIBridge(QObject):
 
     @pyqtSlot(str)
     def cancelMcpTool(self, request_id):
+        if request_id in self.active_requests:
+            self.active_requests[request_id]['cancelled'] = True
+            self.toolResultReady.emit(request_id, json.dumps({
+                "status": "cancelled",
+                "content": "用户已取消操作"
+            }, ensure_ascii=False))
         if request_id in self.pending_tool_calls:
             call_info = self.pending_tool_calls[request_id]
             worker = call_info.get('worker')
