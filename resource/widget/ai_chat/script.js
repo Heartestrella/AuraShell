@@ -607,16 +607,15 @@ function editUserMessage(bubbleElement) {
     text = messageContent;
   }
   truncateFromMessage(messageIndex, historyIndex);
-  const textarea = document.querySelector('#message-input');
-  if (textarea) {
-    textarea.value = text;
-    const event = new Event('input', { bubbles: true });
-    textarea.dispatchEvent(event);
+  const messageInput = document.querySelector('#message-input');
+  if (messageInput) {
+    messageInput.textContent = text;
+    highlightMentions(messageInput);
   }
   pastedImageDataUrls = [...images];
   renderImagePreviews();
-  if (textarea) {
-    textarea.focus();
+  if (messageInput) {
+    messageInput.focus();
   }
 }
 function retryUserMessage(bubbleElement) {
@@ -913,8 +912,39 @@ function renderImagePreviews() {
     previewContainer.appendChild(imageWrapper);
   });
 }
+function highlightMentions(inputElement) {
+  const text = inputElement.textContent;
+  const mentionRegex = /\s@([a-zA-Z]+:[^\s]+)\s/g;
+  const matches = [];
+  let match;
+  while ((match = mentionRegex.exec(text)) !== null) {
+    matches.push({
+      start: match.index + 1,
+      end: match.index + match[0].length - 1,
+      mention: match[0].trim(),
+    });
+  }
+  if (matches.length === 0) return;
+  let html = '';
+  let lastIndex = 0;
+  matches.forEach((m) => {
+    html += text.substring(lastIndex, m.start).replace(/</g, '<').replace(/>/g, '>');
+    html += `<span class="mention-tag" contenteditable="false">${m.mention}</span>`;
+    lastIndex = m.end;
+  });
+  html += text.substring(lastIndex).replace(/</g, '<').replace(/>/g, '>');
+  inputElement.innerHTML = html;
+  const range = document.createRange();
+  const sel = window.getSelection();
+  range.selectNodeContents(inputElement);
+  range.collapse(false);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
 function handlePaste(event) {
-  const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+  event.preventDefault();
+  const clipboardData = event.clipboardData || window.clipboardData;
+  const items = clipboardData.items;
   let imageFound = false;
   for (const item of items) {
     if (item.kind === 'file' && item.type.startsWith('image/')) {
@@ -928,8 +958,24 @@ function handlePaste(event) {
       reader.readAsDataURL(file);
     }
   }
-  if (imageFound) {
-    event.preventDefault();
+  if (!imageFound) {
+    const plainText = clipboardData.getData('text/plain');
+    if (plainText) {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      selection.deleteFromDocument();
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      const textNode = document.createTextNode(plainText);
+      range.insertNode(textNode);
+      range.setStartAfter(textNode);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      event.target.focus();
+      event.target.scrollTop = event.target.scrollHeight;
+      highlightMentions(event.target);
+    }
   }
 }
 window.messagesHistory = [];
@@ -1115,13 +1161,25 @@ document.addEventListener('DOMContentLoaded', function () {
     },
     langPrefix: 'hljs language-',
   });
-  const textarea = document.querySelector('textarea[id="message-input"]');
+  const messageInput = document.querySelector('#message-input');
   const sendButton = document.querySelector('.send-button');
   let isRequesting = false;
-  let resizeTextarea = function () {
-    textarea.style.height = 'auto';
-    textarea.style.height = textarea.scrollHeight + 'px';
-  };
+  function highlightMentions(inputElement) {
+    const text = inputElement.textContent;
+    const mentionRegex = /(\s)(@([a-zA-Z]+:[^\s]+))/g;
+    let html = text.replace(mentionRegex, (match, space, mention) => {
+      return `${space}<span class="mention-tag" contenteditable="false">${mention}</span>`;
+    });
+    if (inputElement.innerHTML !== html) {
+      inputElement.innerHTML = html;
+      const range = document.createRange();
+      const sel = window.getSelection();
+      range.selectNodeContents(inputElement);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }
   function _sanitize_filename(name) {
     name = name.replace(/[\\/*?:"<>|]/g, '');
     name = name.replace('\n', '').replace('\t', '').replace('\r', '');
@@ -1142,7 +1200,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (isRequesting) {
       return;
     }
-    const message = textarea.value.trim();
+    const message = messageInput.textContent;
     if (message || pastedImageDataUrls.length > 0) {
       chatHistoryContainer.style.display = 'none';
       if (window.firstUserMessage === '') {
@@ -1232,14 +1290,166 @@ document.addEventListener('DOMContentLoaded', function () {
       };
       const onDone = createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHistoryIndex, controller, onComplete);
       requestAiChat(aiBubble.updateStream.bind(aiBubble), onDone, controller.signal);
-      textarea.value = '';
-      resizeTextarea();
+      messageInput.textContent = '';
     }
   }
-  if (textarea) {
-    textarea.addEventListener('paste', handlePaste);
-    textarea.addEventListener('input', resizeTextarea);
-    textarea.addEventListener('keydown', function (event) {
+  let mentionManager = null;
+  if (messageInput) {
+    mentionManager = new MentionManager(messageInput);
+    mentionManager.onInsert = () => highlightMentions(messageInput);
+
+    const mentionItemsMap = {
+      directory: (parentItem) => {
+        return new Promise((resolve) => {
+          initializeBackendConnection(async (backendObject) => {
+            if (!backendObject) {
+              resolve([]);
+              return;
+            }
+            try {
+              let targetPath;
+              if (parentItem && parentItem.data && parentItem.data.path) {
+                if (parentItem.data.path === '.') {
+                  targetPath = JSON.parse(await backendObject.get_ssh_cwd()).cwd;
+                } else {
+                  targetPath = parentItem.data.path;
+                }
+              } else {
+                targetPath = JSON.parse(await backendObject.get_file_manager_cwd()).cwd;
+              }
+              const dirsData = await backendObject.listDirs(targetPath);
+              const dirsResult = JSON.parse(dirsData);
+              if (dirsResult.status === 'error') {
+                console.error('获取目录列表失败:', dirsResult.content);
+                resolve([]);
+                return;
+              }
+              const dirs = dirsResult.dirs || [];
+              const list = dirs.map((dir, i) => ({
+                id: `dir${i}_${Date.now()}`,
+                icon: '📁',
+                label: `Dir:${targetPath}/${dir}`,
+                hasChildren: true,
+                type: 'directory',
+                data: { path: `${targetPath}/${dir}` },
+              }));
+              resolve(list);
+            } catch (error) {
+              console.error('获取目录列表异常:', error);
+              resolve([]);
+            }
+          });
+        });
+      },
+      file: () => {
+        return new Promise((resolve) => {
+          initializeBackendConnection(async (backendObject) => {
+            if (!backendObject) {
+              resolve([]);
+              return;
+            }
+            const cwd = JSON.parse(await backendObject.get_file_manager_cwd()).cwd;
+            const filesData = await backendObject.listFiles(cwd);
+            const files = JSON.parse(filesData).files;
+            const list = files.map((file, i) => ({
+              id: `file${i}`,
+              icon: '📄',
+              label: `File:${cwd}/${file}`,
+              hasChildren: false,
+              type: 'file',
+            }));
+            resolve(list);
+          });
+        });
+      },
+      url: () => {
+        return new Promise((resolve) => {
+          resolve([]);
+        });
+      },
+      terminal: () => {
+        return new Promise((resolve) => {
+          resolve([]);
+        });
+      },
+    };
+
+    mentionManager.onGetSubItems = async function (item) {
+      if (!this.ctrlPressed) {
+        if (item.type === 'directory' && item.label.startsWith('Dir:')) {
+          return null;
+        }
+      }
+      if (mentionItemsMap[item.type]) {
+        return await mentionItemsMap[item.type](item);
+      }
+      return null;
+    };
+    messageInput.addEventListener('paste', handlePaste);
+    messageInput.addEventListener('copy', function (event) {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      const range = selection.getRangeAt(0);
+      const fragment = range.cloneContents();
+      const plainText = fragment.textContent;
+      event.preventDefault();
+      event.clipboardData.setData('text/plain', plainText);
+    });
+    messageInput.addEventListener('cut', function (event) {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      const range = selection.getRangeAt(0);
+      const fragment = range.cloneContents();
+      const plainText = fragment.textContent;
+      event.preventDefault();
+      event.clipboardData.setData('text/plain', plainText);
+      range.deleteContents();
+    });
+    messageInput.addEventListener('input', function (event) {
+      if (mentionManager.checkForMentionTrigger()) {
+        const defaultItems = [
+          { id: 'dir', icon: '📁', label: '目录', hasChildren: true, type: 'directory', data: { path: '.' } },
+          { id: 'file', icon: '📄', label: '文件', hasChildren: true, type: 'file', data: { path: '.' } },
+          // { id: 'url', icon: '🔗', label: 'URL', hasChildren: false, type: 'url' },
+          // { id: 'terminal', icon: '💻', label: 'terminal:3', hasChildren: false, type: 'terminal' },
+        ];
+        mentionManager.show(defaultItems);
+      } else if (mentionManager.isActive) {
+        const text = messageInput.textContent;
+        if (!text.includes('@')) {
+          mentionManager.hide();
+        }
+      }
+    });
+    document.addEventListener('click', function (event) {
+      if (mentionManager.isActive) {
+        const popup = document.getElementById('mention-popup');
+        if (!popup.contains(event.target)) {
+          mentionManager.hide();
+        }
+      }
+    });
+    messageInput.addEventListener('keydown', function (event) {
+      if (mentionManager.isActive) {
+        mentionManager.ctrlPressed = event.ctrlKey;
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          mentionManager.moveSelection('up');
+          return;
+        } else if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          mentionManager.moveSelection('down');
+          return;
+        } else if (event.key === 'Enter') {
+          event.preventDefault();
+          mentionManager.selectItem();
+          return;
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          mentionManager.hide();
+          return;
+        }
+      }
       if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey) {
         event.preventDefault();
         sendMessage();

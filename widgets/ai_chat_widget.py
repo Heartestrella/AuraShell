@@ -598,6 +598,54 @@ class AIBridge(QObject):
         else:
             return json.dumps({"status": "error", "content": "Could not find the file explorer."}, ensure_ascii=False)
 
+    @pyqtSlot(str, result=str)
+    def listFiles(self, cwd):
+        if not self.main_window:
+            return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
+        active_widget = self.main_window.get_active_ssh_widget()
+        if not active_widget:
+            return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
+        worker = None
+        if hasattr(active_widget, 'ssh_widget') and hasattr(active_widget.ssh_widget, 'bridge'):
+            worker = active_widget.ssh_widget.bridge.worker
+        if not worker:
+            return json.dumps({"status": "error", "content": "Could not find the SSH worker for the active session."}, ensure_ascii=False)
+        import shlex
+        safe_path = shlex.quote(str(cwd))
+        command = f"cd {safe_path}; ls -Ap | grep -v /"
+        output, error, exit_code = worker.execute_silent_command(command)
+        if exit_code == 0:
+            files = [line.strip() for line in output.strip().split('\n') if line.strip()]
+            return json.dumps({"status": "success", "files": files}, ensure_ascii=False)
+        elif exit_code == 1 and not output.strip():
+            return json.dumps({"status": "success", "files": []}, ensure_ascii=False)
+        else:
+            return json.dumps({"status": "error", "content": error, "exit_code": exit_code}, ensure_ascii=False)
+
+    @pyqtSlot(str, result=str)
+    def listDirs(self, path):
+        if not self.main_window:
+            return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
+        active_widget = self.main_window.get_active_ssh_widget()
+        if not active_widget:
+            return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
+        worker = None
+        if hasattr(active_widget, 'ssh_widget') and hasattr(active_widget.ssh_widget, 'bridge'):
+            worker = active_widget.ssh_widget.bridge.worker
+        if not worker:
+            return json.dumps({"status": "error", "content": "Could not find the SSH worker for the active session."}, ensure_ascii=False)
+        import shlex
+        safe_path = shlex.quote(str(path))
+        command = f"cd {safe_path}; ls -Ap | grep /"
+        output, error, exit_code = worker.execute_silent_command(command)
+        if exit_code == 0:
+            dirs = [line.strip().rstrip('/') for line in output.strip().split('\n') if line.strip()]
+            return json.dumps({"status": "success", "dirs": dirs}, ensure_ascii=False)
+        elif exit_code == 1 and not output.strip():
+            return json.dumps({"status": "success", "dirs": []}, ensure_ascii=False)
+        else:
+            return json.dumps({"status": "error", "content": error, "exit_code": exit_code}, ensure_ascii=False)
+
     @pyqtSlot(result=str)
     def get_system_info(self):
         if not self.main_window:

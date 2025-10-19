@@ -343,6 +343,7 @@ body {
   border-top: 1px solid var(--border-color);
   background-color: var(--chat-bg-color);
   flex-shrink: 0;
+  position: relative;
 }
 .action-buttons {
   display: flex;
@@ -397,7 +398,7 @@ body {
   padding: 5px;
   min-height: 80px;
 }
-.input-area textarea {
+#message-input {
   flex-grow: 1;
   background-color: transparent;
   border: none;
@@ -411,13 +412,17 @@ body {
   padding: 10px;
   -ms-overflow-style: none;
   scrollbar-width: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
-.input-area textarea:focus {
+#message-input:focus {
   outline: none;
 }
-.input-area textarea::placeholder {
+#message-input[data-placeholder]:empty::before {
+  content: attr(data-placeholder);
   color: var(--text-color-light);
   opacity: 0.7;
+  cursor: text;
 }
 .input-actions {
   display: flex;
@@ -527,7 +532,7 @@ body {
 .chat-body::-webkit-scrollbar-thumb:hover {
   background-color: #7a7a7a;
 }
-.input-area textarea::-webkit-scrollbar {
+#message-input::-webkit-scrollbar {
   display: none;
 }
 .settings-popup-overlay {
@@ -912,4 +917,95 @@ body {
   to {
     opacity: 0;
   }
+}
+.mention-popup {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 250px;
+  background: rgba(45, 45, 45, 0.98);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+  overflow-y: auto;
+  z-index: 1000;
+  animation: mentionSlideIn 200ms ease-out;
+}
+@keyframes mentionSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.mention-item {
+  padding: 10px 15px;
+  cursor: pointer;
+  transition: background 150ms ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-color);
+}
+.mention-item .mention-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.mention-item .mention-label {
+  flex-grow: 1;
+}
+.mention-item.active {
+  background: var(--accent-color-blue);
+  color: white;
+}
+.mention-item:hover {
+  background: var(--accent-color-blue);
+  color: white;
+}
+.mention-tag {
+  display: inline-block;
+  background: linear-gradient(90deg, #4a90e2, #357abd);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin: 0 2px;
+  font-weight: 500;
+  user-select: none;
+  cursor: default;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+.mention-tag:hover {
+  filter: brightness(1.1);
+}
+.mention-tag.delete-warning {
+  animation: mentionPulse 300ms ease;
+  outline: 2px solid var(--accent-color-red);
+}
+@keyframes mentionPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+.mention-popup::-webkit-scrollbar {
+  width: 6px;
+}
+.mention-popup::-webkit-scrollbar-track {
+  background: transparent;
+}
+.mention-popup::-webkit-scrollbar-thumb {
+  background-color: var(--accent-color-grey);
+  border-radius: 3px;
+}
+.mention-popup::-webkit-scrollbar-thumb:hover {
+  background-color: #7a7a7a;
 }

@@ -29,8 +29,9 @@
           <button class="continue-button" style="flex-basis: 100%;">强制继续</button>
           <button class="cancel-button">取消</button>
         </div>
+        <div id="mention-popup" class="mention-popup" style="display: none;"></div>
         <div class="input-area">
-          <textarea id="message-input" placeholder="输入消息..."></textarea>
+          <div id="message-input" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="输入消息..."></div>
           <div class="input-actions">
             <button class="icon-button" id="image-button">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-image" viewBox="0 0 16 16">
@@ -111,6 +112,7 @@
     <script src="lib/marked/highlight.min.js"></script>
     <script src="ai_compression.js"></script>
     <script src="ai_history.js"></script>
+    <script src="mention_manager.js"></script>
     <script src="script.js"></script>
   </body>
 </html>
