@@ -7,7 +7,6 @@ function isToolAbortable(toolName) {
 function generateUniqueId() {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
-
 function isContextLengthError(errorJson) {
   if (errorJson.error?.code === 'context_length_exceeded') {
     return true;
@@ -16,7 +15,6 @@ function isContextLengthError(errorJson) {
   const keywords = ['maximum context length', 'context length', 'context window', 'token limit', 'tokens exceed', 'too many tokens', 'requested too many tokens'];
   return keywords.some((keyword) => message.includes(keyword));
 }
-
 function cleanupRequest(requestId) {
   const request = pendingRequests.get(requestId);
   if (request && request.handler) {
@@ -24,7 +22,6 @@ function cleanupRequest(requestId) {
   }
   pendingRequests.delete(requestId);
 }
-
 function setQQUserInfo(qq_name, qq_number) {
   let messageId = generateUniqueId();
   if (!window.ws) {
@@ -53,7 +50,6 @@ function setQQUserInfo(qq_name, qq_number) {
 window.OnlineUser = {};
 window.setQQUserInfo = setQQUserInfo;
 window.currentUserInfo = { name: '用户', avatarUrl: null };
-
 async function updateTokenUsage() {
   const tokenElement = document.getElementById('token-count');
   const rawCountStr = await backend.getTokenUsage(aiChatApiOptionsBody.messages);
@@ -70,7 +66,6 @@ async function updateTokenUsage() {
   }
   tokenElement.textContent = displayText;
 }
-
 async function executeMcpTool(serverName, toolName, args, providedRequestId = null) {
   return new Promise((resolve, reject) => {
     const requestId = providedRequestId || generateUniqueId();
@@ -111,7 +106,6 @@ async function executeMcpTool(serverName, toolName, args, providedRequestId = nu
     }
   });
 }
-
 function getPendingRequests() {
   const requests = [];
   for (const [id, info] of pendingRequests) {
@@ -123,7 +117,6 @@ function getPendingRequests() {
   }
   return requests;
 }
-
 function cancelMcpRequest(requestId) {
   const request = pendingRequests.get(requestId);
   if (request) {
@@ -614,8 +607,8 @@ function editUserMessage(bubbleElement) {
   truncateFromMessage(messageIndex, historyIndex);
   const messageInput = document.querySelector('#message-input');
   if (messageInput) {
-    messageInput.textContent = text;
-    highlightMentions(messageInput);
+    messageInput.value = text;
+    updateHighlights();
   }
   pastedImageDataUrls = [...images];
   renderImagePreviews();
@@ -927,34 +920,37 @@ function renderImagePreviews() {
     previewContainer.appendChild(imageWrapper);
   });
 }
-function highlightMentions(inputElement) {
-  const text = inputElement.textContent;
-  const mentionRegex = /\s@([a-zA-Z]+:[^\s]+)\s/g;
-  const matches = [];
-  let match;
-  while ((match = mentionRegex.exec(text)) !== null) {
-    matches.push({
-      start: match.index + 1,
-      end: match.index + match[0].length - 1,
-      mention: match[0].trim(),
-    });
+function escapeHtml(text) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+function adjustTextareaHeight() {
+  const textarea = document.getElementById('message-input');
+  if (!textarea) {
+    return;
   }
-  if (matches.length === 0) return;
-  let html = '';
-  let lastIndex = 0;
-  matches.forEach((m) => {
-    html += text.substring(lastIndex, m.start).replace(/</g, '<').replace(/>/g, '>');
-    html += `<span class="mention-tag" contenteditable="false">${m.mention}</span>`;
-    lastIndex = m.end;
+  textarea.style.height = 'auto';
+  const newHeight = Math.min(Math.max(textarea.scrollHeight, 70), 250);
+  textarea.style.height = newHeight + 'px';
+}
+function updateHighlights() {
+  const textarea = document.getElementById('message-input');
+  const highlightLayer = document.getElementById('highlight-layer');
+  if (!textarea || !highlightLayer) {
+    return;
+  }
+  let text = textarea.value;
+  let processedText = escapeHtml(text);
+  const mentionRegex = /(\s)(@[a-zA-Z]+:[^\s]+)/g;
+  processedText = processedText.replace(mentionRegex, (match, space, mention) => {
+    return space + '<mark>' + match.substring(space.length) + '</mark>';
   });
-  html += text.substring(lastIndex).replace(/</g, '<').replace(/>/g, '>');
-  inputElement.innerHTML = html;
-  const range = document.createRange();
-  const sel = window.getSelection();
-  range.selectNodeContents(inputElement);
-  range.collapse(false);
-  sel.removeAllRanges();
-  sel.addRange(range);
+  highlightLayer.innerHTML = processedText;
+  highlightLayer.scrollTop = textarea.scrollTop;
+  highlightLayer.scrollLeft = textarea.scrollLeft;
+  adjustTextareaHeight();
+}
+function highlightMentions(inputElement) {
+  updateHighlights();
 }
 function handlePaste(event) {
   event.preventDefault();
@@ -976,20 +972,14 @@ function handlePaste(event) {
   if (!imageFound) {
     const plainText = clipboardData.getData('text/plain');
     if (plainText) {
-      const selection = window.getSelection();
-      if (!selection.rangeCount) return;
-      selection.deleteFromDocument();
-      const range = selection.getRangeAt(0);
-      range.deleteContents();
-      const textNode = document.createTextNode(plainText);
-      range.insertNode(textNode);
-      range.setStartAfter(textNode);
-      range.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(range);
-      event.target.focus();
-      event.target.scrollTop = event.target.scrollHeight;
-      highlightMentions(event.target);
+      const textarea = event.target;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const currentValue = textarea.value;
+      textarea.value = currentValue.substring(0, start) + plainText + currentValue.substring(end);
+      const newPos = start + plainText.length;
+      textarea.setSelectionRange(newPos, newPos);
+      updateHighlights();
     }
   }
 }
@@ -1179,22 +1169,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const messageInput = document.querySelector('#message-input');
   const sendButton = document.querySelector('.send-button');
   let isRequesting = false;
-  function highlightMentions(inputElement) {
-    const text = inputElement.textContent;
-    const mentionRegex = /(\s)(@([a-zA-Z]+:[^\s]+))/g;
-    let html = text.replace(mentionRegex, (match, space, mention) => {
-      return `${space}<span class="mention-tag" contenteditable="false">${mention}</span>`;
-    });
-    if (inputElement.innerHTML !== html) {
-      inputElement.innerHTML = html;
-      const range = document.createRange();
-      const sel = window.getSelection();
-      range.selectNodeContents(inputElement);
-      range.collapse(false);
-      sel.removeAllRanges();
-      sel.addRange(range);
-    }
-  }
   function _sanitize_filename(name) {
     name = name.replace(/[\\/*?:"<>|]/g, '');
     name = name.replace('\n', '').replace('\t', '').replace('\r', '');
@@ -1217,7 +1191,7 @@ document.addEventListener('DOMContentLoaded', function () {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
     }
-    const message = messageInput.textContent;
+    const message = messageInput.value;
     if (message || pastedImageDataUrls.length > 0) {
       chatHistoryContainer.style.display = 'none';
       if (window.firstUserMessage === '') {
@@ -1303,13 +1277,17 @@ document.addEventListener('DOMContentLoaded', function () {
       };
       const onDone = createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHistoryIndex, controller, onComplete);
       requestAiChat(aiBubble.updateStream.bind(aiBubble), onDone, controller.signal);
-      messageInput.textContent = '';
+      messageInput.value = '';
+      updateHighlights();
     }
   }
   let mentionManager = null;
   if (messageInput) {
     mentionManager = new MentionManager(messageInput);
-    mentionManager.onInsert = () => highlightMentions(messageInput);
+    mentionManager.onInsert = () => updateHighlights();
+    messageInput.addEventListener('scroll', function () {
+      updateHighlights();
+    });
 
     const mentionItemsMap = {
       Dir: (parentItem) => {
@@ -1415,26 +1393,8 @@ document.addEventListener('DOMContentLoaded', function () {
       return null;
     };
     messageInput.addEventListener('paste', handlePaste);
-    messageInput.addEventListener('copy', function (event) {
-      const selection = window.getSelection();
-      if (!selection.rangeCount) return;
-      const range = selection.getRangeAt(0);
-      const fragment = range.cloneContents();
-      const plainText = fragment.textContent;
-      event.preventDefault();
-      event.clipboardData.setData('text/plain', plainText);
-    });
-    messageInput.addEventListener('cut', function (event) {
-      const selection = window.getSelection();
-      if (!selection.rangeCount) return;
-      const range = selection.getRangeAt(0);
-      const fragment = range.cloneContents();
-      const plainText = fragment.textContent;
-      event.preventDefault();
-      event.clipboardData.setData('text/plain', plainText);
-      range.deleteContents();
-    });
     messageInput.addEventListener('input', function (event) {
+      updateHighlights();
       if (mentionManager.checkForMentionTrigger()) {
         const defaultItems = [
           { id: 'dir', icon: '📁', label: '目录', hasChildren: true, type: 'Dir', data: { path: '.' } },
@@ -1444,7 +1404,7 @@ document.addEventListener('DOMContentLoaded', function () {
         ];
         mentionManager.show(defaultItems);
       } else if (mentionManager.isActive) {
-        const text = messageInput.textContent;
+        const text = messageInput.value;
         if (!text.includes('@')) {
           mentionManager.hide();
         }
@@ -1458,6 +1418,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       }
     });
+    let justDeletedSpaceAfterMention = false;
     messageInput.addEventListener('keydown', function (event) {
       if (mentionManager.isActive) {
         mentionManager.ctrlPressed = event.ctrlKey;
@@ -1479,11 +1440,54 @@ document.addEventListener('DOMContentLoaded', function () {
           return;
         }
       }
+      if (event.key === 'Backspace' && messageInput.selectionStart === messageInput.selectionEnd) {
+        const cursorPos = messageInput.selectionStart;
+        if (cursorPos === 0) {
+          justDeletedSpaceAfterMention = false;
+          return;
+        }
+        const textBefore = messageInput.value.substring(0, cursorPos);
+        const charBeforeCursor = textBefore[cursorPos - 1];
+        const isWhitespace = charBeforeCursor === ' ' || charBeforeCursor === '\n';
+        if (isWhitespace) {
+          const mentionRegex = /(\s)(@[a-zA-Z]+:[^\s]+)\s$/;
+          const match = textBefore.match(mentionRegex);
+          if (match) {
+            event.preventDefault();
+            messageInput.value = messageInput.value.substring(0, cursorPos - 1) + messageInput.value.substring(cursorPos);
+            const newPos = cursorPos - 1;
+            messageInput.setSelectionRange(newPos, newPos);
+            justDeletedSpaceAfterMention = true;
+            updateHighlights();
+            return;
+          }
+        } else if (justDeletedSpaceAfterMention) {
+          const mentionRegex = /(\s)(@[a-zA-Z]+:[^\s]+)$/;
+          const match = textBefore.match(mentionRegex);
+          if (match) {
+            event.preventDefault();
+            const fullMatch = match[0];
+            const mentionWithSpace = match[1] + match[2];
+            const startPos = cursorPos - match[2].length;
+            const beforeMention = messageInput.value.substring(0, startPos - match[1].length);
+            const afterMention = messageInput.value.substring(cursorPos);
+            messageInput.value = beforeMention + afterMention;
+            messageInput.setSelectionRange(beforeMention.length, beforeMention.length);
+            justDeletedSpaceAfterMention = false;
+            updateHighlights();
+            return;
+          }
+        }
+        justDeletedSpaceAfterMention = false;
+      } else if (event.key !== 'Backspace') {
+        justDeletedSpaceAfterMention = false;
+      }
       if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey) {
         event.preventDefault();
         sendMessage();
       }
     });
+    updateHighlights();
   }
   if (sendButton) {
     sendButton.addEventListener('click', sendMessage);

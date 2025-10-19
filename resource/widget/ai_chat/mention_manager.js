@@ -9,9 +9,8 @@ class MentionManager {
     this.onGetSubItems = null;
     this.onInsert = null;
     this.breadcrumb = [];
-    this.mentionStartNode = null;
     this.mentionStartOffset = 0;
-    this.savedRange = null;
+    this.savedCursorPos = null;
   }
   show(items) {
     this.items = items;
@@ -72,10 +71,7 @@ class MentionManager {
   async selectItem() {
     const item = this.items[this.selectedIndex];
     if (item.inputMode) {
-      const selection = window.getSelection();
-      if (selection.rangeCount > 0) {
-        this.savedRange = selection.getRangeAt(0).cloneRange();
-      }
+      this.savedCursorPos = this.inputElement.selectionStart;
       this.showInputMode(item);
       return;
     }
@@ -91,49 +87,32 @@ class MentionManager {
     this.hide();
   }
   insertMentionTag(item) {
-    const selection = window.getSelection();
-    let range;
-    if (this.savedRange) {
-      range = this.savedRange;
-      this.savedRange = null;
-    } else if (selection.rangeCount > 0) {
-      range = selection.getRangeAt(0);
-    } else {
-      return;
-    }
-    if (this.mentionStartNode) {
-      const tempRange = document.createRange();
-      tempRange.setStart(this.mentionStartNode, this.mentionStartOffset);
-      tempRange.setEnd(range.startContainer, range.startOffset);
-      tempRange.deleteContents();
-      range = tempRange;
-    }
-    const mentionText = ` @${item.label} `;
-    const textNode = document.createTextNode(mentionText);
-    range.insertNode(textNode);
-    range.setStartAfter(textNode);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    this.inputElement.focus();
-    if (this.onInsert) {
-      this.onInsert();
+    const textarea = this.inputElement;
+    const cursorPos = textarea.selectionStart;
+    const textBefore = textarea.value.substring(0, cursorPos);
+    const textAfter = textarea.value.substring(cursorPos);
+    const lastAtIndex = textBefore.lastIndexOf('@');
+    if (lastAtIndex !== -1) {
+      const mentionText = `@${item.label}`;
+      const beforeAt = textBefore.substring(0, lastAtIndex);
+      const needSpaceBefore = beforeAt.length === 0 || (beforeAt[beforeAt.length - 1] !== ' ' && beforeAt[beforeAt.length - 1] !== '\n');
+      const spacePrefix = needSpaceBefore ? ' ' : '';
+      const newValue = beforeAt + spacePrefix + mentionText + ' ' + textBefore.substring(cursorPos) + textAfter;
+      textarea.value = newValue;
+      const newCursorPos = beforeAt.length + spacePrefix.length + mentionText.length + 1;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+      textarea.focus();
+      if (this.onInsert) {
+        this.onInsert();
+      }
     }
   }
   checkForMentionTrigger() {
-    const selection = window.getSelection();
-    if (!selection.rangeCount) {
-      return false;
-    }
-    const range = selection.getRangeAt(0);
-    const textNode = range.startContainer;
-    if (textNode.nodeType !== Node.TEXT_NODE) {
-      return false;
-    }
-    const textBeforeCursor = textNode.textContent.substring(0, range.startOffset);
-    const lastAtIndex = textBeforeCursor.lastIndexOf(this.mentionTriggerChar);
-    if (lastAtIndex !== -1 && lastAtIndex === textBeforeCursor.length - 1) {
-      this.mentionStartNode = textNode;
+    const textarea = this.inputElement;
+    const cursorPos = textarea.selectionStart;
+    const textBefore = textarea.value.substring(0, cursorPos);
+    const lastAtIndex = textBefore.lastIndexOf(this.mentionTriggerChar);
+    if (lastAtIndex !== -1 && lastAtIndex === textBefore.length - 1) {
       this.mentionStartOffset = lastAtIndex;
       return true;
     }
