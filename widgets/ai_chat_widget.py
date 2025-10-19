@@ -136,27 +136,20 @@ class AIBridge(QObject):
                 full_command = "cd " + cwd + ";" + command
                 if not self.main_window:
                     return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
-                
                 active_widget = None
                 if request_id and request_id in self.pending_tool_calls:
                     active_widget = self.pending_tool_calls[request_id].get('widget')
-
                 if not active_widget:
                     active_widget = self.main_window.get_active_ssh_widget()
-
                 if not active_widget:
                     return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
-
                 worker = None
                 if hasattr(active_widget, 'ssh_widget') and hasattr(active_widget.ssh_widget, 'bridge'):
                     worker = active_widget.ssh_widget.bridge.worker
-                
                 if not worker:
                     return json.dumps({"status": "error", "content": "Could not find the SSH worker for the active session."}, ensure_ascii=False)
-
                 if request_id:
                     self.pending_tool_calls[request_id]['worker'] = worker
-
                 def on_output_ready(result_str, code):
                     try:
                         if request_id in self.pending_tool_calls:
@@ -168,7 +161,6 @@ class AIBridge(QObject):
                         worker.command_output_ready.disconnect(on_output_ready)
                     except TypeError:
                         pass
-
                 worker.command_output_ready.connect(on_output_ready)
                 active_widget.execute_command_and_capture(full_command)
                 return "Executing..."
@@ -214,24 +206,42 @@ class AIBridge(QObject):
                     return _internal_execute_interactive_shell(shell, cwd, request_id)
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"An unexpected error occurred: {e}"}, ensure_ascii=False)
-            def read_file(file_path: list = None, show_line: bool = False):
+            def read_file(file_path: list = None, show_line: bool = False, start_line: int = None, end_line: int = None):
                 if not file_path:
                     return json.dumps({"status": "error", "content": "No file path provided or list is empty."}, ensure_ascii=False)
                 try:
                     if len(file_path) == 1:
                         safe_path = _safe_quote(file_path[0])
-                        command = f"cat {safe_path}"
-                        if show_line:
-                            command = f"awk '{{print NR\"|\" $0}}' {safe_path}"
+                        if start_line is not None and end_line is not None:
+                            if start_line < 1 or end_line < start_line:
+                                return json.dumps({"status": "error", "content": "Invalid line range. start_line must be >= 1 and end_line must be >= start_line."}, ensure_ascii=False)
+                            if show_line:
+                                command = f"sed -n '{start_line},{end_line}p' {safe_path} | awk '{{print NR+{start_line-1}\"|\" $0}}'"
+                            else:
+                                command = f"sed -n '{start_line},{end_line}p' {safe_path}"
+                        else:
+                            command = f"cat {safe_path}"
+                            if show_line:
+                                command = f"awk '{{print NR\"|\" $0}}' {safe_path}"
                         return _internal_execute_silent_shell(command)
                     else:
                         results = []
                         for path in file_path:
                             safe_path = _safe_quote(path)
-                            command = f"cat {safe_path}"
-                            if show_line:
-                                command = f"awk '{{print NR\"|\" $0}}' {safe_path}"
-                            content = _internal_execute_silent_shell(command)
+                            if start_line is not None and end_line is not None:
+                                if start_line < 1 or end_line < start_line:
+                                    content = json.dumps({"status": "error", "content": "Invalid line range."}, ensure_ascii=False)
+                                elif show_line:
+                                    command = f"sed -n '{start_line},{end_line}p' {safe_path} | awk '{{print NR+{start_line-1}\"|\" $0}}'"
+                                    content = _internal_execute_silent_shell(command)
+                                else:
+                                    command = f"sed -n '{start_line},{end_line}p' {safe_path}"
+                                    content = _internal_execute_silent_shell(command)
+                            else:
+                                command = f"cat {safe_path}"
+                                if show_line:
+                                    command = f"awk '{{print NR\"|\" $0}}' {safe_path}"
+                                content = _internal_execute_silent_shell(command)
                             try:
                                 error_data = json.loads(content)
                                 if isinstance(error_data, dict) and error_data.get("status") == "error":
@@ -242,118 +252,208 @@ class AIBridge(QObject):
                         return "\n".join(results)
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"Failed to read file(s): {e}"}, ensure_ascii=False)
-            def write_file(args:str = None):
+            def write_file(args:str = None, request_id: str = None):
                 """
                 <write_to_file><path>{文件绝对路径}</path><content>{文件内容}</content></write_to_file>
                 """
                 if not args:
                     return json.dumps({"status": "error", "content": "No arguments provided."}, ensure_ascii=False)
-                try:
-                    path_match = re.search(r'<path>(.*?)</path>', args, re.DOTALL)
-                    if not path_match:
-                        return json.dumps({"status": "error", "content": "Missing or invalid <path> tag."}, ensure_ascii=False)
-                    file_path = path_match.group(1).strip()
-                    if not file_path:
-                        return json.dumps({"status": "error", "content": "File path cannot be empty."}, ensure_ascii=False)
-                    content_start_tag = '<content>'
-                    content_end_tag = '</content>'
-                    start_index = args.find(content_start_tag)
-                    end_index = args.rfind(content_end_tag)
-                    if start_index == -1 or end_index == -1 or start_index >= end_index:
-                        return json.dumps({"status": "error", "content": "Missing or invalid <content> tag."}, ensure_ascii=False)
-                    content = args[start_index + len(content_start_tag):end_index]
-                    if content.startswith('\n'):
-                        content = content[1:]
-                    if content.endswith('\n'):
-                        content = content[:-1]
-                    encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
-                    safe_path = _safe_quote(file_path)
-                    command = f"echo '{encoded_content}' | base64 --decode > {safe_path}"
-                    r = _internal_execute_silent_shell(command)
-                    if r == '':
-                        active_widget = self.main_window.get_active_ssh_widget()
-                        if active_widget:
-                            widget_key = active_widget.objectName()
-                            self.main_window._refresh_paths(widget_key)
-                        return json.dumps({"status": "success", "content": f"File '{file_path}' was written successfully."}, ensure_ascii=False)
-                    else:
-                        try:
-                            error_data = json.loads(r)
-                            return json.dumps(error_data, ensure_ascii=False)
-                        except json.JSONDecodeError:
-                            return json.dumps({"status": "error", "content": r}, ensure_ascii=False)
-                except Exception as e:
-                    return json.dumps({"status": "error", "content": f"An unexpected error occurred during file creation: {e}"}, ensure_ascii=False)
-            def edit_file(args:str = None):
+                if request_id:
+                    self.pending_tool_calls[request_id] = {
+                        'server_name': 'Linux终端',
+                        'tool_name': 'write_file',
+                        'start_time': time.time(),
+                        'widget': self.main_window.get_active_ssh_widget() if self.main_window else None
+                    }
+                def _write_worker():
+                    try:
+                        if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
+                            return
+                        path_match = re.search(r'<path>(.*?)</path>', args, re.DOTALL)
+                        if not path_match:
+                            result = json.dumps({"status": "error", "content": "Missing or invalid <path> tag."}, ensure_ascii=False)
+                            if request_id:
+                                self.toolResultReady.emit(request_id, result)
+                            return result
+                        file_path = path_match.group(1).strip()
+                        if not file_path:
+                            result = json.dumps({"status": "error", "content": "File path cannot be empty."}, ensure_ascii=False)
+                            if request_id:
+                                self.toolResultReady.emit(request_id, result)
+                            return result
+                        content_start_tag = '<content>'
+                        content_end_tag = '</content>'
+                        start_index = args.find(content_start_tag)
+                        end_index = args.rfind(content_end_tag)
+                        if start_index == -1 or end_index == -1 or start_index >= end_index:
+                            result = json.dumps({"status": "error", "content": "Missing or invalid <content> tag."}, ensure_ascii=False)
+                            if request_id:
+                                self.toolResultReady.emit(request_id, result)
+                            return result
+                        content = args[start_index + len(content_start_tag):end_index]
+                        if content.startswith('\n'):
+                            content = content[1:]
+                        if content.endswith('\n'):
+                            content = content[:-1]
+                        if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
+                            return
+                        encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+                        safe_path = _safe_quote(file_path)
+                        command = f"echo '{encoded_content}' | base64 --decode > {safe_path}"
+                        r = _internal_execute_silent_shell(command)
+                        if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
+                            return
+                        if r == '':
+                            active_widget = self.main_window.get_active_ssh_widget() if self.main_window else None
+                            if active_widget:
+                                widget_key = active_widget.objectName()
+                                self.main_window._refresh_paths(widget_key)
+                            result = json.dumps({"status": "success", "content": f"File '{file_path}' was written successfully."}, ensure_ascii=False)
+                        else:
+                            try:
+                                error_data = json.loads(r)
+                                result = json.dumps(error_data, ensure_ascii=False)
+                            except json.JSONDecodeError:
+                                result = json.dumps({"status": "error", "content": r}, ensure_ascii=False)
+                        if request_id:
+                            self.toolResultReady.emit(request_id, result)
+                        return result
+                    except Exception as e:
+                        result = json.dumps({"status": "error", "content": f"An unexpected error occurred during file creation: {e}"}, ensure_ascii=False)
+                        if request_id:
+                            self.toolResultReady.emit(request_id, result)
+                        return result
+                    finally:
+                        if request_id and request_id in self.pending_tool_calls:
+                            del self.pending_tool_calls[request_id]
+                if request_id:
+                    thread = threading.Thread(target=_write_worker)
+                    thread.daemon = True
+                    thread.start()
+                    return "Executing..."
+                else:
+                    return _write_worker()
+            def edit_file(args:str = None, request_id: str = None):
                 """
                 <edit_file><path>{文件绝对路径(必填)}</path><start_line>{开始行号(必填)}</start_line><end_line>{结束行号(必填)}</end_line><originalcontent>{要查找的原始内容(必填)}</originalcontent><replace>{替换成的新内容(必填)}</replace></edit_file>
                 """
                 if not args:
                     return json.dumps({"status": "error", "content": "No arguments provided for edit_file."}, ensure_ascii=False)
-                try:
-                    path_match = re.search(r'<path>(.*?)</path>', args, re.DOTALL)
-                    start_line_match = re.search(r'<start_line>(\d+)</start_line>', args)
-                    end_line_match = re.search(r'<end_line>(\d+)</end_line>', args)
-                    if not (path_match and start_line_match and end_line_match):
-                        return json.dumps({"status": "error", "content": "Missing or invalid path/start_line/end_line tags."}, ensure_ascii=False)
-                    file_path = path_match.group(1).strip()
-                    start_line = int(start_line_match.group(1))
-                    end_line = int(end_line_match.group(1))
-                    search_content = re.search(r'<originalcontent>(.*?)</originalcontent>', args, re.DOTALL)
-                    if search_content is None:
-                        return json.dumps({"status": "error", "content": "Missing <originalcontent> tag."}, ensure_ascii=False)
-                    search_block = search_content.group(1)
-                    replace_content = re.search(r'<replace>(.*?)</replace>', args, re.DOTALL)
-                    if replace_content is None:
-                        return json.dumps({"status": "error", "content": "Missing <replace> tag."}, ensure_ascii=False)
-                    replace_block = replace_content.group(1)
-                    remote_content_json = read_file([file_path])
+                if request_id:
+                    self.pending_tool_calls[request_id] = {
+                        'server_name': 'Linux终端',
+                        'tool_name': 'edit_file',
+                        'start_time': time.time(),
+                        'widget': self.main_window.get_active_ssh_widget() if self.main_window else None
+                    }
+                def _edit_worker():
                     try:
-                        remote_data = json.loads(remote_content_json)
-                        if remote_data.get("status") == "error":
-                            return remote_content_json
-                        remote_content = remote_data.get("content", "")
-                    except (json.JSONDecodeError, AttributeError):
-                        remote_content = remote_content_json
-                    remote_content = remote_content.replace('\r', '')
-                    lines = remote_content.splitlines(True)
-                    if not (1 <= start_line <= end_line <= len(lines)):
-                        return json.dumps({"status": "error", "content": f"Line numbers out of bounds. File has {len(lines)} lines."}, ensure_ascii=False)
-                    actual_block = "".join(lines[start_line - 1:end_line])
-                    search_block_stripped = search_block.strip()
-                    actual_block_stripped = actual_block.strip()
-                    if actual_block_stripped != search_block_stripped:
-                        return json.dumps({
-                            "status": "error",
-                            "content": "Content verification failed. The content on the server does not match the 'search' block.",
-                            "expected": search_block_stripped,
-                            "actual": actual_block_stripped
-                        }, ensure_ascii=False)
-                    original_last_line = lines[end_line - 1]
-                    line_ending = '\n'
-                    if original_last_line.endswith('\r\n'):
-                        line_ending = '\r\n'
-                    replace_block_stripped = replace_block.strip()
-                    new_content_parts = []
-                    if replace_block_stripped:
-                        replace_lines = replace_block_stripped.splitlines()
-                        new_content_parts = [line + line_ending for line in replace_lines]
-                    new_lines = lines[:start_line - 1] + new_content_parts + lines[end_line:]
-                    new_full_content = "".join(new_lines)
-                    encoded_content = base64.b64encode(new_full_content.encode('utf-8')).decode('utf-8')
-                    safe_path = _safe_quote(file_path)
-                    command = f"echo '{encoded_content}' | base64 --decode > {safe_path}"
-                    r = _internal_execute_silent_shell(command)
-                    if r == '':
-                        active_widget = self.main_window.get_active_ssh_widget()
-                        if active_widget:
-                            widget_key = active_widget.objectName()
-                            self.main_window._refresh_paths(widget_key)
-                        return json.dumps({"status": "success", "content": f"{file_path} {start_line}-{end_line} {search_block} -> {replace_block}"}, ensure_ascii=False)
-                    else:
-                        return json.dumps({"status": "error", "content": r}, ensure_ascii=False)
-                except Exception as e:
-                    return json.dumps({"status": "error", "content": f"An unexpected error occurred during file edit: {e}"}, ensure_ascii=False)
+                        if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
+                            return
+                        path_match = re.search(r'<path>(.*?)</path>', args, re.DOTALL)
+                        start_line_match = re.search(r'<start_line>(\d+)</start_line>', args)
+                        end_line_match = re.search(r'<end_line>(\d+)</end_line>', args)
+                        if not (path_match and start_line_match and end_line_match):
+                            result = json.dumps({"status": "error", "content": "Missing or invalid path/start_line/end_line tags."}, ensure_ascii=False)
+                            if request_id:
+                                self.toolResultReady.emit(request_id, result)
+                            return result
+                        file_path = path_match.group(1).strip()
+                        start_line = int(start_line_match.group(1))
+                        end_line = int(end_line_match.group(1))
+                        search_content = re.search(r'<originalcontent>(.*?)</originalcontent>', args, re.DOTALL)
+                        if search_content is None:
+                            result = json.dumps({"status": "error", "content": "Missing <originalcontent> tag."}, ensure_ascii=False)
+                            if request_id:
+                                self.toolResultReady.emit(request_id, result)
+                            return result
+                        search_block = search_content.group(1)
+                        replace_content = re.search(r'<replace>(.*?)</replace>', args, re.DOTALL)
+                        if replace_content is None:
+                            result = json.dumps({"status": "error", "content": "Missing <replace> tag."}, ensure_ascii=False)
+                            if request_id:
+                                self.toolResultReady.emit(request_id, result)
+                            return result
+                        replace_block = replace_content.group(1)
+                        if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
+                            return
+                        remote_content_json = read_file([file_path])
+                        try:
+                            remote_data = json.loads(remote_content_json)
+                            if remote_data.get("status") == "error":
+                                if request_id:
+                                    self.toolResultReady.emit(request_id, remote_content_json)
+                                return remote_content_json
+                            remote_content = remote_data.get("content", "")
+                        except (json.JSONDecodeError, AttributeError):
+                            remote_content = remote_content_json
+                        if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
+                            return
+                        remote_content = remote_content.replace('\r', '')
+                        lines = remote_content.splitlines(True)
+                        if not (1 <= start_line <= end_line <= len(lines)):
+                            result = json.dumps({"status": "error", "content": f"Line numbers out of bounds. File has {len(lines)} lines."}, ensure_ascii=False)
+                            if request_id:
+                                self.toolResultReady.emit(request_id, result)
+                            return result
+                        actual_block = "".join(lines[start_line - 1:end_line])
+                        search_block_stripped = search_block.strip()
+                        actual_block_stripped = actual_block.strip()
+                        if actual_block_stripped != search_block_stripped:
+                            result = json.dumps({
+                                "status": "error",
+                                "content": "Content verification failed. The content on the server does not match the 'search' block.",
+                                "expected": search_block_stripped,
+                                "actual": actual_block_stripped
+                            }, ensure_ascii=False)
+                            if request_id:
+                                self.toolResultReady.emit(request_id, result)
+                            return result
+                        if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
+                            return
+                        original_last_line = lines[end_line - 1]
+                        line_ending = '\n'
+                        if original_last_line.endswith('\r\n'):
+                            line_ending = '\r\n'
+                        replace_block_stripped = replace_block.strip()
+                        new_content_parts = []
+                        if replace_block_stripped:
+                            replace_lines = replace_block_stripped.splitlines()
+                            new_content_parts = [line + line_ending for line in replace_lines]
+                        new_lines = lines[:start_line - 1] + new_content_parts + lines[end_line:]
+                        new_full_content = "".join(new_lines)
+                        encoded_content = base64.b64encode(new_full_content.encode('utf-8')).decode('utf-8')
+                        safe_path = _safe_quote(file_path)
+                        command = f"echo '{encoded_content}' | base64 --decode > {safe_path}"
+                        r = _internal_execute_silent_shell(command)
+                        if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
+                            return
+                        if r == '':
+                            active_widget = self.main_window.get_active_ssh_widget() if self.main_window else None
+                            if active_widget:
+                                widget_key = active_widget.objectName()
+                                self.main_window._refresh_paths(widget_key)
+                            result = json.dumps({"status": "success", "content": f"{file_path} {start_line}-{end_line} {search_block} -> {replace_block}"}, ensure_ascii=False)
+                        else:
+                            result = json.dumps({"status": "error", "content": r}, ensure_ascii=False)
+                        if request_id:
+                            self.toolResultReady.emit(request_id, result)
+                        return result
+                    except Exception as e:
+                        result = json.dumps({"status": "error", "content": f"An unexpected error occurred during file edit: {e}"}, ensure_ascii=False)
+                        if request_id:
+                            self.toolResultReady.emit(request_id, result)
+                        return result
+                    finally:
+                        if request_id and request_id in self.pending_tool_calls:
+                            del self.pending_tool_calls[request_id]
+                if request_id:
+                    thread = threading.Thread(target=_edit_worker)
+                    thread.daemon = True
+                    thread.start()
+                    return "Executing..."
+                else:
+                    return _edit_worker()
 
             def navigate_file_manager(path:str = None):
                 if not path:
