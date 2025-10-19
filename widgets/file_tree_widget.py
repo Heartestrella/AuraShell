@@ -113,6 +113,8 @@ class File_Navigation_Bar(QWidget):
         self.pivot.addItem("net", self.tr("Network Detail"))
         self.pivot.addItem("task", self.tr("Task Detail"))
         self.pivot.addItem("command", self.tr("Commands Book"))
+        self.pivot.addItem("diff", self.tr("Diff Viewer"))
+        self.pivot.items["diff"].hide()
         self.pivot.setCurrentItem("file_explorer")
         self.hBoxLayout.addWidget(self.new_folder_button)
         self.hBoxLayout.addWidget(self.refresh_button)

@@ -1,8 +1,12 @@
 const pendingRequests = new Map();
+const ABORTABLE_TOOLS_WHITELIST = ['exe_shell', 'fetchWeb'];
+function isToolAbortable(toolName) {
+  const normalizedToolName = toolName.includes('->') ? toolName.split('->')[1].trim() : toolName;
+  return ABORTABLE_TOOLS_WHITELIST.includes(normalizedToolName);
+}
 function generateUniqueId() {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
-
 function isContextLengthError(errorJson) {
   if (errorJson.error?.code === 'context_length_exceeded') {
     return true;
@@ -11,7 +15,6 @@ function isContextLengthError(errorJson) {
   const keywords = ['maximum context length', 'context length', 'context window', 'token limit', 'tokens exceed', 'too many tokens', 'requested too many tokens'];
   return keywords.some((keyword) => message.includes(keyword));
 }
-
 function cleanupRequest(requestId) {
   const request = pendingRequests.get(requestId);
   if (request && request.handler) {
@@ -19,7 +22,6 @@ function cleanupRequest(requestId) {
   }
   pendingRequests.delete(requestId);
 }
-
 function setQQUserInfo(qq_name, qq_number) {
   let messageId = generateUniqueId();
   if (!window.ws) {
@@ -48,7 +50,6 @@ function setQQUserInfo(qq_name, qq_number) {
 window.OnlineUser = {};
 window.setQQUserInfo = setQQUserInfo;
 window.currentUserInfo = { name: '用户', avatarUrl: null };
-
 async function updateTokenUsage() {
   const tokenElement = document.getElementById('token-count');
   const rawCountStr = await backend.getTokenUsage(aiChatApiOptionsBody.messages);
@@ -65,7 +66,6 @@ async function updateTokenUsage() {
   }
   tokenElement.textContent = displayText;
 }
-
 async function executeMcpTool(serverName, toolName, args, providedRequestId = null) {
   return new Promise((resolve, reject) => {
     const requestId = providedRequestId || generateUniqueId();
@@ -106,7 +106,6 @@ async function executeMcpTool(serverName, toolName, args, providedRequestId = nu
     }
   });
 }
-
 function getPendingRequests() {
   const requests = [];
   for (const [id, info] of pendingRequests) {
@@ -118,7 +117,6 @@ function getPendingRequests() {
   }
   return requests;
 }
-
 function cancelMcpRequest(requestId) {
   const request = pendingRequests.get(requestId);
   if (request) {
@@ -609,8 +607,8 @@ function editUserMessage(bubbleElement) {
   truncateFromMessage(messageIndex, historyIndex);
   const messageInput = document.querySelector('#message-input');
   if (messageInput) {
-    messageInput.textContent = text;
-    highlightMentions(messageInput);
+    messageInput.value = text;
+    updateHighlights();
   }
   pastedImageDataUrls = [...images];
   renderImagePreviews();
@@ -703,26 +701,42 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
             if (toolCall['auto_approve'] === true) {
               userDecision = 'approved';
             } else {
+              if (toolCall.tool_name === 'edit_file') {
+                backend.showFileDiff(toolCall.arguments);
+              }
               userDecision = await systemBubble.requireApproval();
             }
             if (userDecision === 'approved') {
               const toolRequestId = generateUniqueId();
-              const abortHandler = () => {
-                cancelButtonContainer.style.display = 'none';
+              const mcpToolContainer = document.getElementById('mcp-tool-control-container');
+              const abortToolButton = mcpToolContainer.querySelector('.abort-tool-button');
+              const continueButton = mcpToolContainer.querySelector('.continue-button');
+              const abortToolHandler = () => {
+                mcpToolContainer.style.display = 'none';
                 cancelMcpRequest(toolRequestId);
               };
-              cancelButton.addEventListener('click', abortHandler);
-              const continueButton = cancelButtonContainer.querySelector('.continue-button');
+              abortToolButton.addEventListener('click', abortToolHandler);
               const continueHandler = () => {
                 backend.forceContinueTool(toolRequestId);
               };
               continueButton.addEventListener('click', continueHandler, { once: true });
-              if (toolCall.tool_name === 'exe_shell') {
+              const showContinueButton = toolCall.tool_name === 'exe_shell';
+              if (showContinueButton) {
                 continueButton.style.display = 'block';
               } else {
                 continueButton.style.display = 'none';
               }
-              cancelButtonContainer.style.display = 'flex';
+              const showAbortButton = isToolAbortable(toolCall.tool_name);
+              if (showAbortButton) {
+                abortToolButton.style.display = 'block';
+              } else {
+                abortToolButton.style.display = 'none';
+              }
+              if (showContinueButton || showAbortButton) {
+                mcpToolContainer.style.display = 'flex';
+              } else {
+                mcpToolContainer.style.display = 'none';
+              }
               sendButton.disabled = true;
               try {
                 const executionResultStr = await executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments), toolRequestId);
@@ -737,8 +751,9 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
                 aiChatApiOptionsBody.messages.push(mcpMessages);
                 messagesHistory.push({ messages: mcpMessages, isMcp: true });
                 saveHistory(window.firstUserMessage, messagesHistory);
-                cancelButton.removeEventListener('click', abortHandler);
+                abortToolButton.removeEventListener('click', abortToolHandler);
                 continueButton.removeEventListener('click', continueHandler);
+                mcpToolContainer.style.display = 'none';
                 const newController = new AbortController();
                 const newAbortHandler = () => {
                   cancelButtonContainer.style.display = 'none';
@@ -756,19 +771,17 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
                 const newAiBubble = chat.addAIBubble(newAiMessageIndex, newAiHistoryIndex);
                 newAiBubble.updateStream('');
                 const newHandler = createAIResponseHandler(newAiBubble, messageOffset, newAiMessageIndex, newAiHistoryIndex, newController, newOnComplete);
-                if (continueButton) {
-                  continueButton.style.display = 'none';
-                }
+                cancelButtonContainer.style.display = 'flex';
                 requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newHandler, newController.signal);
                 return;
               } catch (error) {
                 systemBubble.setResult('rejected', `执行已取消:${error.message}`);
-                cancelButtonContainer.style.display = 'none';
+                mcpToolContainer.style.display = 'none';
                 if (onComplete) {
                   onComplete();
                 }
               } finally {
-                cancelButton.removeEventListener('click', abortHandler);
+                abortToolButton.removeEventListener('click', abortToolHandler);
                 continueButton.removeEventListener('click', continueHandler);
               }
             } else {
@@ -819,8 +832,6 @@ function retryAIMessage(bubbleElement) {
     controller.abort();
   };
   cancelButton.addEventListener('click', abortRequest);
-  const continueButton = cancelButtonContainer.querySelector('.continue-button');
-  continueButton.style.display = 'none';
   cancelButtonContainer.style.display = 'flex';
   const onComplete = () => {
     sendButton.disabled = false;
@@ -912,34 +923,38 @@ function renderImagePreviews() {
     previewContainer.appendChild(imageWrapper);
   });
 }
-function highlightMentions(inputElement) {
-  const text = inputElement.textContent;
-  const mentionRegex = /\s@([a-zA-Z]+:[^\s]+)\s/g;
-  const matches = [];
-  let match;
-  while ((match = mentionRegex.exec(text)) !== null) {
-    matches.push({
-      start: match.index + 1,
-      end: match.index + match[0].length - 1,
-      mention: match[0].trim(),
-    });
+function escapeHtml(text) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+function adjustTextareaHeight() {
+  const textarea = document.getElementById('message-input');
+  if (!textarea) {
+    return;
   }
-  if (matches.length === 0) return;
-  let html = '';
-  let lastIndex = 0;
-  matches.forEach((m) => {
-    html += text.substring(lastIndex, m.start).replace(/</g, '<').replace(/>/g, '>');
-    html += `<span class="mention-tag" contenteditable="false">${m.mention}</span>`;
-    lastIndex = m.end;
+  if (textarea.value === '') {
+    textarea.style.height = '70px';
+    return;
+  }
+  textarea.style.height = 'auto';
+  const newHeight = Math.min(Math.max(textarea.scrollHeight, 70), 250);
+  textarea.style.height = newHeight + 'px';
+}
+function updateHighlights() {
+  const textarea = document.getElementById('message-input');
+  const highlightLayer = document.getElementById('highlight-layer');
+  if (!textarea || !highlightLayer) {
+    return;
+  }
+  let text = textarea.value;
+  let processedText = escapeHtml(text);
+  const mentionRegex = /(\s)(@[a-zA-Z]+:[^\s]+)/g;
+  processedText = processedText.replace(mentionRegex, (match, space, mention) => {
+    return space + '<mark>' + match.substring(space.length) + '</mark>';
   });
-  html += text.substring(lastIndex).replace(/</g, '<').replace(/>/g, '>');
-  inputElement.innerHTML = html;
-  const range = document.createRange();
-  const sel = window.getSelection();
-  range.selectNodeContents(inputElement);
-  range.collapse(false);
-  sel.removeAllRanges();
-  sel.addRange(range);
+  highlightLayer.innerHTML = processedText;
+  highlightLayer.scrollTop = textarea.scrollTop;
+  highlightLayer.scrollLeft = textarea.scrollLeft;
+  adjustTextareaHeight();
 }
 function handlePaste(event) {
   event.preventDefault();
@@ -961,20 +976,14 @@ function handlePaste(event) {
   if (!imageFound) {
     const plainText = clipboardData.getData('text/plain');
     if (plainText) {
-      const selection = window.getSelection();
-      if (!selection.rangeCount) return;
-      selection.deleteFromDocument();
-      const range = selection.getRangeAt(0);
-      range.deleteContents();
-      const textNode = document.createTextNode(plainText);
-      range.insertNode(textNode);
-      range.setStartAfter(textNode);
-      range.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(range);
-      event.target.focus();
-      event.target.scrollTop = event.target.scrollHeight;
-      highlightMentions(event.target);
+      const textarea = event.target;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const currentValue = textarea.value;
+      textarea.value = currentValue.substring(0, start) + plainText + currentValue.substring(end);
+      const newPos = start + plainText.length;
+      textarea.setSelectionRange(newPos, newPos);
+      updateHighlights();
     }
   }
 }
@@ -1164,28 +1173,17 @@ document.addEventListener('DOMContentLoaded', function () {
   const messageInput = document.querySelector('#message-input');
   const sendButton = document.querySelector('.send-button');
   let isRequesting = false;
-  function highlightMentions(inputElement) {
-    const text = inputElement.textContent;
-    const mentionRegex = /(\s)(@([a-zA-Z]+:[^\s]+))/g;
-    let html = text.replace(mentionRegex, (match, space, mention) => {
-      return `${space}<span class="mention-tag" contenteditable="false">${mention}</span>`;
-    });
-    if (inputElement.innerHTML !== html) {
-      inputElement.innerHTML = html;
-      const range = document.createRange();
-      const sel = window.getSelection();
-      range.selectNodeContents(inputElement);
-      range.collapse(false);
-      sel.removeAllRanges();
-      sel.addRange(range);
-    }
-  }
   function _sanitize_filename(name) {
     name = name.replace(/[\\/*?:"<>|]/g, '');
     name = name.replace('\n', '').replace('\t', '').replace('\r', '');
     return name.substring(0, 16);
   }
   async function sendMessage() {
+    if (isRequesting) {
+      return;
+    }
+    isRequesting = true;
+    sendButton.disabled = true;
     let sshCwd = JSON.parse(await backend.get_current_cwd()).cwd;
     let fileManagerCwd = JSON.parse(await backend.get_file_manager_cwd()).cwd;
     let systemInfo = JSON.stringify(JSON.parse(await backend.get_system_info()).content);
@@ -1197,17 +1195,12 @@ document.addEventListener('DOMContentLoaded', function () {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
     }
-    if (isRequesting) {
-      return;
-    }
-    const message = messageInput.textContent;
+    const message = messageInput.value;
     if (message || pastedImageDataUrls.length > 0) {
       chatHistoryContainer.style.display = 'none';
       if (window.firstUserMessage === '') {
         window.firstUserMessage = _sanitize_filename(message) + '_' + Date.now().toString();
       }
-      isRequesting = true;
-      sendButton.disabled = true;
       chat.chatBody.classList.add('request-in-progress');
       const hasSystemMessage = aiChatApiOptionsBody.messages.length > 0 && aiChatApiOptionsBody.messages[0].role === 'system';
       const messageOffset = hasSystemMessage ? 0 : 1;
@@ -1275,8 +1268,6 @@ document.addEventListener('DOMContentLoaded', function () {
       };
       const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
       cancelButton.addEventListener('click', abortRequest);
-      const continueButton = cancelButtonContainer.querySelector('.continue-button');
-      continueButton.style.display = 'none';
       cancelButtonContainer.style.display = 'flex';
       const onComplete = () => {
         isRequesting = false;
@@ -1290,14 +1281,17 @@ document.addEventListener('DOMContentLoaded', function () {
       };
       const onDone = createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHistoryIndex, controller, onComplete);
       requestAiChat(aiBubble.updateStream.bind(aiBubble), onDone, controller.signal);
-      messageInput.textContent = '';
+      messageInput.value = '';
+      updateHighlights();
     }
   }
   let mentionManager = null;
   if (messageInput) {
     mentionManager = new MentionManager(messageInput);
-    mentionManager.onInsert = () => highlightMentions(messageInput);
-
+    mentionManager.onInsert = () => updateHighlights();
+    messageInput.addEventListener('scroll', function () {
+      updateHighlights();
+    });
     const mentionItemsMap = {
       Dir: (parentItem) => {
         return new Promise((resolve) => {
@@ -1402,26 +1396,8 @@ document.addEventListener('DOMContentLoaded', function () {
       return null;
     };
     messageInput.addEventListener('paste', handlePaste);
-    messageInput.addEventListener('copy', function (event) {
-      const selection = window.getSelection();
-      if (!selection.rangeCount) return;
-      const range = selection.getRangeAt(0);
-      const fragment = range.cloneContents();
-      const plainText = fragment.textContent;
-      event.preventDefault();
-      event.clipboardData.setData('text/plain', plainText);
-    });
-    messageInput.addEventListener('cut', function (event) {
-      const selection = window.getSelection();
-      if (!selection.rangeCount) return;
-      const range = selection.getRangeAt(0);
-      const fragment = range.cloneContents();
-      const plainText = fragment.textContent;
-      event.preventDefault();
-      event.clipboardData.setData('text/plain', plainText);
-      range.deleteContents();
-    });
     messageInput.addEventListener('input', function (event) {
+      updateHighlights();
       if (mentionManager.checkForMentionTrigger()) {
         const defaultItems = [
           { id: 'dir', icon: '📁', label: '目录', hasChildren: true, type: 'Dir', data: { path: '.' } },
@@ -1431,7 +1407,7 @@ document.addEventListener('DOMContentLoaded', function () {
         ];
         mentionManager.show(defaultItems);
       } else if (mentionManager.isActive) {
-        const text = messageInput.textContent;
+        const text = messageInput.value;
         if (!text.includes('@')) {
           mentionManager.hide();
         }
@@ -1445,6 +1421,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       }
     });
+    let justDeletedSpaceAfterMention = false;
     messageInput.addEventListener('keydown', function (event) {
       if (mentionManager.isActive) {
         mentionManager.ctrlPressed = event.ctrlKey;
@@ -1466,11 +1443,54 @@ document.addEventListener('DOMContentLoaded', function () {
           return;
         }
       }
+      if (event.key === 'Backspace' && messageInput.selectionStart === messageInput.selectionEnd) {
+        const cursorPos = messageInput.selectionStart;
+        if (cursorPos === 0) {
+          justDeletedSpaceAfterMention = false;
+          return;
+        }
+        const textBefore = messageInput.value.substring(0, cursorPos);
+        const charBeforeCursor = textBefore[cursorPos - 1];
+        const isWhitespace = charBeforeCursor === ' ' || charBeforeCursor === '\n';
+        if (isWhitespace) {
+          const mentionRegex = /(\s)(@[a-zA-Z]+:[^\s]+)\s$/;
+          const match = textBefore.match(mentionRegex);
+          if (match) {
+            event.preventDefault();
+            messageInput.value = messageInput.value.substring(0, cursorPos - 1) + messageInput.value.substring(cursorPos);
+            const newPos = cursorPos - 1;
+            messageInput.setSelectionRange(newPos, newPos);
+            justDeletedSpaceAfterMention = true;
+            updateHighlights();
+            return;
+          }
+        } else if (justDeletedSpaceAfterMention) {
+          const mentionRegex = /(\s)(@[a-zA-Z]+:[^\s]+)$/;
+          const match = textBefore.match(mentionRegex);
+          if (match) {
+            event.preventDefault();
+            const fullMatch = match[0];
+            const mentionWithSpace = match[1] + match[2];
+            const startPos = cursorPos - match[2].length;
+            const beforeMention = messageInput.value.substring(0, startPos - match[1].length);
+            const afterMention = messageInput.value.substring(cursorPos);
+            messageInput.value = beforeMention + afterMention;
+            messageInput.setSelectionRange(beforeMention.length, beforeMention.length);
+            justDeletedSpaceAfterMention = false;
+            updateHighlights();
+            return;
+          }
+        }
+        justDeletedSpaceAfterMention = false;
+      } else if (event.key !== 'Backspace') {
+        justDeletedSpaceAfterMention = false;
+      }
       if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey) {
         event.preventDefault();
         sendMessage();
       }
     });
+    updateHighlights();
   }
   if (sendButton) {
     sendButton.addEventListener('click', sendMessage);
