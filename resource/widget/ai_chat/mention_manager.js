@@ -11,6 +11,7 @@ class MentionManager {
     this.breadcrumb = [];
     this.mentionStartNode = null;
     this.mentionStartOffset = 0;
+    this.savedRange = null;
   }
   show(items) {
     this.items = items;
@@ -70,6 +71,14 @@ class MentionManager {
   }
   async selectItem() {
     const item = this.items[this.selectedIndex];
+    if (item.inputMode) {
+      const selection = window.getSelection();
+      if (selection.rangeCount > 0) {
+        this.savedRange = selection.getRangeAt(0).cloneRange();
+      }
+      this.showInputMode(item);
+      return;
+    }
     if (item.hasChildren && this.onGetSubItems) {
       const subItems = await this.onGetSubItems(item);
       if (subItems && subItems.length > 0) {
@@ -83,15 +92,21 @@ class MentionManager {
   }
   insertMentionTag(item) {
     const selection = window.getSelection();
-    if (!selection.rangeCount) {
+    let range;
+    if (this.savedRange) {
+      range = this.savedRange;
+      this.savedRange = null;
+    } else if (selection.rangeCount > 0) {
+      range = selection.getRangeAt(0);
+    } else {
       return;
     }
-    const range = selection.getRangeAt(0);
     if (this.mentionStartNode) {
       const tempRange = document.createRange();
       tempRange.setStart(this.mentionStartNode, this.mentionStartOffset);
       tempRange.setEnd(range.startContainer, range.startOffset);
       tempRange.deleteContents();
+      range = tempRange;
     }
     const mentionText = ` @${item.label} `;
     const textNode = document.createTextNode(mentionText);
@@ -123,5 +138,75 @@ class MentionManager {
       return true;
     }
     return false;
+  }
+  showInputMode(item) {
+    this.popup.innerHTML = '';
+    const inputContainer = document.createElement('div');
+    inputContainer.className = 'mention-input-container';
+    const title = document.createElement('div');
+    title.className = 'mention-input-title';
+    title.textContent = `${item.icon} ${item.label}`;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'mention-input-field';
+    input.placeholder = item.placeholder || '请输入内容';
+    input.autocomplete = 'off';
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'mention-input-buttons';
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'mention-input-confirm';
+    confirmBtn.textContent = '确认';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'mention-input-cancel';
+    cancelBtn.textContent = '取消';
+    const errorMsg = document.createElement('div');
+    errorMsg.className = 'mention-input-error';
+    errorMsg.style.display = 'none';
+    buttonContainer.appendChild(confirmBtn);
+    buttonContainer.appendChild(cancelBtn);
+    inputContainer.appendChild(title);
+    inputContainer.appendChild(input);
+    inputContainer.appendChild(errorMsg);
+    inputContainer.appendChild(buttonContainer);
+    this.popup.appendChild(inputContainer);
+    setTimeout(() => input.focus(), 100);
+    const handleConfirm = () => {
+      const value = input.value.trim();
+      if (!value) {
+        errorMsg.textContent = '输入不能为空';
+        errorMsg.style.display = 'block';
+        return;
+      }
+      if (item.type === 'Url') {
+        if (!value.startsWith('http://') && !value.startsWith('https://')) {
+          errorMsg.textContent = 'URL必须以 http:// 或 https:// 开头';
+          errorMsg.style.display = 'block';
+          return;
+        }
+      }
+      const tagItem = {
+        ...item,
+        label: `${item.type}:${value}`,
+      };
+      this.insertMentionTag(tagItem);
+      this.hide();
+    };
+    const handleCancel = () => {
+      this.hide();
+    };
+    confirmBtn.addEventListener('click', handleConfirm);
+    cancelBtn.addEventListener('click', handleCancel);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleConfirm();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        handleCancel();
+      }
+    });
+    input.addEventListener('input', () => {
+      errorMsg.style.display = 'none';
+    });
   }
 }

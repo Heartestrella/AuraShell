@@ -1299,7 +1299,7 @@ document.addEventListener('DOMContentLoaded', function () {
     mentionManager.onInsert = () => highlightMentions(messageInput);
 
     const mentionItemsMap = {
-      directory: (parentItem) => {
+      Dir: (parentItem) => {
         return new Promise((resolve) => {
           initializeBackendConnection(async (backendObject) => {
             if (!backendObject) {
@@ -1310,7 +1310,7 @@ document.addEventListener('DOMContentLoaded', function () {
               let targetPath;
               if (parentItem && parentItem.data && parentItem.data.path) {
                 if (parentItem.data.path === '.') {
-                  targetPath = JSON.parse(await backendObject.get_ssh_cwd()).cwd;
+                  targetPath = JSON.parse(await backendObject.get_file_manager_cwd()).cwd;
                 } else {
                   targetPath = parentItem.data.path;
                 }
@@ -1324,15 +1324,26 @@ document.addEventListener('DOMContentLoaded', function () {
                 resolve([]);
                 return;
               }
+              const list = [
+                {
+                  id: `dir00_${Date.now()}`,
+                  icon: '📁',
+                  label: `Dir:${targetPath}`,
+                  hasChildren: false,
+                  type: 'directory',
+                },
+              ];
               const dirs = dirsResult.dirs || [];
-              const list = dirs.map((dir, i) => ({
-                id: `dir${i}_${Date.now()}`,
-                icon: '📁',
-                label: `Dir:${targetPath}/${dir}`,
-                hasChildren: true,
-                type: 'directory',
-                data: { path: `${targetPath}/${dir}` },
-              }));
+              for (let i = 0; i < dirs.length; i++) {
+                list.push({
+                  id: `dir${i}_${Date.now()}`,
+                  icon: '📁',
+                  label: `Dir:${targetPath}/${dirs[i]}`,
+                  hasChildren: true,
+                  type: 'directory',
+                  data: { path: `${targetPath}/${dirs[i]}` },
+                });
+              }
               resolve(list);
             } catch (error) {
               console.error('获取目录列表异常:', error);
@@ -1341,7 +1352,7 @@ document.addEventListener('DOMContentLoaded', function () {
           });
         });
       },
-      file: () => {
+      File: () => {
         return new Promise((resolve) => {
           initializeBackendConnection(async (backendObject) => {
             if (!backendObject) {
@@ -1362,14 +1373,19 @@ document.addEventListener('DOMContentLoaded', function () {
           });
         });
       },
-      url: () => {
+      Terminal: () => {
         return new Promise((resolve) => {
-          resolve([]);
-        });
-      },
-      terminal: () => {
-        return new Promise((resolve) => {
-          resolve([]);
+          const terminalOptions = [];
+          for (let i = 1; i <= 10; i++) {
+            terminalOptions.push({
+              id: `terminal${i}`,
+              icon: '💻',
+              label: `Terminal:${i}`,
+              hasChildren: false,
+              type: 'terminal',
+            });
+          }
+          resolve(terminalOptions);
         });
       },
     };
@@ -1408,10 +1424,10 @@ document.addEventListener('DOMContentLoaded', function () {
     messageInput.addEventListener('input', function (event) {
       if (mentionManager.checkForMentionTrigger()) {
         const defaultItems = [
-          { id: 'dir', icon: '📁', label: '目录', hasChildren: true, type: 'directory', data: { path: '.' } },
-          { id: 'file', icon: '📄', label: '文件', hasChildren: true, type: 'file', data: { path: '.' } },
-          // { id: 'url', icon: '🔗', label: 'URL', hasChildren: false, type: 'url' },
-          // { id: 'terminal', icon: '💻', label: 'terminal:3', hasChildren: false, type: 'terminal' },
+          { id: 'dir', icon: '📁', label: '目录', hasChildren: true, type: 'Dir', data: { path: '.' } },
+          { id: 'file', icon: '📄', label: '文件', hasChildren: true, type: 'File', data: { path: '.' } },
+          { id: 'url', icon: '🔗', label: '网址', hasChildren: false, type: 'Url', inputMode: true, placeholder: '请输入完整URL(如:https://example.com)' },
+          { id: 'terminal', icon: '💻', label: '终端', hasChildren: true, type: 'Terminal' },
         ];
         mentionManager.show(defaultItems);
       } else if (mentionManager.isActive) {

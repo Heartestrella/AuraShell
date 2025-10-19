@@ -1009,3 +1009,95 @@ body {
 .mention-popup::-webkit-scrollbar-thumb:hover {
   background-color: #7a7a7a;
 }
+
+.mention-input-container {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 320px;
+}
+
+.mention-input-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-color);
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mention-input-field {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+  background-color: var(--input-bg-color);
+  color: var(--text-color);
+}
+
+.mention-input-field::placeholder {
+  color: var(--text-color-light);
+  opacity: 0.7;
+}
+
+.mention-input-field:focus {
+  border-color: var(--accent-color-blue);
+  box-shadow: 0 0 0 3px rgba(58, 150, 247, 0.2);
+}
+
+.mention-input-error {
+  color: var(--accent-color-red);
+  font-size: 12px;
+  padding-top: 2px;
+  min-height: 18px;
+}
+
+.mention-input-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 5px;
+}
+
+.mention-input-confirm,
+.mention-input-cancel {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mention-input-confirm {
+  background-color: var(--accent-color-blue);
+  color: white;
+}
+
+.mention-input-confirm:hover {
+  filter: brightness(1.15);
+}
+
+.mention-input-cancel {
+  background-color: var(--message-bg-color);
+  color: var(--text-color-light);
+}
+
+.mention-input-cancel:hover {
+  background-color: #4a4a4a;
+  color: var(--text-color);
+}
+
+.mention-input-confirm:active,
+.mention-input-cancel:active {
+  transform: scale(0.97);
+  filter: brightness(0.95);
+}
