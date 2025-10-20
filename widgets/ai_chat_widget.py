@@ -17,6 +17,9 @@ import threading
 import shlex
 from bs4 import BeautifulSoup
 from tokenizers import Tokenizer
+import locale
+from PyQt5.QtCore import QLocale
+import langid
 
 if typing.TYPE_CHECKING:
     from main_window import Window
@@ -26,6 +29,7 @@ CONFIGER = SCM()
 
 class AIBridge(QObject):
     toolResultReady = pyqtSignal(str, str)
+    backendCallReady = pyqtSignal(str, str)
     streamChunkReceived = pyqtSignal(str, str)
     streamFinished = pyqtSignal(str, int, str, str)
     streamFailed = pyqtSignal(str, str)
@@ -557,7 +561,7 @@ class AIBridge(QObject):
                     return "Executing..."
                 else:
                     return _edit_worker()
-
+                    
             def navigate_file_manager(path:str = None):
                 if not path:
                     return json.dumps({"status": "error", "content": "No path provided."}, ensure_ascii=False)
@@ -650,6 +654,42 @@ class AIBridge(QObject):
         通用()
         超级内容()
         # print(self.getSystemPrompt())
+
+    @pyqtSlot(str, str, str, result=str)
+    def callBackend(self, request_id: str, method_name: str, args_json: str):
+        def _worker():
+            try:
+                if not hasattr(self, method_name):
+                    raise AttributeError(f"Method '{method_name}' not found")
+                method = getattr(self, method_name)
+                if not callable(method):
+                    raise TypeError(f"'{method_name}' is not callable")
+                if args_json:
+                    args_data = json.loads(args_json)
+                    if isinstance(args_data, dict):
+                        result = method(**args_data)
+                    elif isinstance(args_data, list):
+                        result = method(*args_data)
+                    else:
+                        result = method(args_data)
+                else:
+                    result = method()
+                if isinstance(result, str):
+                    self.backendCallReady.emit(request_id, result)
+                else:
+                    self.backendCallReady.emit(request_id, json.dumps(result, ensure_ascii=False))
+            except Exception as e:
+                error_result = json.dumps({
+                    "status": "error",
+                    "content": f"Backend call failed: {str(e)}",
+                    "method": method_name
+                }, ensure_ascii=False)
+                self.backendCallReady.emit(request_id, error_result)
+        
+        thread = threading.Thread(target=_worker)
+        thread.daemon = True
+        thread.start()
+        return ""
 
     @pyqtSlot(result=str)
     def getSystemPrompt(self):
@@ -761,6 +801,124 @@ class AIBridge(QObject):
             worker = call_info.get('worker')
             if worker and hasattr(worker, 'force_complete'):
                 worker.force_complete.emit(request_id)
+
+    @pyqtSlot(result=str)
+    def getSystemLanguage(self):
+        try:
+            locale_name = QLocale.system().name()
+            language_code = locale_name.replace('_', '-')
+            return language_code
+        except Exception as e:
+            try:
+                default_locale = locale.getdefaultlocale()[0]
+                if default_locale:
+                    return default_locale.replace('_', '-')
+                else:
+                    return 'en-US'
+            except:
+                return 'en-US'
+
+    @pyqtSlot(result=str)
+    def getDefaultModels(self):
+        models = self.model_manager._get_default_models()
+        return json.dumps(models.get("AuraShellVip"), ensure_ascii=False)
+
+    @pyqtSlot(str, result=str)
+    def detectLanguage(self, text):
+        try:
+            lang_code, confidence = langid.classify(text)
+            return json.dumps({"language": lang_code, "confidence": float(confidence)}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"status": "error", "content": str(e)}, ensure_ascii=False)
+
+    @pyqtSlot(str, str, result=str)
+    def translateText(self, text, target_language):
+        try:
+            model_info = self.model_manager._get_default_models().get("AuraShellVip")
+            if not model_info: return "翻译模型未配置"
+            api_url = model_info.get("api_url")
+            model_name = model_info.get("model_name")
+            api_key = model_info.get("key")
+            if not all([api_url, model_name, api_key]): return "翻译模型配置不完整"
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            translation_rules_path = os.path.join(current_dir, '..', 'resource', 'widget', 'ai_chat', 'translation.md')
+            try:
+                with open(translation_rules_path, 'r', encoding='utf-8') as f:
+                    translation_rules = f.read()
+            except Exception:
+                translation_rules = "你是一个专业的翻译助手，只返回翻译结果，不要添加任何解释或说明。"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+                "Accept": "application/json, text/event-stream",
+                "Accept-Encoding": "gzip, deflate, br, zstd"
+            }
+            messages = [
+                {"role": "system", "content": translation_rules},
+                {"role": "user", "content": f"请将以下文本翻译成{target_language}：\n\n{text}"}
+            ]
+            payload = {"model": model_name, "messages": messages, "stream": True}
+            options = {"method": "POST", "headers": headers, "body": json.dumps(payload)}
+        except Exception as e:
+            return f"翻译时发生意外错误: {str(e)}"
+        while True:
+            try:
+                request_id = f"translate_{time.time()}"
+                loop = QEventLoop()
+                result_data = {
+                    "text": "",
+                    "buffer": "",
+                    "error": ""
+                }
+                def on_chunk(req_id, chunk):
+                    if req_id != request_id: return
+                    result_data["buffer"] += chunk
+                    lines = result_data["buffer"].split('\n')
+                    result_data["buffer"] = lines.pop()
+                    for line in lines:
+                        if line.startswith('data: '):
+                            data_str = line[6:].strip()
+                            if data_str == '[DONE]': continue
+                            try:
+                                data = json.loads(data_str)
+                                if 'error' in data:
+                                    error_info = data.get('error', {})
+                                    error_message = str(error_info.get('message', error_info))
+                                    result_data["error"] += error_message
+                                    continue
+                                choices = data.get('choices')
+                                if isinstance(choices, list) and choices:
+                                    delta = choices[0].get('delta', {})
+                                    content_chunk = delta.get('content', '')
+                                    if content_chunk:
+                                        result_data["text"] += content_chunk
+                            except json.JSONDecodeError:
+                                continue
+                def on_finished(req_id, status_code, reason, headers_json):
+                    if req_id == request_id:
+                        if status_code != 200:
+                            result_data["error"] = f"翻译失败: {status_code} {reason}"
+                        loop.quit()
+                def on_failed(req_id, error):
+                    if req_id == request_id:
+                        result_data["error"] = f"翻译网络错误: {error}"
+                        loop.quit()
+                self.streamChunkReceived.connect(on_chunk)
+                self.streamFinished.connect(on_finished)
+                self.streamFailed.connect(on_failed)
+                self.proxiedFetch(request_id, f"{api_url}/chat/completions", json.dumps(options))
+                loop.exec_()
+                self.streamChunkReceived.disconnect(on_chunk)
+                self.streamFinished.disconnect(on_finished)
+                self.streamFailed.disconnect(on_failed)
+                if result_data["error"]:
+                    continue
+                if result_data["text"]:
+                    return result_data["text"]
+                else:
+                    continue
+            except Exception as e:
+                continue
 
     @pyqtSlot(result=str)
     def getModels(self):
