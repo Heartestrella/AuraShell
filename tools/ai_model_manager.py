@@ -8,9 +8,11 @@ class AIModelManager:
         self.models_file = self.config_dir / "ai_models.json"
         self._ensure_config_dir()
         self.models_cache = self.load_models()
-        if "AuraShellVip" in self.models_cache:
-            del self.models_cache["AuraShellVip"]
-            self.save_models(self.models_cache)
+        delModel = ["AuraShellVip"]
+        for model in delModel:
+            if model in self.models_cache:
+                del self.models_cache[model]
+                self.save_models(self.models_cache)
 
     def _ensure_config_dir(self):
         self.config_dir.mkdir(parents=True, exist_ok=True)
