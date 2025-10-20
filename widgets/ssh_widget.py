@@ -26,6 +26,7 @@ from tools.session_manager import SessionManager
 from widgets.task_detaile import ProcessMonitor
 from widgets.disk_usage_item import DiskMonitor
 from widgets.scripts_widget import CommandScriptWidget
+from widgets.monitorbar import MonitorBar
 CONFIGER = SCM()
 session_manager = SessionManager()
 
@@ -178,19 +179,19 @@ class SSHWidget(QWidget):
         # The stylesheet will be set dynamically later
 
         # sys_resources
-        self.sys_resources = ProcessTable(self.leftSplitter)
-        self.sys_resources.set_font_family(font_name)
-        self.sys_resources.setObjectName("sys_resources")
-        self.sys_resources.setMinimumHeight(80)
-        self.sys_resources.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.sys_resources.setStyleSheet("""
-            QFrame#sys_resources {
-                background-color: rgba(200, 200, 200, 0.12);
-                border: 1px solid rgba(0,0,0,0.12);
-                border-radius: 6px;
-            }
-        """)
+        # self.sys_resources = ProcessTable(self.leftSplitter)
+        # self.sys_resources.set_font_family(font_name)
+        # self.sys_resources.setObjectName("sys_resources")
+        # self.sys_resources.setMinimumHeight(80)
+        # self.sys_resources.setSizePolicy(
+        #     QSizePolicy.Expanding, QSizePolicy.Preferred)
+        # self.sys_resources.setStyleSheet("""
+        #     QFrame#sys_resources {
+        #         background-color: rgba(200, 200, 200, 0.12);
+        #         border: 1px solid rgba(0,0,0,0.12);
+        #         border-radius: 6px;
+        #     }
+        # """)
 
         # Task
         self.task = Tasks(self.leftSplitter)
@@ -223,13 +224,13 @@ class SSHWidget(QWidget):
 """)
         self.disk_usage.setAttribute(Qt.WA_StyledBackground, True)
 
-        self.leftSplitter.addWidget(self.sys_resources)
+        # self.leftSplitter.addWidget(self.sys_resources)
         self.leftSplitter.addWidget(self.task)
         self.leftSplitter.addWidget(self.disk_usage)
 
-        self.leftSplitter.setStretchFactor(0, 15)  # sys_resources
-        self.leftSplitter.setStretchFactor(1, 40)  # task
-        self.leftSplitter.setStretchFactor(2, 30)  # disk_usage
+        # self.leftSplitter.setStretchFactor(0, 15)  # sys_resources
+        self.leftSplitter.setStretchFactor(1, 6)  # task
+        self.leftSplitter.setStretchFactor(2, 4)  # disk_usage
 
         self.leftSplitter.splitterMoved.connect(self.on_splitter_moved)
 
@@ -290,6 +291,11 @@ class SSHWidget(QWidget):
                 border-radius: 6px;
             }
         """)
+
+        # MonitorBar
+        self.monitorbar = MonitorBar()
+        self.monitorbar.set_font_family(font_name)
+        self.monitorbar.setObjectName("monitorbar")
 
         # command input bar
         self.command_bar = QFrame(top_container)
@@ -390,6 +396,7 @@ class SSHWidget(QWidget):
         command_bar_layout.addWidget(self.command_input)
 
         top_container_layout.addWidget(self.ssh_widget)
+        top_container_layout.addWidget(self.monitorbar)
         top_container_layout.addWidget(self.command_bar)
         self.adjust_input_height()
 
@@ -709,7 +716,7 @@ class SSHWidget(QWidget):
         self.command_script_widget.hide()
         self.diff_widget.hide()
         self.file_bar.pivot.items["diff"].hide()
-            
+
         if router == "file_explorer" and self.now_ui != "file_explorer":
             self.file_splitter.show()
             self.now_ui = "file_explorer"

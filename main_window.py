@@ -382,7 +382,9 @@ class Window(FramelessWindow):
                     top_processes = result["top_processes"]
                     all_processes = result["all_processes"]
                     disk_usage = result["disk_usage"]
-
+                    uptime_seconds = result["uptime_seconds"]
+                    load = result["load"]
+                    upload, download = 0, 0
                     try:
                         if not widget.task.netmonitor.init_interface and net_usage:
                             interfaces = []
@@ -424,8 +426,8 @@ class Window(FramelessWindow):
                     except:
                         pass
 
-                    widget.sys_resources.set_progress("cpu", cpu_percent)
-                    widget.sys_resources.set_progress("ram", mem_percent)
+                    # widget.sys_resources.set_progress("cpu", cpu_percent)
+                    # widget.sys_resources.set_progress("ram", mem_percent)
                     # print(mem_percent)
                     for processes in top_processes:
                         processes_cpu_percent = processes["cpu"]
@@ -458,8 +460,22 @@ class Window(FramelessWindow):
                                 "read_kbps": disk.get("read_kbps"),
                                 "write_kbps": disk.get("write_kbps"),
                             })
+
                     widget.stop_loading_animation("task")
                     widget.stop_loading_animation("net")
+                    disk_usage = 0
+                    if disk_usage:
+                        disk_usage[0].get("used_percent", None)
+                    metrics = {
+                        "uptime_seconds": uptime_seconds,
+                        "load": load,
+                        "cpu_percent": cpu_percent,
+                        "ram_percent": mem_percent,
+                        "disk_percent": disk_usage,
+                        "net_up_kbps": upload,
+                        "net_down_kbps": download,
+                    }
+                    widget.monitorbar.update_metrics(metrics)
 
                 elif result["type"] == "sysinfo":
                     print("Got SysInfo:", result)

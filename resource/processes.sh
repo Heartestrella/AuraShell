@@ -223,10 +223,25 @@ while true; do
     done < <(ss -tunp -H | head -20)  # 限制连接数量
 
     connections=$(echo "$connections" | sed 's/,$//')"]"
+    
+    if [[ -r /proc/uptime ]]; then
+        uptime_seconds=$(awk '{print int($1)}' /proc/uptime)
+    else
+        # fallback: use elapsed since script start
+        uptime_seconds=0
+    fi
+
+    if [[ -r /proc/loadavg ]]; then
+        # 读取前三个 load 平均值并格式化为两位小数
+        read la1 la5 la15 rest < <(awk '{printf "%.2f %.2f %.2f\n",$1,$2,$3}' /proc/loadavg)
+    else
+        la1="0.00"; la5="0.00"; la15="0.00"
+    fi
+    load_json="[$la1,$la5,$la15]"
 
     # --- 输出 JSON ---
-    printf '///Start{"cpu_percent":%.1f,"mem_percent":%.1f,"top_processes":%s,"all_processes":%s,"disk_usage":%s,"net_usage":%s,"connections":%s}End///\n' \
-        "$cpu_percent" "$mem_percent" "$processes" "$all_processes" "$disks" "$net_devs" "$connections"
+    printf '///Start{"uptime_seconds":%d,"load":%s,"cpu_percent":%.1f,"mem_percent":%.1f,"top_processes":%s,"all_processes":%s,"disk_usage":%s,"net_usage":%s,"connections":%s}End///\n' \
+        "$uptime_seconds" "$load_json" "$cpu_percent" "$mem_percent" "$processes" "$all_processes" "$disks" "$net_devs" "$connections"
 
     sleep $INTERVAL
 done
