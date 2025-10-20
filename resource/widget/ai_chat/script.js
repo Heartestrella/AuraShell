@@ -701,10 +701,11 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
             if (toolCall['auto_approve'] === true) {
               userDecision = 'approved';
             } else {
-              if (toolCall.tool_name === 'edit_file') {
-                backend.showFileDiff(toolCall.arguments);
+              if (toolCall.tool_name === 'edit_file' && !await backend.showFileDiff(toolCall.arguments)) {
+                userDecision = 'approved';
+              } else {
+                userDecision = await systemBubble.requireApproval();
               }
-              userDecision = await systemBubble.requireApproval();
             }
             if (userDecision === 'approved') {
               const toolRequestId = generateUniqueId();

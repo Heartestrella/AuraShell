@@ -1023,8 +1023,9 @@ class AIBridge(QObject):
     def getQQUserInfo(self):
         return {"qq_name": self.qq_name, "qq_number": self.qq_number}
 
-    @pyqtSlot(str)
+    @pyqtSlot(str, result=bool)
     def showFileDiff(self, args_str: str):
+        result = {'success': False}
         def _show_diff():
             try:
                 path_match = re.search(r'<path>(.*?)</path>', args_str, re.DOTALL)
@@ -1084,20 +1085,29 @@ class AIBridge(QObject):
                     remote_full_content = remote_data.get("content", "")
                 except (json.JSONDecodeError, AttributeError):
                     remote_full_content = remote_content_result
+                remote_full_content = remote_full_content.replace('\r', '')
+                lines = remote_full_content.splitlines(True)
+                if not (1 <= start_line <= end_line <= len(lines)):
+                    print(f"Error: Line numbers out of bounds. File has {len(lines)} lines.")
+                    return
+                actual_block = "".join(lines[start_line - 1:end_line])
+                search_block_stripped = original_block.strip()
+                actual_block_stripped = actual_block.strip()
+                if actual_block_stripped != search_block_stripped:
+                    print(f"Error: Content verification failed. Expected:\n{search_block_stripped}\n\nActual:\n{actual_block_stripped}")
+                    return
                 if hasattr(active_widget, 'file_bar') and hasattr(active_widget.file_bar, 'pivot'):
                     active_widget.file_bar.pivot.items["diff"].show()
                     QTimer.singleShot(0, lambda: active_widget.file_bar.pivot.setCurrentItem('diff'))
-                remote_full_content = remote_full_content.replace('\r', '')
-                lines = remote_full_content.splitlines(True)
-                replace_block_stripped = replace_block.strip()
+                leading_whitespace = ""
+                if start_line <= len(lines):
+                    first_line_of_block = lines[start_line - 1]
+                    leading_whitespace = first_line_of_block[:len(first_line_of_block) - len(first_line_of_block.lstrip())]
+                line_ending = '\n'
                 new_content_parts = []
-                if replace_block_stripped:
-                    original_last_line = lines[end_line - 1] if end_line <= len(lines) else '\n'
-                    line_ending = '\n'
-                    if original_last_line.endswith('\r\n'):
-                        line_ending = '\r\n'
-                    replace_lines = replace_block_stripped.splitlines()
-                    new_content_parts = [line + line_ending for line in replace_lines]
+                if replace_block and not replace_block.isspace():
+                    replace_lines = replace_block.strip('\n\r').splitlines()
+                    new_content_parts = [leading_whitespace + line.lstrip() + line_ending for line in replace_lines]
                 modified_lines = lines[:start_line - 1] + new_content_parts + lines[end_line:]
                 modified_full_content = "".join(modified_lines)
                 active_widget.diff_widget.set_left_content(remote_full_content)
@@ -1107,11 +1117,13 @@ class AIBridge(QObject):
                 if hasattr(active_widget.diff_widget, 'right_label'):
                     active_widget.diff_widget.right_label.setText(f"修改后:{file_path}")
                 QTimer.singleShot(100, active_widget.diff_widget.compare_diff)
+                result['success'] = True
             except Exception as e:
                 print(f"Error showing diff: {e}")
                 import traceback
                 traceback.print_exc()
-        QTimer.singleShot(0, _show_diff)
+        _show_diff()
+        return result['success']
 
 class AiChatWidget(QWidget):
 
