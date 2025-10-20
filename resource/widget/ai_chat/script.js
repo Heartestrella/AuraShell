@@ -302,13 +302,28 @@ class AIBubble {
                   </button>
                 </div>
               </div>
+              <div class="thinking-container" style="display: none;">
+                <div class="thinking-header">
+                  <span class="thinking-icon">🤔</span>
+                  <span class="thinking-title">深度思考</span>
+                  <button class="thinking-toggle">▲</button>
+                </div>
+                <div class="thinking-content"></div>
+              </div>
               <div class="message-content"></div>
             </div>`;
     container.insertAdjacentHTML('beforeend', template);
     this.element = container.lastElementChild;
     this.contentElement = this.element.querySelector('.message-content');
+    this.thinkingContainer = this.element.querySelector('.thinking-container');
+    this.thinkingHeader = this.element.querySelector('.thinking-header');
+    this.thinkingContent = this.element.querySelector('.thinking-content');
+    this.thinkingToggle = this.element.querySelector('.thinking-toggle');
     this.fullContent = '';
+    this.fullThinkingContent = '';
     this.isStreaming = false;
+    this.isThinkingStreaming = false;
+    this.thinkingUserHasScrolled = false;
     this.chatController = chatController;
     this.messageIndex = messageIndex;
     this.historyIndex = historyIndex;
@@ -328,6 +343,57 @@ class AIBubble {
     }
     if (deleteBtn) {
       deleteBtn.addEventListener('click', () => deleteAIMessage(this.element));
+    }
+    if (this.thinkingHeader) {
+      this.thinkingHeader.addEventListener('click', () => this.toggleThinking());
+    }
+    if (this.thinkingContent) {
+      this.thinkingContent.addEventListener('scroll', () => {
+        const threshold = 5;
+        const isAtBottom = this.thinkingContent.scrollHeight - this.thinkingContent.scrollTop - this.thinkingContent.clientHeight < threshold;
+        this.thinkingUserHasScrolled = !isAtBottom;
+      });
+    }
+  }
+  updateThinking(chunk) {
+    if (this.thinkingContainer.style.display === 'none') {
+      this.thinkingContainer.style.display = 'block';
+    }
+    if (!this.isThinkingStreaming) {
+      this.isThinkingStreaming = true;
+      this.fullThinkingContent = '';
+    }
+    this.fullThinkingContent += chunk;
+    const dirtyHtml = marked.parse(this.fullThinkingContent);
+    this.thinkingContent.innerHTML = DOMPurify.sanitize(dirtyHtml) + '<div class="loader"></div>';
+    if (!this.thinkingUserHasScrolled) {
+      this.thinkingContent.scrollTop = this.thinkingContent.scrollHeight;
+    }
+    if (this.chatController && !this.chatController.userHasScrolled) {
+      this.chatController.scrollToBottom();
+    }
+  }
+  finishThinking() {
+    this.isThinkingStreaming = false;
+    if (this.fullThinkingContent) {
+      const dirtyHtml = marked.parse(this.fullThinkingContent);
+      this.thinkingContent.innerHTML = DOMPurify.sanitize(dirtyHtml);
+    }
+  }
+  toggleThinking(forceState) {
+    const isCollapsed = this.thinkingContainer.classList.contains('collapsed');
+    let shouldBeOpen;
+    if (forceState === 'open') {
+      shouldBeOpen = true;
+    } else if (forceState === 'closed') {
+      shouldBeOpen = false;
+    } else {
+      shouldBeOpen = isCollapsed;
+    }
+    if (shouldBeOpen) {
+      this.thinkingContainer.classList.remove('collapsed');
+    } else {
+      this.thinkingContainer.classList.add('collapsed');
     }
   }
   getHtml() {
@@ -672,12 +738,18 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
   const sendButton = document.querySelector('.send-button');
   return async (fullContent) => {
     aiBubble.finishStream();
-    const assistantMessage = {
+    aiBubble.finishThinking();
+    const historyAssistantMessage = {
+      role: 'assistant',
+      content: fullContent,
+      reasoning: aiBubble.fullThinkingContent || undefined,
+    };
+    const apiAssistantMessage = {
       role: 'assistant',
       content: fullContent,
     };
-    aiChatApiOptionsBody.messages.push(assistantMessage);
-    messagesHistory.push({ messages: assistantMessage, isMcp: false });
+    aiChatApiOptionsBody.messages.push(apiAssistantMessage);
+    messagesHistory.push({ messages: historyAssistantMessage, isMcp: false });
     saveHistory(window.firstUserMessage, messagesHistory);
     cancelButtonContainer.style.display = 'none';
     if (backend) {
@@ -701,7 +773,7 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
             if (toolCall['auto_approve'] === true) {
               userDecision = 'approved';
             } else {
-              if (toolCall.tool_name === 'edit_file' && !await backend.showFileDiff(toolCall.arguments)) {
+              if (toolCall.tool_name === 'edit_file' && !(await backend.showFileDiff(toolCall.arguments))) {
                 userDecision = 'approved';
               } else {
                 userDecision = await systemBubble.requireApproval();
@@ -773,7 +845,7 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
                 newAiBubble.updateStream('');
                 const newHandler = createAIResponseHandler(newAiBubble, messageOffset, newAiMessageIndex, newAiHistoryIndex, newController, newOnComplete);
                 cancelButtonContainer.style.display = 'flex';
-                requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newHandler, newController.signal);
+                requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newHandler, newController.signal, newAiBubble);
                 return;
               } catch (error) {
                 systemBubble.setResult('rejected', `执行已取消:${error.message}`);
@@ -843,7 +915,7 @@ function retryAIMessage(bubbleElement) {
     }
   };
   const responseHandler = createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHistoryIndex, controller, onComplete);
-  requestAiChat(aiBubble.updateStream.bind(aiBubble), responseHandler, controller.signal);
+  requestAiChat(aiBubble.updateStream.bind(aiBubble), responseHandler, controller.signal, aiBubble);
 }
 function deleteAIMessage(bubbleElement) {
   const messageIndex = parseInt(bubbleElement.dataset.messageIndex);
@@ -1019,7 +1091,9 @@ window.loadHistory = function (filename) {
     let messageIndexOffset = 0;
     for (let i = 0; i < window.messagesHistory.length; i++) {
       const item = window.messagesHistory[i];
-      aiChatApiOptionsBody.messages.push(item.messages);
+      const messageForApi = { ...item.messages };
+      delete messageForApi.reasoning;
+      aiChatApiOptionsBody.messages.push(messageForApi);
       if (i === 0 && item.messages.role === 'system') {
         messageIndexOffset = 0;
         continue;
@@ -1052,6 +1126,12 @@ window.loadHistory = function (filename) {
         const aiBubble = chat.addAIBubble(messageIndex, i);
         let aiContent = item.messages.content;
         aiBubble.setHTML(aiContent);
+        if (item.messages.reasoning) {
+          aiBubble.thinkingContainer.style.display = 'block';
+          aiBubble.fullThinkingContent = item.messages.reasoning;
+          aiBubble.finishThinking();
+          aiBubble.toggleThinking('closed');
+        }
         const result = await backend.processMessage(aiContent);
         if (result) {
           try {
@@ -1281,7 +1361,7 @@ document.addEventListener('DOMContentLoaded', function () {
         updateTokenUsage();
       };
       const onDone = createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHistoryIndex, controller, onComplete);
-      requestAiChat(aiBubble.updateStream.bind(aiBubble), onDone, controller.signal);
+      requestAiChat(aiBubble.updateStream.bind(aiBubble), onDone, controller.signal, aiBubble);
       messageInput.value = '';
       updateHighlights();
     }
@@ -1866,8 +1946,10 @@ window.debugChatIndexes = {
     );
   },
 };
-async function requestAiChat(onStream, onDone, signal) {
+async function requestAiChat(onStream, onDone, signal, aiBubble) {
   let fullContent = '';
+  let fullThinkingContent = '';
+  let hasReceivedMessage = false;
   try {
     if (aiChatApiOptionsBody.messages.length === 0 || aiChatApiOptionsBody.messages[0].role !== 'system') {
       try {
@@ -1973,9 +2055,13 @@ async function requestAiChat(onStream, onDone, signal) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let eventType = 'message';
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
+        if (aiBubble) {
+          aiBubble.finishThinking();
+        }
         if (onDone) {
           onDone(fullContent);
         }
@@ -1986,18 +2072,16 @@ async function requestAiChat(onStream, onDone, signal) {
       const lines = buffer.split('\n');
       buffer = lines.pop();
       for (const line of lines) {
+        if (line.startsWith('event:')) {
+          eventType = line.substring(6).trim();
+          continue;
+        }
         if (line.startsWith('data: ')) {
           const dataStr = line.substring(6).trim();
-          try {
-            const data = JSON.parse(dataStr);
-            if (data.choices[0].finish_reason === 'stop') {
-              if (onDone) {
-                onDone(fullContent);
-              }
-              return;
-            }
-          } catch (e) {}
           if (dataStr === '[DONE]') {
+            if (aiBubble) {
+              aiBubble.finishThinking();
+            }
             if (onDone) {
               onDone(fullContent);
             }
@@ -2005,14 +2089,48 @@ async function requestAiChat(onStream, onDone, signal) {
           }
           try {
             const data = JSON.parse(dataStr);
-            if (data.choices && data.choices[0].delta && data.choices[0].delta.content) {
-              const contentChunk = data.choices[0].delta.content;
-              fullContent += contentChunk;
-              if (onStream) {
-                onStream(contentChunk);
+            if (data.choices && data.choices[0]) {
+              if (data.choices[0].finish_reason === 'stop') {
+                if (aiBubble) {
+                  aiBubble.finishThinking();
+                }
+                if (onDone) {
+                  onDone(fullContent);
+                }
+                return;
+              }
+              if (data.choices[0].delta) {
+                const delta = data.choices[0].delta;
+                const reasoningChunk = delta.reasoning_content;
+                const contentChunk = delta.content;
+
+                if (reasoningChunk) {
+                  fullThinkingContent += reasoningChunk;
+                  if (aiBubble) {
+                    aiBubble.updateThinking(reasoningChunk);
+                  }
+                } else if (contentChunk) {
+                  if (eventType === 'reasoning') {
+                    fullThinkingContent += contentChunk;
+                    if (aiBubble) {
+                      aiBubble.updateThinking(contentChunk);
+                    }
+                  } else {
+                    if (!hasReceivedMessage && fullThinkingContent && aiBubble) {
+                      aiBubble.toggleThinking('closed');
+                      hasReceivedMessage = true;
+                    }
+                    fullContent += contentChunk;
+                    if (onStream) {
+                      onStream(contentChunk);
+                    }
+                  }
+                }
               }
             }
-          } catch (e) {}
+          } catch (e) {
+            console.error('Error parsing SSE data:', e);
+          }
         }
       }
     }
