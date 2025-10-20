@@ -1141,3 +1141,86 @@ body {
   transform: scale(0.97);
   filter: brightness(0.95);
 }
+
+.thinking-container {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  background-color: rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease-in-out;
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  user-select: none;
+}
+
+.thinking-header:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.thinking-icon {
+  font-size: 16px;
+  margin-right: 8px;
+}
+
+.thinking-title {
+  font-weight: bold;
+  font-size: 13px;
+  color: var(--text-color-light);
+  flex-grow: 1;
+}
+
+.thinking-toggle {
+  background: none;
+  border: none;
+  color: var(--text-color-light);
+  font-size: 16px;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+  padding: 0;
+  line-height: 1;
+}
+
+.thinking-container.collapsed .thinking-toggle {
+  transform: rotate(180deg);
+}
+
+.thinking-content {
+  padding: 15px;
+  border-top: 1px solid var(--border-color);
+  max-height: 400px;
+  overflow-y: auto;
+  transition: max-height 0.4s ease, padding 0.4s ease, opacity 0.4s ease;
+}
+
+.thinking-container.collapsed .thinking-content {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  border-top: none;
+  overflow: hidden;
+}
+
+.thinking-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.thinking-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.thinking-content::-webkit-scrollbar-thumb {
+  background-color: var(--accent-color-grey);
+  border-radius: 3px;
+}
+
+.thinking-content::-webkit-scrollbar-thumb:hover {
+  background-color: #7a7a7a;
+}
