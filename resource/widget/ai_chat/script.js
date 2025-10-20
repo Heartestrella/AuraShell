@@ -1,4 +1,5 @@
 const pendingRequests = new Map();
+const pendingBackendCalls = new Map();
 const ABORTABLE_TOOLS_WHITELIST = ['exe_shell', 'fetchWeb'];
 function isToolAbortable(toolName) {
   const normalizedToolName = toolName.includes('->') ? toolName.split('->')[1].trim() : toolName;
@@ -6,6 +7,54 @@ function isToolAbortable(toolName) {
 }
 function generateUniqueId() {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+async function callBackend(backendObject, methodName, args = null) {
+  return new Promise((resolve, reject) => {
+    const requestId = generateUniqueId();
+    const handler = (receivedId, resultJson) => {
+      if (receivedId === requestId) {
+        cleanup();
+        try {
+          const result = JSON.parse(resultJson);
+          if (result.status === 'error') {
+            reject(new Error(result.content));
+          } else {
+            resolve(result);
+          }
+        } catch (e) {
+          resolve(resultJson);
+        }
+      }
+    };
+    const cleanup = () => {
+      backendObject.backendCallReady.disconnect(handler);
+      pendingBackendCalls.delete(requestId);
+    };
+    pendingBackendCalls.set(requestId, {
+      methodName,
+      handler,
+      startTime: Date.now(),
+    });
+    backendObject.backendCallReady.connect(handler);
+    try {
+      const argsJson = args !== null ? JSON.stringify(args) : '';
+      backendObject.callBackend(requestId, methodName, argsJson);
+    } catch (error) {
+      cleanup();
+      reject(error);
+    }
+  });
+}
+function getPendingBackendCalls() {
+  const calls = [];
+  for (const [id, info] of pendingBackendCalls) {
+    calls.push({
+      id,
+      method: info.methodName,
+      duration: Date.now() - info.startTime,
+    });
+  }
+  return calls;
 }
 function isContextLengthError(errorJson) {
   if (errorJson.error?.code === 'context_length_exceeded') {
@@ -50,21 +99,25 @@ function setQQUserInfo(qq_name, qq_number) {
 window.OnlineUser = {};
 window.setQQUserInfo = setQQUserInfo;
 window.currentUserInfo = { name: '用户', avatarUrl: null };
-async function updateTokenUsage() {
-  const tokenElement = document.getElementById('token-count');
-  const rawCountStr = await backend.getTokenUsage(aiChatApiOptionsBody.messages);
-  const num = parseInt(rawCountStr, 10);
-  if (isNaN(num)) {
-    tokenElement.textContent = rawCountStr;
-    return;
-  }
-  let displayText = num.toString();
-  if (num >= 1000000) {
-    displayText += ` (${(num / 1000000).toFixed(1)}M)`;
-  } else if (num >= 1000) {
-    displayText += ` (${(num / 1000).toFixed(1)}K)`;
-  }
-  tokenElement.textContent = displayText;
+function updateTokenUsage() {
+  return new Promise(async (resolve) => {
+    const tokenElement = document.getElementById('token-count');
+    const rawCountStr = await callBackend(backend, 'getTokenUsage', [aiChatApiOptionsBody.messages]);
+    const num = parseInt(rawCountStr, 10);
+    if (isNaN(num)) {
+      tokenElement.textContent = rawCountStr;
+      resolve();
+      return;
+    }
+    let displayText = num.toString();
+    if (num >= 1000000) {
+      displayText += ` (${(num / 1000000).toFixed(1)}M)`;
+    } else if (num >= 1000) {
+      displayText += ` (${(num / 1000).toFixed(1)}K)`;
+    }
+    tokenElement.textContent = displayText;
+    resolve();
+  });
 }
 async function executeMcpTool(serverName, toolName, args, providedRequestId = null) {
   return new Promise((resolve, reject) => {
@@ -321,6 +374,11 @@ class AIBubble {
     this.thinkingToggle = this.element.querySelector('.thinking-toggle');
     this.fullContent = '';
     this.fullThinkingContent = '';
+    this.translatedThinkingContent = '';
+    this.contentSentForTranslation = '';
+    this.translationDebounceTimer = null;
+    this.isThinkingStreamFinished = false;
+    this.isTranslating = false;
     this.isStreaming = false;
     this.isThinkingStreaming = false;
     this.thinkingUserHasScrolled = false;
@@ -372,11 +430,86 @@ class AIBubble {
     if (this.chatController && !this.chatController.userHasScrolled) {
       this.chatController.scrollToBottom();
     }
+    clearTimeout(this.translationDebounceTimer);
   }
   finishThinking() {
     this.isThinkingStreaming = false;
+    this.isThinkingStreamFinished = true;
     if (this.fullThinkingContent) {
       const dirtyHtml = marked.parse(this.fullThinkingContent);
+      this.thinkingContent.innerHTML = DOMPurify.sanitize(dirtyHtml);
+    }
+    clearTimeout(this.translationDebounceTimer);
+    this.triggerTranslation();
+  }
+  renderTranslatedContent() {
+    if (!this.element.isConnected) {
+      return;
+    }
+    const untranslatedTail = this.fullThinkingContent.substring(this.contentSentForTranslation.length);
+    const displayContent = this.translatedThinkingContent + untranslatedTail;
+    let finalHtml = DOMPurify.sanitize(marked.parse(displayContent));
+    if (this.isThinkingStreaming || this.isTranslating) {
+      finalHtml += '<div class="loader"></div>';
+    }
+    this.thinkingContent.innerHTML = finalHtml;
+    if (!this.thinkingUserHasScrolled) {
+      this.thinkingContent.scrollTop = this.thinkingContent.scrollHeight;
+    }
+  }
+  updateThinkingTitle() {
+    const titleSpan = this.element.querySelector('.thinking-title');
+    if (!titleSpan) return;
+    if (this.isTranslating) {
+      titleSpan.innerHTML = '深度思考 [正在翻译] <svg class="translating-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="31.4 31.4" stroke-dashoffset="0"/></svg>';
+    } else {
+      titleSpan.textContent = '深度思考';
+    }
+  }
+  async triggerTranslation() {
+    if (!this.element.isConnected || this.reasoningTranslated) {
+      return;
+    }
+    const newTextToTranslate = this.fullThinkingContent.substring(this.contentSentForTranslation.length);
+    if (newTextToTranslate.trim() === '') {
+      if (this.isThinkingStreamFinished && this.translatedThinkingContent) {
+        this._finalizeTranslation();
+      }
+      return;
+    }
+    this.contentSentForTranslation += newTextToTranslate;
+    if (!this.isTranslating) {
+      this.isTranslating = true;
+      this.updateThinkingTitle();
+    }
+    try {
+      const detectResult = await callBackend(backend, 'detectLanguage', [newTextToTranslate]);
+      const isTargetLanguage = detectResult.language === window.SystemLanguage.split('-')[0];
+      const translatedText = isTargetLanguage ? newTextToTranslate : await callBackend(backend, 'translateText', [newTextToTranslate, window.SystemLanguage]);
+      if (!this.element.isConnected) {
+        console.log('气泡已被销毁，翻译结果被丢弃。');
+        return;
+      }
+      if (translatedText) {
+        this.translatedThinkingContent += translatedText;
+        this.renderTranslatedContent();
+      }
+      if (this.isThinkingStreamFinished && this.contentSentForTranslation.length === this.fullThinkingContent.length) {
+        this._finalizeTranslation();
+      }
+    } catch (error) {
+      console.error('翻译失败:', error);
+      this.contentSentForTranslation = this.contentSentForTranslation.slice(0, this.contentSentForTranslation.length - newTextToTranslate.length);
+    }
+  }
+  async _finalizeTranslation() {
+    this.isTranslating = false;
+    this.updateThinkingTitle();
+    if (window.messagesHistory[this.historyIndex]) {
+      window.messagesHistory[this.historyIndex].messages.reasoning = this.translatedThinkingContent;
+      window.messagesHistory[this.historyIndex].messages.reasoningTranslated = true;
+      await saveHistory(window.firstUserMessage, window.messagesHistory);
+      const dirtyHtml = marked.parse(this.translatedThinkingContent);
       this.thinkingContent.innerHTML = DOMPurify.sanitize(dirtyHtml);
     }
   }
@@ -643,44 +776,47 @@ class SystemBubble {
 }
 let pastedImageDataUrls = [];
 function editUserMessage(bubbleElement) {
-  const messageIndex = parseInt(bubbleElement.dataset.messageIndex);
-  const historyIndex = parseInt(bubbleElement.dataset.historyIndex);
-  if (isNaN(historyIndex) || historyIndex < 0) {
-    console.error('Invalid history index');
-    return;
-  }
-  const messageItem = window.messagesHistory[historyIndex];
-  if (!messageItem || messageItem.messages.role !== 'user' || messageItem.isMcp) {
-    console.error('Can only edit user messages');
-    return;
-  }
-  const messageContent = messageItem.messages.content;
-  let text = '';
-  let images = [];
-  if (Array.isArray(messageContent)) {
-    messageContent.forEach((item) => {
-      if (item.type === 'text') {
-        if (!item.text.startsWith('<附加系统数据>')) {
-          text = item.text || '';
+  return new Promise(async (resolve) => {
+    const messageIndex = parseInt(bubbleElement.dataset.messageIndex);
+    const historyIndex = parseInt(bubbleElement.dataset.historyIndex);
+    if (isNaN(historyIndex) || historyIndex < 0) {
+      console.error('Invalid history index');
+      return;
+    }
+    const messageItem = window.messagesHistory[historyIndex];
+    if (!messageItem || messageItem.messages.role !== 'user' || messageItem.isMcp) {
+      console.error('Can only edit user messages');
+      return;
+    }
+    const messageContent = messageItem.messages.content;
+    let text = '';
+    let images = [];
+    if (Array.isArray(messageContent)) {
+      messageContent.forEach((item) => {
+        if (item.type === 'text') {
+          if (!item.text.startsWith('<附加系统数据>')) {
+            text = item.text || '';
+          }
+        } else if (item.type === 'image_url' && item.image_url) {
+          images.push(item.image_url.url);
         }
-      } else if (item.type === 'image_url' && item.image_url) {
-        images.push(item.image_url.url);
-      }
-    });
-  } else if (typeof messageContent === 'string') {
-    text = messageContent;
-  }
-  truncateFromMessage(messageIndex, historyIndex);
-  const messageInput = document.querySelector('#message-input');
-  if (messageInput) {
-    messageInput.value = text;
-    updateHighlights();
-  }
-  pastedImageDataUrls = [...images];
-  renderImagePreviews();
-  if (messageInput) {
-    messageInput.focus();
-  }
+      });
+    } else if (typeof messageContent === 'string') {
+      text = messageContent;
+    }
+    await truncateFromMessage(messageIndex, historyIndex);
+    const messageInput = document.querySelector('#message-input');
+    if (messageInput) {
+      messageInput.value = text;
+      updateHighlights();
+    }
+    pastedImageDataUrls = [...images];
+    renderImagePreviews();
+    if (messageInput) {
+      messageInput.focus();
+    }
+    resolve();
+  });
 }
 function retryUserMessage(bubbleElement) {
   editUserMessage(bubbleElement);
@@ -692,57 +828,64 @@ function retryUserMessage(bubbleElement) {
   }, 100);
 }
 function deleteUserMessage(bubbleElement) {
-  const messageIndex = parseInt(bubbleElement.dataset.messageIndex);
-  const historyIndex = parseInt(bubbleElement.dataset.historyIndex);
-  if (isNaN(historyIndex) || historyIndex < 0) {
-    console.error('Invalid history index');
-    return;
-  }
-  const messageItem = window.messagesHistory[historyIndex];
-  if (!messageItem || messageItem.messages.role !== 'user' || messageItem.isMcp) {
-    console.error('Can only delete user messages');
-    return;
-  }
-  truncateFromMessage(messageIndex, historyIndex);
+  return new Promise(async (resolve) => {
+    const messageIndex = parseInt(bubbleElement.dataset.messageIndex);
+    const historyIndex = parseInt(bubbleElement.dataset.historyIndex);
+    if (isNaN(historyIndex) || historyIndex < 0) {
+      console.error('Invalid history index');
+      return;
+    }
+    const messageItem = window.messagesHistory[historyIndex];
+    if (!messageItem || messageItem.messages.role !== 'user' || messageItem.isMcp) {
+      console.error('Can only delete user messages');
+      return;
+    }
+    await truncateFromMessage(messageIndex, historyIndex);
+    resolve();
+  });
 }
 function truncateFromMessage(messageIndex, historyIndex) {
-  if (!isNaN(messageIndex) && messageIndex >= 0) {
-    const hasSystemMessage = aiChatApiOptionsBody.messages.length > 0 && aiChatApiOptionsBody.messages[0].role === 'system';
-    if (hasSystemMessage) {
-      aiChatApiOptionsBody.messages = aiChatApiOptionsBody.messages.slice(0, messageIndex);
-    } else {
-      const actualIndex = messageIndex - 1;
-      if (actualIndex >= 0) {
-        aiChatApiOptionsBody.messages = aiChatApiOptionsBody.messages.slice(0, actualIndex);
+  return new Promise(async (resolve) => {
+    if (!isNaN(messageIndex) && messageIndex >= 0) {
+      const hasSystemMessage = aiChatApiOptionsBody.messages.length > 0 && aiChatApiOptionsBody.messages[0].role === 'system';
+      if (hasSystemMessage) {
+        aiChatApiOptionsBody.messages = aiChatApiOptionsBody.messages.slice(0, messageIndex);
       } else {
-        aiChatApiOptionsBody.messages = [];
+        const actualIndex = messageIndex - 1;
+        if (actualIndex >= 0) {
+          aiChatApiOptionsBody.messages = aiChatApiOptionsBody.messages.slice(0, actualIndex);
+        } else {
+          aiChatApiOptionsBody.messages = [];
+        }
       }
     }
-  }
-  window.messagesHistory = window.messagesHistory.slice(0, historyIndex);
-  const bubblesToRemove = document.querySelectorAll('[data-history-index]');
-  bubblesToRemove.forEach((bubble) => {
-    const bubbleHistoryIndex = parseInt(bubble.dataset.historyIndex);
-    if (bubbleHistoryIndex >= historyIndex) {
-      bubble.remove();
+    window.messagesHistory = window.messagesHistory.slice(0, historyIndex);
+    const bubblesToRemove = document.querySelectorAll('[data-history-index]');
+    bubblesToRemove.forEach((bubble) => {
+      const bubbleHistoryIndex = parseInt(bubble.dataset.historyIndex);
+      if (bubbleHistoryIndex >= historyIndex) {
+        bubble.remove();
+      }
+    });
+    if (typeof window.saveHistory === 'function' && window.firstUserMessage) {
+      await window.saveHistory(window.firstUserMessage, window.messagesHistory);
     }
+    resolve();
   });
-  if (typeof window.saveHistory === 'function' && window.firstUserMessage) {
-    window.saveHistory(window.firstUserMessage, window.messagesHistory);
-  }
 }
-function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHistoryIndex, controller, onComplete) {
-  updateTokenUsage();
+function createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, controller, onComplete) {
   const cancelButtonContainer = document.getElementById('cancel-button-container');
   const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
   const sendButton = document.querySelector('.send-button');
   return async (fullContent) => {
+    await updateTokenUsage();
     aiBubble.finishStream();
     aiBubble.finishThinking();
     const historyAssistantMessage = {
       role: 'assistant',
       content: fullContent,
       reasoning: aiBubble.fullThinkingContent || undefined,
+      reasoningTranslated: false,
     };
     const apiAssistantMessage = {
       role: 'assistant',
@@ -750,120 +893,117 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
     };
     aiChatApiOptionsBody.messages.push(apiAssistantMessage);
     messagesHistory.push({ messages: historyAssistantMessage, isMcp: false });
-    saveHistory(window.firstUserMessage, messagesHistory);
+    await saveHistory(window.firstUserMessage, messagesHistory);
     cancelButtonContainer.style.display = 'none';
     if (backend) {
-      const result = await backend.processMessage(fullContent);
-      if (result) {
-        try {
-          const toolCall = JSON.parse(result);
-          if (toolCall && toolCall.server_name && toolCall.tool_name && toolCall.arguments) {
-            let xml = toolCall._xml_;
-            if (xml) {
-              let newContent = fullContent.replace(xml, '');
-              if (newContent == '') {
-                newContent = toolCall.server_name + ' -> ' + toolCall.tool_name;
-              }
-              aiBubble.setHTML(newContent);
+      const toolCall = await callBackend(backend, 'processMessage', [fullContent]);
+      try {
+        if (toolCall && toolCall.server_name && toolCall.tool_name && toolCall.arguments) {
+          let xml = toolCall._xml_;
+          if (xml) {
+            let newContent = fullContent.replace(xml, '');
+            if (newContent == '') {
+              newContent = toolCall.server_name + ' -> ' + toolCall.tool_name;
             }
-            const toolName = `${toolCall.server_name} -> ${toolCall.tool_name}`;
-            const toolArgsStr = JSON.stringify(toolCall.arguments, null, 2);
-            const systemBubble = chat.addSystemBubble(toolName, toolArgsStr, aiMessageIndex, aiHistoryIndex);
-            let userDecision = 'rejected';
-            if (toolCall['auto_approve'] === true) {
+            aiBubble.setHTML(newContent);
+          }
+          const toolName = `${toolCall.server_name} -> ${toolCall.tool_name}`;
+          const toolArgsStr = JSON.stringify(toolCall.arguments, null, 2);
+          const systemBubble = chat.addSystemBubble(toolName, toolArgsStr, aiMessageIndex, aiHistoryIndex);
+          let userDecision = 'rejected';
+          if (toolCall['auto_approve'] === true) {
+            userDecision = 'approved';
+          } else {
+            if (toolCall.tool_name === 'edit_file' && !(await callBackend(backend, 'showFileDiff', [toolCall.arguments]))) {
               userDecision = 'approved';
             } else {
-              if (toolCall.tool_name === 'edit_file' && !(await backend.showFileDiff(toolCall.arguments))) {
-                userDecision = 'approved';
-              } else {
-                userDecision = await systemBubble.requireApproval();
-              }
+              userDecision = await systemBubble.requireApproval();
             }
-            if (userDecision === 'approved') {
-              const toolRequestId = generateUniqueId();
-              const mcpToolContainer = document.getElementById('mcp-tool-control-container');
-              const abortToolButton = mcpToolContainer.querySelector('.abort-tool-button');
-              const continueButton = mcpToolContainer.querySelector('.continue-button');
-              const abortToolHandler = () => {
-                mcpToolContainer.style.display = 'none';
-                cancelMcpRequest(toolRequestId);
+          }
+          if (userDecision === 'approved') {
+            const toolRequestId = generateUniqueId();
+            const mcpToolContainer = document.getElementById('mcp-tool-control-container');
+            const abortToolButton = mcpToolContainer.querySelector('.abort-tool-button');
+            const continueButton = mcpToolContainer.querySelector('.continue-button');
+            const abortToolHandler = () => {
+              mcpToolContainer.style.display = 'none';
+              cancelMcpRequest(toolRequestId);
+            };
+            abortToolButton.addEventListener('click', abortToolHandler);
+            const continueHandler = () => {
+              callBackend(backend, 'forceContinueTool', [toolRequestId]);
+            };
+            continueButton.addEventListener('click', continueHandler, { once: true });
+            const showContinueButton = toolCall.tool_name === 'exe_shell';
+            if (showContinueButton) {
+              continueButton.style.display = 'block';
+            } else {
+              continueButton.style.display = 'none';
+            }
+            const showAbortButton = isToolAbortable(toolCall.tool_name);
+            if (showAbortButton) {
+              abortToolButton.style.display = 'block';
+            } else {
+              abortToolButton.style.display = 'none';
+            }
+            if (showContinueButton || showAbortButton) {
+              mcpToolContainer.style.display = 'flex';
+            } else {
+              mcpToolContainer.style.display = 'none';
+            }
+            sendButton.disabled = true;
+            try {
+              const executionResultStr = await executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments), toolRequestId);
+              systemBubble.setResult('approved', executionResultStr);
+              let mcpMessages = {
+                role: 'user',
+                content: [
+                  { type: 'text', text: '[' + toolCall.server_name + ' -> ' + toolCall.tool_name + '] 执行结果:' },
+                  { type: 'text', text: executionResultStr },
+                ],
               };
-              abortToolButton.addEventListener('click', abortToolHandler);
-              const continueHandler = () => {
-                backend.forceContinueTool(toolRequestId);
+              aiChatApiOptionsBody.messages.push(mcpMessages);
+              messagesHistory.push({ messages: mcpMessages, isMcp: true });
+              await saveHistory(window.firstUserMessage, messagesHistory);
+              abortToolButton.removeEventListener('click', abortToolHandler);
+              continueButton.removeEventListener('click', continueHandler);
+              mcpToolContainer.style.display = 'none';
+              const newController = new AbortController();
+              const newAbortHandler = () => {
+                cancelButtonContainer.style.display = 'none';
+                newController.abort();
               };
-              continueButton.addEventListener('click', continueHandler, { once: true });
-              const showContinueButton = toolCall.tool_name === 'exe_shell';
-              if (showContinueButton) {
-                continueButton.style.display = 'block';
-              } else {
-                continueButton.style.display = 'none';
-              }
-              const showAbortButton = isToolAbortable(toolCall.tool_name);
-              if (showAbortButton) {
-                abortToolButton.style.display = 'block';
-              } else {
-                abortToolButton.style.display = 'none';
-              }
-              if (showContinueButton || showAbortButton) {
-                mcpToolContainer.style.display = 'flex';
-              } else {
-                mcpToolContainer.style.display = 'none';
-              }
-              sendButton.disabled = true;
-              try {
-                const executionResultStr = await executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments), toolRequestId);
-                systemBubble.setResult('approved', executionResultStr);
-                let mcpMessages = {
-                  role: 'user',
-                  content: [
-                    { type: 'text', text: '[' + toolCall.server_name + ' -> ' + toolCall.tool_name + '] 执行结果:' },
-                    { type: 'text', text: executionResultStr },
-                  ],
-                };
-                aiChatApiOptionsBody.messages.push(mcpMessages);
-                messagesHistory.push({ messages: mcpMessages, isMcp: true });
-                saveHistory(window.firstUserMessage, messagesHistory);
-                abortToolButton.removeEventListener('click', abortToolHandler);
-                continueButton.removeEventListener('click', continueHandler);
-                mcpToolContainer.style.display = 'none';
-                const newController = new AbortController();
-                const newAbortHandler = () => {
-                  cancelButtonContainer.style.display = 'none';
-                  newController.abort();
-                };
-                cancelButton.addEventListener('click', newAbortHandler);
-                const newOnComplete = () => {
-                  cancelButton.removeEventListener('click', newAbortHandler);
-                  if (onComplete) {
-                    onComplete();
-                  }
-                };
-                const newAiMessageIndex = aiChatApiOptionsBody.messages.length + messageOffset;
-                const newAiHistoryIndex = messagesHistory.length;
-                const newAiBubble = chat.addAIBubble(newAiMessageIndex, newAiHistoryIndex);
-                newAiBubble.updateStream('');
-                const newHandler = createAIResponseHandler(newAiBubble, messageOffset, newAiMessageIndex, newAiHistoryIndex, newController, newOnComplete);
-                cancelButtonContainer.style.display = 'flex';
-                requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newHandler, newController.signal, newAiBubble);
-                return;
-              } catch (error) {
-                systemBubble.setResult('rejected', `执行已取消:${error.message}`);
-                mcpToolContainer.style.display = 'none';
+              cancelButton.addEventListener('click', newAbortHandler);
+              const newOnComplete = () => {
+                cancelButton.removeEventListener('click', newAbortHandler);
                 if (onComplete) {
                   onComplete();
                 }
-              } finally {
-                abortToolButton.removeEventListener('click', abortToolHandler);
-                continueButton.removeEventListener('click', continueHandler);
+              };
+              const newAiMessageIndex = aiChatApiOptionsBody.messages.length;
+              const newAiHistoryIndex = messagesHistory.length;
+              const newAiBubble = chat.addAIBubble(newAiMessageIndex, newAiHistoryIndex);
+              newAiBubble.updateStream('');
+              const newHandler = createAIResponseHandler(newAiBubble, newAiMessageIndex, newAiHistoryIndex, newController, newOnComplete);
+              cancelButtonContainer.style.display = 'flex';
+              requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newHandler, newController.signal, newAiBubble);
+              return;
+            } catch (error) {
+              systemBubble.setResult('rejected', `执行已取消:${error.message}`);
+              mcpToolContainer.style.display = 'none';
+              if (onComplete) {
+                onComplete();
               }
-            } else {
-              systemBubble.setResult('rejected', 'User rejected the tool call.');
+            } finally {
+              abortToolButton.removeEventListener('click', abortToolHandler);
+              continueButton.removeEventListener('click', continueHandler);
             }
+          } else {
+            systemBubble.setResult('rejected', 'User rejected the tool call.');
           }
-        } catch (e) {
-          console.error('Failed to process or execute MCP tool call:', e);
         }
+      } catch (e) {
+        console.error('Failed to process or execute MCP tool call:', e);
       }
     }
     if (onComplete) {
@@ -872,64 +1012,68 @@ function createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHist
   };
 }
 function retryAIMessage(bubbleElement) {
-  const messageIndex = parseInt(bubbleElement.dataset.messageIndex);
-  const historyIndex = parseInt(bubbleElement.dataset.historyIndex);
-  if (isNaN(historyIndex) || historyIndex < 0) {
-    console.error('Invalid history index');
-    return;
-  }
-  const messageItem = window.messagesHistory[historyIndex];
-  if (!messageItem || messageItem.messages.role !== 'assistant') {
-    console.error('Can only retry AI messages');
-    return;
-  }
-  const sendButton = document.querySelector('.send-button');
-  if (sendButton && sendButton.disabled) {
-    console.log('Another request is in progress');
-    return;
-  }
-  truncateFromMessage(messageIndex, historyIndex);
-  const hasSystemMessage = aiChatApiOptionsBody.messages.length > 0 && aiChatApiOptionsBody.messages[0].role === 'system';
-  const messageOffset = hasSystemMessage ? 0 : 1;
-  const aiMessageIndex = aiChatApiOptionsBody.messages.length + messageOffset;
-  const aiHistoryIndex = messagesHistory.length;
-  let aiBubble = chat.addAIBubble(aiMessageIndex, aiHistoryIndex);
-  aiBubble.updateStream('');
-  sendButton.disabled = true;
-  chat.chatBody.classList.add('request-in-progress');
-  const cancelButtonContainer = document.getElementById('cancel-button-container');
-  const controller = new AbortController();
-  const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
-  const abortRequest = () => {
-    cancelButtonContainer.style.display = 'none';
-    controller.abort();
-  };
-  cancelButton.addEventListener('click', abortRequest);
-  cancelButtonContainer.style.display = 'flex';
-  const onComplete = () => {
-    sendButton.disabled = false;
-    chat.chatBody.classList.remove('request-in-progress');
-    cancelButton.removeEventListener('click', abortRequest);
-    if (chat.chatController && !chat.chatController.userHasScrolled) {
-      chat.chatController.scrollToBottom();
+  return new Promise(async (resolve) => {
+    const messageIndex = parseInt(bubbleElement.dataset.messageIndex);
+    const historyIndex = parseInt(bubbleElement.dataset.historyIndex);
+    if (isNaN(historyIndex) || historyIndex < 0) {
+      console.error('Invalid history index');
+      return;
     }
-  };
-  const responseHandler = createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHistoryIndex, controller, onComplete);
-  requestAiChat(aiBubble.updateStream.bind(aiBubble), responseHandler, controller.signal, aiBubble);
+    const messageItem = window.messagesHistory[historyIndex];
+    if (!messageItem || messageItem.messages.role !== 'assistant') {
+      console.error('Can only retry AI messages');
+      return;
+    }
+    const sendButton = document.querySelector('.send-button');
+    if (sendButton && sendButton.disabled) {
+      console.log('Another request is in progress');
+      return;
+    }
+    await truncateFromMessage(messageIndex, historyIndex);
+    const aiMessageIndex = aiChatApiOptionsBody.messages.length;
+    const aiHistoryIndex = messagesHistory.length;
+    let aiBubble = chat.addAIBubble(aiMessageIndex, aiHistoryIndex);
+    aiBubble.updateStream('');
+    sendButton.disabled = true;
+    chat.chatBody.classList.add('request-in-progress');
+    const cancelButtonContainer = document.getElementById('cancel-button-container');
+    const controller = new AbortController();
+    const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
+    const abortRequest = () => {
+      cancelButtonContainer.style.display = 'none';
+      controller.abort();
+    };
+    cancelButton.addEventListener('click', abortRequest);
+    cancelButtonContainer.style.display = 'flex';
+    const onComplete = () => {
+      sendButton.disabled = false;
+      chat.chatBody.classList.remove('request-in-progress');
+      cancelButton.removeEventListener('click', abortRequest);
+      if (chat.chatController && !chat.chatController.userHasScrolled) {
+        chat.chatController.scrollToBottom();
+      }
+    };
+    const responseHandler = createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, controller, onComplete);
+    requestAiChat(aiBubble.updateStream.bind(aiBubble), responseHandler, controller.signal, aiBubble);
+    resolve();
+  });
 }
 function deleteAIMessage(bubbleElement) {
-  const messageIndex = parseInt(bubbleElement.dataset.messageIndex);
-  const historyIndex = parseInt(bubbleElement.dataset.historyIndex);
-  if (isNaN(historyIndex) || historyIndex < 0) {
-    console.error('Invalid history index');
-    return;
-  }
-  const messageItem = window.messagesHistory[historyIndex];
-  if (!messageItem || messageItem.messages.role !== 'assistant') {
-    console.error('Can only delete AI messages');
-    return;
-  }
-  truncateFromMessage(messageIndex, historyIndex);
+  return new Promise(async (resolve) => {
+    const messageIndex = parseInt(bubbleElement.dataset.messageIndex);
+    const historyIndex = parseInt(bubbleElement.dataset.historyIndex);
+    if (isNaN(historyIndex) || historyIndex < 0) {
+      console.error('Invalid history index');
+      return;
+    }
+    const messageItem = window.messagesHistory[historyIndex];
+    if (!messageItem || messageItem.messages.role !== 'assistant') {
+      console.error('Can only delete AI messages');
+      return;
+    }
+    await truncateFromMessage(messageIndex, historyIndex);
+    resolve();
+  });
 }
 function isEmptyObject(obj) {
   const isPlainObject = Object.prototype.toString.call(obj) === '[object Object]';
@@ -1080,27 +1224,24 @@ window.loadHistory = function (filename) {
     if (!backend) {
       return;
     }
-    const history = await backend.loadHistory(filename);
+    const history = await callBackend(backend, 'loadHistory', [filename]);
     if (!history) {
       return;
     }
     chatHistoryContainer.style.display = 'none';
     window.firstUserMessage = filename.replace('.json', '');
-    window.messagesHistory = JSON.parse(history);
+    window.messagesHistory = history;
     chat.chatBody.innerHTML = '';
-    let messageIndexOffset = 0;
     for (let i = 0; i < window.messagesHistory.length; i++) {
       const item = window.messagesHistory[i];
       const messageForApi = { ...item.messages };
       delete messageForApi.reasoning;
+      delete messageForApi.reasoningTranslated;
       aiChatApiOptionsBody.messages.push(messageForApi);
       if (i === 0 && item.messages.role === 'system') {
-        messageIndexOffset = 0;
         continue;
-      } else if (i === 0) {
-        messageIndexOffset = 1;
       }
-      const messageIndex = aiChatApiOptionsBody.messages.length - 1 + messageIndexOffset;
+      const messageIndex = aiChatApiOptionsBody.messages.length - 1;
       if (item.messages.role === 'user') {
         if (item.isMcp) {
           continue;
@@ -1129,13 +1270,23 @@ window.loadHistory = function (filename) {
         if (item.messages.reasoning) {
           aiBubble.thinkingContainer.style.display = 'block';
           aiBubble.fullThinkingContent = item.messages.reasoning;
-          aiBubble.finishThinking();
+          aiBubble.isThinkingStreamFinished = true;
+          aiBubble.reasoningTranslated = item.messages.reasoningTranslated;
+          if (item.messages.reasoningTranslated) {
+            aiBubble.translatedThinkingContent = item.messages.reasoning;
+            aiBubble.contentSentForTranslation = item.messages.reasoning;
+            const dirtyHtml = marked.parse(aiBubble.translatedThinkingContent);
+            aiBubble.thinkingContent.innerHTML = DOMPurify.sanitize(dirtyHtml);
+          } else {
+            const dirtyHtml = marked.parse(aiBubble.fullThinkingContent);
+            aiBubble.thinkingContent.innerHTML = DOMPurify.sanitize(dirtyHtml);
+            aiBubble.triggerTranslation();
+          }
           aiBubble.toggleThinking('closed');
         }
-        const result = await backend.processMessage(aiContent);
-        if (result) {
+        const toolCall = await callBackend(backend, 'processMessage', [aiContent]);
+        if (toolCall) {
           try {
-            const toolCall = JSON.parse(result);
             if (toolCall && toolCall.server_name && toolCall.tool_name && toolCall.arguments) {
               let xml = toolCall._xml_;
               if (xml) {
@@ -1168,7 +1319,7 @@ window.loadHistory = function (filename) {
       }
     }
     chat.scrollToBottom();
-    updateTokenUsage();
+    await updateTokenUsage();
   });
 };
 function initializeBackendConnection(callback) {
@@ -1190,6 +1341,23 @@ function initializeBackendConnection(callback) {
     });
   } else {
     console.error('QWebChannel transport not available.');
+  }
+}
+async function initializeSystemMessage() {
+  if (aiChatApiOptionsBody.messages.length === 0 || aiChatApiOptionsBody.messages[0].role !== 'system') {
+    try {
+      if (backend && typeof backend.getSystemPrompt === 'function') {
+        const systemPrompt = await callBackend(backend, 'getSystemPrompt');
+        if (systemPrompt) {
+          aiChatApiOptionsBody.messages.unshift({
+            role: 'system',
+            content: systemPrompt,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error getting system prompt:', err);
+    }
   }
 }
 document.addEventListener('DOMContentLoaded', function () {
@@ -1265,9 +1433,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     isRequesting = true;
     sendButton.disabled = true;
-    let sshCwd = JSON.parse(await backend.get_current_cwd()).cwd;
-    let fileManagerCwd = JSON.parse(await backend.get_file_manager_cwd()).cwd;
-    let systemInfo = JSON.stringify(JSON.parse(await backend.get_system_info()).content);
+    await initializeSystemMessage();
+    const [cwdResult, fileManagerResult, systemInfoResult] = await Promise.all([callBackend(backend, 'get_current_cwd'), callBackend(backend, 'get_file_manager_cwd'), callBackend(backend, 'get_system_info')]);
+    let sshCwd = cwdResult.cwd;
+    let fileManagerCwd = fileManagerResult.cwd;
+    let systemInfo = JSON.stringify(systemInfoResult.content);
     const approvalContainer = document.getElementById('approve-reject-buttons');
     if (approvalContainer && approvalContainer.style.display === 'flex') {
       const rejectBtn = approvalContainer.querySelector('.reject-button');
@@ -1283,9 +1453,7 @@ document.addEventListener('DOMContentLoaded', function () {
         window.firstUserMessage = _sanitize_filename(message) + '_' + Date.now().toString();
       }
       chat.chatBody.classList.add('request-in-progress');
-      const hasSystemMessage = aiChatApiOptionsBody.messages.length > 0 && aiChatApiOptionsBody.messages[0].role === 'system';
-      const messageOffset = hasSystemMessage ? 0 : 1;
-      const currentMessageIndex = aiChatApiOptionsBody.messages.length + messageOffset;
+      const currentMessageIndex = aiChatApiOptionsBody.messages.length;
       const currentHistoryIndex = messagesHistory.length;
       chat.addUserBubble(message, [...pastedImageDataUrls], currentMessageIndex, currentHistoryIndex);
       const userMessageContent = [];
@@ -1305,11 +1473,12 @@ document.addEventListener('DOMContentLoaded', function () {
           });
         });
       }
-      const currentSystemData = { sshCwd, fileManagerCwd, systemInfo };
+      const currentSystemData = { sshCwd, fileManagerCwd, systemInfo, systemLanguage: window.SystemLanguage };
       const systemDataMap = {
         sshCwd: '终端cwd',
         fileManagerCwd: '文件管理器cwd',
         systemInfo: '系统信息',
+        systemLanguage: '回复语言',
       };
       const changedDataXmlParts = [];
       for (const key in systemDataMap) {
@@ -1333,11 +1502,11 @@ document.addEventListener('DOMContentLoaded', function () {
       };
       aiChatApiOptionsBody.messages.push(userMessage);
       messagesHistory.push({ messages: userMessage, isMcp: false });
-      saveHistory(window.firstUserMessage, messagesHistory);
-      updateTokenUsage();
+      await saveHistory(window.firstUserMessage, messagesHistory);
+      await updateTokenUsage();
       pastedImageDataUrls = [];
       renderImagePreviews();
-      const aiMessageIndex = aiChatApiOptionsBody.messages.length + messageOffset;
+      const aiMessageIndex = aiChatApiOptionsBody.messages.length;
       const aiHistoryIndex = messagesHistory.length;
       let aiBubble = chat.addAIBubble(aiMessageIndex, aiHistoryIndex);
       aiBubble.updateStream('');
@@ -1360,7 +1529,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         updateTokenUsage();
       };
-      const onDone = createAIResponseHandler(aiBubble, messageOffset, aiMessageIndex, aiHistoryIndex, controller, onComplete);
+      const onDone = createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, controller, onComplete);
       requestAiChat(aiBubble.updateStream.bind(aiBubble), onDone, controller.signal, aiBubble);
       messageInput.value = '';
       updateHighlights();
@@ -1385,15 +1554,16 @@ document.addEventListener('DOMContentLoaded', function () {
               let targetPath;
               if (parentItem && parentItem.data && parentItem.data.path) {
                 if (parentItem.data.path === '.') {
-                  targetPath = JSON.parse(await backendObject.get_file_manager_cwd()).cwd;
+                  const cwdResult = await callBackend(backendObject, 'get_file_manager_cwd');
+                  targetPath = cwdResult.cwd;
                 } else {
                   targetPath = parentItem.data.path;
                 }
               } else {
-                targetPath = JSON.parse(await backendObject.get_file_manager_cwd()).cwd;
+                const cwdResult = await callBackend(backendObject, 'get_file_manager_cwd');
+                targetPath = cwdResult.cwd;
               }
-              const dirsData = await backendObject.listDirs(targetPath);
-              const dirsResult = JSON.parse(dirsData);
+              const dirsResult = await callBackend(backendObject, 'listDirs', { path: targetPath });
               if (dirsResult.status === 'error') {
                 console.error('获取目录列表失败:', dirsResult.content);
                 resolve([]);
@@ -1434,9 +1604,10 @@ document.addEventListener('DOMContentLoaded', function () {
               resolve([]);
               return;
             }
-            const cwd = JSON.parse(await backendObject.get_file_manager_cwd()).cwd;
-            const filesData = await backendObject.listFiles(cwd);
-            const files = JSON.parse(filesData).files;
+            const cwdResult = await callBackend(backendObject, 'get_file_manager_cwd');
+            const cwd = cwdResult.cwd;
+            const filesResult = await callBackend(backendObject, 'listFiles', { cwd: cwd });
+            const files = filesResult.files;
             const list = files.map((file, i) => ({
               id: `file${i}`,
               icon: '📄',
@@ -1464,7 +1635,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
       },
     };
-
     mentionManager.onGetSubItems = async function (item) {
       if (!this.ctrlPressed) {
         if (item.type === 'directory' && item.label.startsWith('Dir:')) {
@@ -1610,7 +1780,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const closeSettingsBtn = document.getElementById('close-settings-btn');
   const settingsIframe = settingsPopup.querySelector('iframe');
   settingsIframe.addEventListener('load', () => {
-    initializeBackendConnection((backendObject) => {
+    initializeBackendConnection(async (backendObject) => {
+      window.SystemLanguage = await callBackend(backendObject, 'getSystemLanguage');
       if (backendObject) {
         const iframeWindow = settingsIframe.contentWindow;
         iframeWindow.backend = backendObject;
@@ -1629,7 +1800,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (iframeWindow && typeof iframeWindow.getmodelsData === 'function') {
       const modelsData = iframeWindow.getmodelsData();
       if (backend) {
-        backend.saveModels(JSON.stringify(modelsData));
+        callBackend(backend, 'saveModels', [JSON.stringify(modelsData)]);
         updateModelTags();
       }
     }
@@ -1656,7 +1827,8 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     });
   }
-  initializeBackendConnection((backend) => {
+  initializeBackendConnection(async (backend) => {
+    await initializeSystemMessage();
     initializeHistoryPanel(backend);
   });
   function updateAIBubbleMaxWidth() {
@@ -1709,7 +1881,7 @@ function setupWebSocket() {
       }, 30000);
       initializeBackendConnection(async (backendObject) => {
         if (backendObject) {
-          let qqInfo = await backendObject.getQQUserInfo();
+          let qqInfo = await callBackend(backendObject, 'getQQUserInfo');
           setQQUserInfo(qqInfo.qq_name, qqInfo.qq_number);
         }
       });
@@ -1788,16 +1960,15 @@ async function updateModelTags() {
   if (!backend) {
     return;
   }
-  const modelsDataString = await backend.getModels();
-  allModels = JSON.parse(modelsDataString);
+  allModels = await callBackend(backend, 'getModels');
   const modelNames = Object.keys(allModels);
   if (modelNames.length > 0) {
-    const savedModel = await backend.getSetting('ai_chat_model');
+    const savedModel = await callBackend(backend, 'getSetting', ['ai_chat_model']);
     if (savedModel && allModels.hasOwnProperty(savedModel)) {
       window.currentModel = savedModel;
     } else {
       window.currentModel = modelNames[0];
-      backend.saveSetting('ai_chat_model', window.currentModel);
+      callBackend(backend, 'saveSetting', ['ai_chat_model', window.currentModel]);
     }
   } else {
     window.currentModel = '';
@@ -1821,7 +1992,7 @@ function populateModelOptions(filter = '') {
         window.currentModel = modelName;
         currentModelNameSpan.textContent = window.currentModel;
         modelSelectPopup.style.display = 'none';
-        backend.saveSetting('ai_chat_model', window.currentModel);
+        callBackend(backend, 'saveSetting', ['ai_chat_model', window.currentModel]);
         populateModelOptions();
       });
       modelOptionsContainer.appendChild(optionDiv);
@@ -1951,23 +2122,6 @@ async function requestAiChat(onStream, onDone, signal, aiBubble) {
   let fullThinkingContent = '';
   let hasReceivedMessage = false;
   try {
-    if (aiChatApiOptionsBody.messages.length === 0 || aiChatApiOptionsBody.messages[0].role !== 'system') {
-      try {
-        if (backend && typeof backend.getSystemPrompt === 'function') {
-          const systemPrompt = await backend.getSystemPrompt();
-          if (systemPrompt) {
-            aiChatApiOptionsBody.messages.unshift({
-              role: 'system',
-              content: systemPrompt,
-            });
-          }
-        } else {
-          console.error('backend.getSystemPrompt is not available.');
-        }
-      } catch (err) {
-        console.error('Error getting system prompt from backend:', err);
-      }
-    }
     let response;
     let retryCount = 0;
     const maxRetries = 5;
@@ -2103,7 +2257,6 @@ async function requestAiChat(onStream, onDone, signal, aiBubble) {
                 const delta = data.choices[0].delta;
                 const reasoningChunk = delta.reasoning_content;
                 const contentChunk = delta.content;
-
                 if (reasoningChunk) {
                   fullThinkingContent += reasoningChunk;
                   if (aiBubble) {
@@ -2140,11 +2293,9 @@ async function requestAiChat(onStream, onDone, signal, aiBubble) {
     }
   }
 }
-
 async function proxiedFetch(url, options) {
-  const proxySettingsStr = await backend.getSetting('ai_chat_proxy');
+  const proxySettings = await callBackend(backend, 'getSetting', ['ai_chat_proxy']);
   try {
-    const proxySettings = JSON.parse(proxySettingsStr);
     if (!proxySettings || !proxySettings.protocol || !proxySettings.host || !proxySettings.port) {
       return fetch(url, options);
     }
@@ -2200,7 +2351,7 @@ async function proxiedFetch(url, options) {
       }
     };
     const onAbort = () => {
-      backend.cancelProxiedFetch(requestId);
+      callBackend(backend, 'cancelProxiedFetch', [requestId]);
       cleanup();
       reject(new DOMException('Request aborted by user', 'AbortError'));
     };
@@ -2226,7 +2377,6 @@ async function proxiedFetch(url, options) {
     backend.proxiedFetch(requestId, url, JSON.stringify(optionsForBackend));
   });
 }
-
 let bodyStyle = '<style id="dynamic-body-style"></style>';
 document.body.insertAdjacentHTML('beforeend', bodyStyle);
 let bodyStyleElement = document.getElementById('dynamic-body-style');

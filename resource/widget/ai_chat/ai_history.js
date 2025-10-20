@@ -9,8 +9,7 @@ function initializeHistoryPanel(backend) {
       return;
     }
     try {
-      const historyFilesJson = await backend.listHistories();
-      const historyItems = JSON.parse(historyFilesJson);
+      const historyItems = await callBackend(backend, 'listHistories');
       chatHistoryContainer.innerHTML = '';
       historyItems.forEach((history) => {
         const filename = history.filename;
@@ -42,7 +41,7 @@ function initializeHistoryPanel(backend) {
         deleteBtn.title = 'Delete';
         deleteBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          const success = await backend.deleteHistory(filename);
+          const success = await callBackend(backend, 'deleteHistory', [filename]);
           if (success) {
             window.loadHistoryList();
           }
@@ -60,15 +59,18 @@ function initializeHistoryPanel(backend) {
     }
   };
   window.loadHistoryList();
-  async function saveHistory(name, value) {
-    if (!backend) {
-      return;
-    }
-    try {
-      await backend.saveHistory(name, value);
-    } catch (e) {
-      console.error('Error saving history:', e);
-    }
+  function saveHistory(name, value) {
+    return new Promise(async (resolve) => {
+      if (!backend) {
+        return;
+      }
+      try {
+        await callBackend(backend, 'saveHistory', [name, value]);
+      } catch (e) {
+        console.error('Error saving history:', e);
+      }
+      resolve();
+    });
   }
   window.saveHistory = saveHistory;
 }

@@ -1224,3 +1224,20 @@ body {
 .thinking-content::-webkit-scrollbar-thumb:hover {
   background-color: #7a7a7a;
 }
+
+.translating-spinner {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 4px;
+  animation: rotate-spinner 1s linear infinite;
+  color: var(--accent-color-blue);
+}
+
+@keyframes rotate-spinner {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
