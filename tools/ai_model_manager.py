@@ -8,12 +8,26 @@ class AIModelManager:
         self.models_file = self.config_dir / "ai_models.json"
         self._ensure_config_dir()
         self.models_cache = self.load_models()
+        if "AuraShellVip" in self.models_cache:
+            del self.models_cache["AuraShellVip"]
+            self.save_models(self.models_cache)
 
     def _ensure_config_dir(self):
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_default_models(self) -> Dict[str, Dict[str, Any]]:
-        return { "AuraShellVip": { "api_url": "https://aurashell-aichatapi.beefuny.shop/v1", "model_name": "AuraShellVip", "key":"68*w&t7457#h8S*LS@*W1q8I%DMXMq!MT8#!" } }
+        return {
+            "AuraShellVip-深度思考": {
+                "api_url": "https://aurashell-aichatapi.beefuny.shop/v1",
+                "model_name": "AuraShellVip",
+                "key": "68*w&t7457#h8S*LS@*W1q8I%DMXMq!MT8#!"
+            },
+            "AuraShellVip-非深度思考": {
+                "api_url": "https://aurashell-aichatapi.beefuny.shop/v1",
+                "model_name": "AuraShellVip-Fast",
+                "key": "68*w&t7457#h8S*LS@*W1q8I%DMXMq!MT8#!"
+            }
+        }
 
     def _init_models_file(self):
         if not self.models_file.exists():
