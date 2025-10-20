@@ -334,6 +334,7 @@ class AIBubble {
               <div class="message-sender">
                 <span class="icon">💬</span>
                 <div>智能助手</div>
+                <span class="request-duration" style="margin-left:4px; color: #888; font-size: 16px; display: none;">⏱️ 0.00s</span>
                 <div class="message-actions">
                   <button class="copy-button" title="复制">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -368,10 +369,14 @@ class AIBubble {
     container.insertAdjacentHTML('beforeend', template);
     this.element = container.lastElementChild;
     this.contentElement = this.element.querySelector('.message-content');
+    this.durationElement = this.element.querySelector('.request-duration');
     this.thinkingContainer = this.element.querySelector('.thinking-container');
     this.thinkingHeader = this.element.querySelector('.thinking-header');
     this.thinkingContent = this.element.querySelector('.thinking-content');
     this.thinkingToggle = this.element.querySelector('.thinking-toggle');
+    this.requestStartTime = null;
+    this.durationInterval = null;
+    this.finalDuration = null;
     this.fullContent = '';
     this.fullThinkingContent = '';
     this.translatedThinkingContent = '';
@@ -571,6 +576,51 @@ class AIBubble {
     if (this.chatController && !this.chatController.userHasScrolled) {
       this.chatController.scrollToBottom();
     }
+  }
+  _getDurationColor(seconds) {
+    if (seconds < 30) {
+      return '#22c55e';
+    } else if (seconds < 90) {
+      return '#eab308';
+    } else {
+      return '#ef4444';
+    }
+  }
+  startDuration() {
+    this.requestStartTime = Date.now();
+    this.durationElement.style.display = 'inline';
+    this.durationInterval = setInterval(() => {
+      if (this.requestStartTime) {
+        const elapsed = (Date.now() - this.requestStartTime) / 1000;
+        this.durationElement.style.color = this._getDurationColor(elapsed);
+        this.durationElement.textContent = `⏱️ ${elapsed.toFixed(2)}s`;
+      }
+    }, 100);
+  }
+  finishDuration() {
+    if (this.durationInterval) {
+      clearInterval(this.durationInterval);
+      this.durationInterval = null;
+    }
+    if (this.requestStartTime) {
+      this.finalDuration = (Date.now() - this.requestStartTime) / 1000;
+      this.durationElement.style.color = this._getDurationColor(this.finalDuration);
+      this.durationElement.textContent = `⏱️ ${this.finalDuration.toFixed(2)}s`;
+      this.durationElement.style.display = 'inline';
+    }
+  }
+  setDuration(duration) {
+    if (duration && duration > 0) {
+      this.finalDuration = duration;
+      this.durationElement.style.color = this._getDurationColor(duration);
+      this.durationElement.textContent = `⏱️ ${duration.toFixed(2)}s`;
+      this.durationElement.style.display = 'inline';
+    } else {
+      this.durationElement.style.display = 'none';
+    }
+  }
+  getDuration() {
+    return this.finalDuration;
   }
 }
 class SystemBubble {
@@ -877,6 +927,7 @@ function createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, contr
   const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
   const sendButton = document.querySelector('.send-button');
   return async (fullContent) => {
+    aiBubble.finishDuration();
     await updateTokenUsage();
     aiBubble.finishStream();
     aiBubble.finishThinking();
@@ -885,6 +936,7 @@ function createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, contr
       content: fullContent,
       reasoning: aiBubble.fullThinkingContent || undefined,
       reasoningTranslated: false,
+      duration: aiBubble.getDuration(),
     };
     const apiAssistantMessage = {
       role: 'assistant',
@@ -983,6 +1035,7 @@ function createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, contr
               const newAiHistoryIndex = messagesHistory.length;
               const newAiBubble = chat.addAIBubble(newAiMessageIndex, newAiHistoryIndex);
               newAiBubble.updateStream('');
+              newAiBubble.startDuration();
               const newHandler = createAIResponseHandler(newAiBubble, newAiMessageIndex, newAiHistoryIndex, newController, newOnComplete);
               cancelButtonContainer.style.display = 'flex';
               requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newHandler, newController.signal, newAiBubble);
@@ -1033,6 +1086,7 @@ function retryAIMessage(bubbleElement) {
     const aiHistoryIndex = messagesHistory.length;
     let aiBubble = chat.addAIBubble(aiMessageIndex, aiHistoryIndex);
     aiBubble.updateStream('');
+    aiBubble.startDuration();
     sendButton.disabled = true;
     chat.chatBody.classList.add('request-in-progress');
     const cancelButtonContainer = document.getElementById('cancel-button-container');
@@ -1236,6 +1290,7 @@ window.loadHistory = function (filename) {
       const messageForApi = { ...item.messages };
       delete messageForApi.reasoning;
       delete messageForApi.reasoningTranslated;
+      delete messageForApi.duration;
       aiChatApiOptionsBody.messages.push(messageForApi);
       if (i === 0 && item.messages.role === 'system') {
         continue;
@@ -1266,6 +1321,9 @@ window.loadHistory = function (filename) {
         const aiBubble = chat.addAIBubble(messageIndex, i);
         let aiContent = item.messages.content;
         aiBubble.setHTML(aiContent);
+        if (item.messages.duration) {
+          aiBubble.setDuration(item.messages.duration);
+        }
         if (item.messages.reasoning) {
           aiBubble.thinkingContainer.style.display = 'block';
           aiBubble.fullThinkingContent = item.messages.reasoning;
@@ -1509,6 +1567,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const aiHistoryIndex = messagesHistory.length;
       let aiBubble = chat.addAIBubble(aiMessageIndex, aiHistoryIndex);
       aiBubble.updateStream('');
+      aiBubble.startDuration();
       const cancelButtonContainer = document.getElementById('cancel-button-container');
       const controller = new AbortController();
       const abortRequest = () => {
@@ -2287,6 +2346,9 @@ async function requestAiChat(onStream, onDone, signal, aiBubble) {
       }
     }
   } catch (error) {
+    if (aiBubble) {
+      aiBubble.finishDuration();
+    }
     if (onDone) {
       onDone('Fetch Error:' + error);
     }
