@@ -487,7 +487,6 @@ class AIBubble {
       const isTargetLanguage = detectResult.language === window.SystemLanguage.split('-')[0];
       const translatedText = isTargetLanguage ? newTextToTranslate : await callBackend(backend, 'translateText', [newTextToTranslate, window.SystemLanguage]);
       if (!this.element.isConnected) {
-        console.log('气泡已被销毁，翻译结果被丢弃。');
         return;
       }
       if (translatedText) {
