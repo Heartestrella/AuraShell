@@ -762,6 +762,12 @@ class SystemBubble {
       this.detailElement.innerHTML = this._formatAndHighlight(detail);
     }
   }
+  setCollapsed() {
+    if (this.toolCardElement.classList.contains('collapsed')) {
+      return;
+    }
+    this.toolCardElement.classList.add('collapsed');
+  }
   setResult(status, content) {
     this.statusIconElement.innerHTML = '';
     setTimeout(() => {
@@ -1361,6 +1367,7 @@ window.loadHistory = function (filename) {
               const toolName = `${toolCall.server_name} -> ${toolCall.tool_name}`;
               const toolArgsStr = JSON.stringify(toolCall.arguments, null, 2);
               const systemBubble = chat.addSystemBubble(toolName, toolArgsStr, messageIndex, i);
+              systemBubble.setCollapsed();
               const nextItem = i + 1 < window.messagesHistory.length ? window.messagesHistory[i + 1] : null;
               if (nextItem && nextItem.isMcp === true) {
                 let resultText = '';
