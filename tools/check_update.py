@@ -23,8 +23,8 @@ def is_pyinstaller_bundle():
     return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
 
 def get_version():
-    # if not is_pyinstaller_bundle():
-    #     return "dev"
+    if not is_pyinstaller_bundle():
+        return None
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS
     else:
