@@ -39,24 +39,24 @@ jobs:
         include:
           - os: windows-latest
             platform_name: Windows
-            artifact_name: AuraShell.exe
-            build_name: AuraShell.exe
+            artifact_name: NeoSSH.exe
+            build_name: NeoSSH.exe
             separator: ';'
             build_type: file
           - os: windows-latest
             platform_name: Windows-Folder
-            artifact_name: AuraShell-Windows.zip
-            build_name: AuraShell
+            artifact_name: NeoSSH-Windows.zip
+            build_name: NeoSSH
             separator: ';'
             build_type: folder
           - os: ubuntu-latest
             platform_name: Linux
-            artifact_name: AuraShell-Linux
+            artifact_name: NeoSSH-Linux
             build_name: main_window
             separator: ':'
           - os: macos-latest
             platform_name: macOS
-            artifact_name: AuraShell-Macos
+            artifact_name: NeoSSH-Macos
             build_name: main_window
             separator: ':'
 
@@ -120,30 +120,30 @@ jobs:
       - name: 编译打包 (Windows)
         if: runner.os == 'Windows' && matrix.build_type == 'file'
         run: |
-          python -m PyInstaller AuraShell_onefile.spec
+          python -m PyInstaller NeoSSH_onefile.spec
 
       - name: 编译打包 (Windows - Folder)
         if: runner.os == 'Windows' && matrix.build_type == 'folder'
         run: |
-          python -m PyInstaller AuraShell.spec
-          powershell -Command "Compress-Archive -Path 'dist\${{ matrix.build_name }}\*' -DestinationPath 'dist\AuraShell-Windows.zip' -Force"
+          python -m PyInstaller NeoSSH.spec
+          powershell -Command "Compress-Archive -Path 'dist\${{ matrix.build_name }}\*' -DestinationPath 'dist\NeoSSH-Windows.zip' -Force"
 
       - name: 编译打包 (Linux)
         if: runner.os == 'Linux'
         run: |
-          python -m PyInstaller --icon "resource/icons/icon.ico" -w -F --add-data "resource:resource" --add-data "version.txt${{ matrix.separator }}." --name "AuraShell-Linux" ./main_window.py
-          chmod +x "dist/AuraShell-Linux"
+          python -m PyInstaller --icon "resource/icons/icon.ico" -w -F --add-data "resource:resource" --add-data "version.txt${{ matrix.separator }}." --name "NeoSSH-Linux" ./main_window.py
+          chmod +x "dist/NeoSSH-Linux"
 
       - name: 编译打包 (macOS)
         if: runner.os == 'macOS'
         run: |
-          python -m PyInstaller --icon "resource/icons/icon.ico" -w -F --add-data "resource:resource" --add-data "version.txt${{ matrix.separator }}." --name "AuraShell-Macos" ./main_window.py
-          chmod +x "dist/AuraShell-Macos"
+          python -m PyInstaller --icon "resource/icons/icon.ico" -w -F --add-data "resource:resource" --add-data "version.txt${{ matrix.separator }}." --name "NeoSSH-Macos" ./main_window.py
+          chmod +x "dist/NeoSSH-Macos"
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: AuraShell-${{ matrix.platform_name }}-${{ github.sha }}
+          name: NeoSSH-${{ matrix.platform_name }}-${{ github.sha }}
           path: dist/${{ matrix.artifact_name }}
           retention-days: 30
 
@@ -164,7 +164,7 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.version_tag }}
           name: ${{ needs.prepare.outputs.release_name }}
           files: |
-            artifacts/**/AuraShell*
+            artifacts/**/NeoSSH*
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -173,7 +173,7 @@ jobs:
 
   auto-release:
     needs: [build, prepare]
-    if: github.repository == 'XiaoYingYo/AuraShell' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: github.repository == 'XiaoYingYo/NeoSSH' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     
     steps:
@@ -200,7 +200,7 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.version_tag }}
           name: ${{ needs.prepare.outputs.release_name }}
           files: |
-            artifacts/**/AuraShell*
+            artifacts/**/NeoSSH*
           draft: false
           prerelease: false
           generate_release_notes: true

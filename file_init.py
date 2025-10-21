@@ -24,7 +24,7 @@ if has_non_ascii(script_path):
         sys.exit(1)
     else:
         current_dir = os.path.dirname(sys.executable)
-        link_name = f"AuraShell"
+        link_name = f"NeoSSH"
         temp_dir = tempfile.gettempdir()
         if platform.system() == "Windows":
             ascii_path = os.path.join(temp_dir, link_name)

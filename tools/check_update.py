@@ -70,8 +70,8 @@ class CheckUpdate(QThread):
             if not local_version:
                 return False
             repo_map = {
-                "stable": "Heartestrella/AuraShell",
-                "insider": "XiaoYingYo/AuraShell"
+                "stable": "Heartestrella/NeoSSH",
+                "insider": "XiaoYingYo/NeoSSH"
             }
             repo_path = repo_map.get(channel)
             if not repo_path:
@@ -122,13 +122,13 @@ class CheckUpdate(QThread):
         asset_name = None
         if sys.platform == "win32":
             if is_internal():
-                asset_name = "AuraShell-Windows.zip"
+                asset_name = "NeoSSH-Windows.zip"
             else:
-                asset_name = "AuraShell.exe"
+                asset_name = "NeoSSH.exe"
         elif sys.platform == "linux":
-            asset_name = "AuraShell-Linux"
+            asset_name = "NeoSSH-Linux"
         elif sys.platform == "darwin":
-            asset_name = "AuraShell-Macos"
+            asset_name = "NeoSSH-Macos"
         if not asset_name:
             update_logger.error(f"Unsupported OS for update: {sys.platform}")
             return False
