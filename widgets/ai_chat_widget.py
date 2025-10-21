@@ -1117,6 +1117,18 @@ class AIBridge(QObject):
 
     @pyqtSlot(str, result=bool)
     def showFileDiff(self, args_str: str):
+        from PyQt5.QtCore import QMetaObject, Qt, Q_RETURN_ARG, Q_ARG
+        result = [False]
+        def _execute():
+            result[0] = self._do_show_diff_sync(args_str)
+        QMetaObject.invokeMethod(self, "_execute_in_main_thread", Qt.BlockingQueuedConnection, Q_ARG(object, _execute))
+        return result[0]
+    
+    @pyqtSlot(object)
+    def _execute_in_main_thread(self, func):
+        func()
+    
+    def _do_show_diff_sync(self, args_str: str):
         result = {'success': False}
         def _show_diff():
             try:
@@ -1163,7 +1175,7 @@ class AIBridge(QObject):
                         active_widget.diff_widget.left_label.setText(label_text)
                     if hasattr(active_widget.diff_widget, 'right_label'):
                         active_widget.diff_widget.right_label.setText(f"新内容:{file_path}")
-                    QTimer.singleShot(100, active_widget.diff_widget.compare_diff)
+                    active_widget.diff_widget.compare_diff()
                     result['success'] = True
                     return
                 original_match = re.search(r'<originalcontent>(.*?)</originalcontent>', args_str, re.DOTALL)
@@ -1240,7 +1252,7 @@ class AIBridge(QObject):
                     active_widget.diff_widget.left_label.setText(f"原内容:{file_path}")
                 if hasattr(active_widget.diff_widget, 'right_label'):
                     active_widget.diff_widget.right_label.setText(f"修改后:{file_path}")
-                QTimer.singleShot(100, active_widget.diff_widget.compare_diff)
+                active_widget.diff_widget.compare_diff()
                 result['success'] = True
             except Exception as e:
                 print(f"Error showing diff: {e}")
