@@ -238,7 +238,6 @@ class AIBridge(QObject):
                 if path is None:
                     return "''"
                 return shlex.quote(str(path))
-
             def _internal_execute_interactive_shell(command: str, cwd: str = '.', request_id: str = None):
                 full_command = "cd " + cwd + ";" + command
                 if not self.main_window:
@@ -271,28 +270,21 @@ class AIBridge(QObject):
                 worker.command_output_ready.connect(on_output_ready)
                 active_widget.execute_command_and_capture(full_command)
                 return "Executing..."
-
             def _internal_execute_silent_shell(command: str, cwd: str = '.'):
                 full_command = "cd " + cwd + "; " + command if cwd != '.' else command
                 if not self.main_window:
                     return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
-
                 active_widget = self.main_window.get_active_ssh_widget()
                 if not active_widget:
                     return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
-
                 worker = None
                 if hasattr(active_widget, 'ssh_widget') and hasattr(active_widget.ssh_widget, 'bridge'):
                     worker = active_widget.ssh_widget.bridge.worker
-
                 if not worker:
                     return json.dumps({"status": "error", "content": "Could not find the SSH worker for the active session."}, ensure_ascii=False)
-
                 if not hasattr(worker, 'execute_silent_command'):
                     return json.dumps({"status": "error", "content": "SSH worker does not have 'execute_silent_command' method."}, ensure_ascii=False)
-
                 output, error, exit_code = worker.execute_silent_command(full_command)
-
                 if exit_code == 0:
                     return output
                 else:
@@ -359,90 +351,9 @@ class AIBridge(QObject):
                         return "\n".join(results)
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"Failed to read file(s): {e}"}, ensure_ascii=False)
-            def write_file(args:str = None, request_id: str = None):
-                """
-                <write_to_file><path>{文件绝对路径}</path><content>{文件内容}</content></write_to_file>
-                """
-                if not args:
-                    return json.dumps({"status": "error", "content": "No arguments provided."}, ensure_ascii=False)
-                if request_id:
-                    self.pending_tool_calls[request_id] = {
-                        'server_name': 'Linux终端',
-                        'tool_name': 'write_file',
-                        'start_time': time.time(),
-                        'widget': self.main_window.get_active_ssh_widget() if self.main_window else None
-                    }
-                def _write_worker():
-                    try:
-                        if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
-                            return
-                        path_match = re.search(r'<path>(.*?)</path>', args, re.DOTALL)
-                        if not path_match:
-                            result = json.dumps({"status": "error", "content": "Missing or invalid <path> tag."}, ensure_ascii=False)
-                            if request_id:
-                                self.toolResultReady.emit(request_id, result)
-                            return result
-                        file_path = path_match.group(1).strip()
-                        if not file_path:
-                            result = json.dumps({"status": "error", "content": "File path cannot be empty."}, ensure_ascii=False)
-                            if request_id:
-                                self.toolResultReady.emit(request_id, result)
-                            return result
-                        content_start_tag = '<content>'
-                        content_end_tag = '</content>'
-                        start_index = args.find(content_start_tag)
-                        end_index = args.rfind(content_end_tag)
-                        if start_index == -1 or end_index == -1 or start_index >= end_index:
-                            result = json.dumps({"status": "error", "content": "Missing or invalid <content> tag."}, ensure_ascii=False)
-                            if request_id:
-                                self.toolResultReady.emit(request_id, result)
-                            return result
-                        content = args[start_index + len(content_start_tag):end_index]
-                        if content.startswith('\n'):
-                            content = content[1:]
-                        if content.endswith('\n'):
-                            content = content[:-1]
-                        if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
-                            return
-                        encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
-                        safe_path = _safe_quote(file_path)
-                        command = f"echo '{encoded_content}' | base64 --decode > {safe_path}"
-                        r = _internal_execute_silent_shell(command)
-                        if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
-                            return
-                        if r == '':
-                            active_widget = self.main_window.get_active_ssh_widget() if self.main_window else None
-                            if active_widget:
-                                widget_key = active_widget.objectName()
-                                self.main_window._refresh_paths(widget_key)
-                            result = json.dumps({"status": "success", "content": f"File '{file_path}' was written successfully."}, ensure_ascii=False)
-                        else:
-                            try:
-                                error_data = json.loads(r)
-                                result = json.dumps(error_data, ensure_ascii=False)
-                            except json.JSONDecodeError:
-                                result = json.dumps({"status": "error", "content": r}, ensure_ascii=False)
-                        if request_id:
-                            self.toolResultReady.emit(request_id, result)
-                        return result
-                    except Exception as e:
-                        result = json.dumps({"status": "error", "content": f"An unexpected error occurred during file creation: {e}"}, ensure_ascii=False)
-                        if request_id:
-                            self.toolResultReady.emit(request_id, result)
-                        return result
-                    finally:
-                        if request_id and request_id in self.pending_tool_calls:
-                            del self.pending_tool_calls[request_id]
-                if request_id:
-                    thread = threading.Thread(target=_write_worker)
-                    thread.daemon = True
-                    thread.start()
-                    return "Executing..."
-                else:
-                    return _write_worker()
             def edit_file(args:str = None, request_id: str = None):
                 """
-                <edit_file><path>{文件绝对路径(必填)}</path><start_line>{开始行号(必填)}</start_line><end_line>{结束行号(必填)}</end_line><originalcontent>{要查找的原始内容(必填)}</originalcontent><replace>{替换成的新内容(必填)}</replace></edit_file>
+                <edit_file><path>{文件绝对路径(必填)}</path><start_line>{开始行号(必填)(-1为复写整个文件)}</start_line><end_line>{结束行号(必填)(-1为复写整个文件)}</end_line><originalcontent>{行范围内原始完整内容(行范围非-1时必填)}</originalcontent><replace>{新内容(必填)}</replace></edit_file>
                 """
                 if not args:
                     return json.dumps({"status": "error", "content": "No arguments provided for edit_file."}, ensure_ascii=False)
@@ -458,8 +369,8 @@ class AIBridge(QObject):
                         if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
                             return
                         path_match = re.search(r'<path>(.*?)</path>', args, re.DOTALL)
-                        start_line_match = re.search(r'<start_line>(\d+)</start_line>', args)
-                        end_line_match = re.search(r'<end_line>(\d+)</end_line>', args)
+                        start_line_match = re.search(r'<start_line>(-?\d+)</start_line>', args)
+                        end_line_match = re.search(r'<end_line>(-?\d+)</end_line>', args)
                         if not (path_match and start_line_match and end_line_match):
                             result = json.dumps({"status": "error", "content": "Missing or invalid path/start_line/end_line tags."}, ensure_ascii=False)
                             if request_id:
@@ -468,6 +379,40 @@ class AIBridge(QObject):
                         file_path = path_match.group(1).strip()
                         start_line = int(start_line_match.group(1))
                         end_line = int(end_line_match.group(1))
+                        if start_line == -1 and end_line == -1:
+                            if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
+                                return
+                            replace_content = re.search(r'<replace>(.*?)</replace>', args, re.DOTALL)
+                            if replace_content is None:
+                                result = json.dumps({"status": "error", "content": "Missing <replace> tag."}, ensure_ascii=False)
+                                if request_id:
+                                    self.toolResultReady.emit(request_id, result)
+                                return result
+                            replace_block = replace_content.group(1)
+                            import os as os_module
+                            parent_dir = os_module.path.dirname(file_path)
+                            if parent_dir:
+                                safe_parent_dir = _safe_quote(parent_dir)
+                                mkdir_command = f"mkdir -p {safe_parent_dir}"
+                                _internal_execute_silent_shell(mkdir_command)
+                            new_content = replace_block.strip() if replace_block.strip() else ""
+                            encoded_content = base64.b64encode(new_content.encode('utf-8')).decode('utf-8')
+                            safe_path = _safe_quote(file_path)
+                            command = f"echo '{encoded_content}' | base64 --decode > {safe_path}"
+                            r = _internal_execute_silent_shell(command)
+                            if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
+                                return
+                            if r == '':
+                                active_widget = self.main_window.get_active_ssh_widget() if self.main_window else None
+                                if active_widget:
+                                    widget_key = active_widget.objectName()
+                                    self.main_window._refresh_paths(widget_key)
+                                result = json.dumps({"status": "success", "content": f"成功创建新文件: {file_path}", "action": "create"}, ensure_ascii=False)
+                            else:
+                                result = json.dumps({"status": "error", "content": f"创建文件失败: {r}"}, ensure_ascii=False)
+                            if request_id:
+                                self.toolResultReady.emit(request_id, result)
+                            return result
                         search_content = re.search(r'<originalcontent>(.*?)</originalcontent>', args, re.DOTALL)
                         if search_content is None:
                             result = json.dumps({"status": "error", "content": "Missing <originalcontent> tag."}, ensure_ascii=False)
@@ -561,23 +506,19 @@ class AIBridge(QObject):
                     return "Executing..."
                 else:
                     return _edit_worker()
-                    
             def navigate_file_manager(path:str = None):
                 if not path:
                     return json.dumps({"status": "error", "content": "No path provided."}, ensure_ascii=False)
                 if not self.main_window:
                     return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
-                
                 active_widget = self.main_window.get_active_ssh_widget()
                 if not active_widget:
                     return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
-
                 if hasattr(active_widget, '_set_file_bar'):
                     QTimer.singleShot(0, lambda: active_widget._set_file_bar(path))
                     return json.dumps({"status": "success", "content": f"Navigated file manager to {path}"}, ensure_ascii=False)
                 else:
                     return json.dumps({"status": "error", "content": "File explorer update function not found in the active session."}, ensure_ascii=False)
-
             def get_terminal_output(count: int = 1):
                 if not self.main_window:
                     return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
@@ -617,16 +558,9 @@ class AIBridge(QObject):
             )
             self.mcp_manager.register_tool_handler(
                 server_name="Linux终端",
-                tool_name="write_file",
-                handler=write_file,
-                description="覆盖服务器文件",
-                auto_approve=False
-            )
-            self.mcp_manager.register_tool_handler(
-                server_name="Linux终端",
                 tool_name="edit_file",
                 handler=edit_file,
-                description="编辑文件",
+                description="新建文件内容/编辑文件内容",
                 auto_approve=False
             )
             self.mcp_manager.register_tool_handler(
@@ -1191,20 +1125,52 @@ class AIBridge(QObject):
                     print("Error: Missing <path> tag")
                     return
                 file_path = path_match.group(1).strip()
-                start_match = re.search(r'<start_line>(\d+)</start_line>', args_str)
-                end_match = re.search(r'<end_line>(\d+)</end_line>', args_str)
+                start_match = re.search(r'<start_line>(-?\d+)</start_line>', args_str)
+                end_match = re.search(r'<end_line>(-?\d+)</end_line>', args_str)
                 if not (start_match and end_match):
                     print("Error: Missing line number tags")
                     return
                 start_line = int(start_match.group(1))
                 end_line = int(end_match.group(1))
-                original_match = re.search(r'<originalcontent>(.*?)</originalcontent>', args_str, re.DOTALL)
                 replace_match = re.search(r'<replace>(.*?)</replace>', args_str, re.DOTALL)
-                if not (original_match and replace_match):
-                    print("Error: Missing content tags")
+                if not replace_match:
+                    print("Error: Missing <replace> tag")
+                    return
+                replace_block = replace_match.group(1)
+                if start_line == -1 and end_line == -1:
+                    if not self.main_window:
+                        return
+                    active_widget = self.main_window.get_active_ssh_widget()
+                    if not active_widget or not hasattr(active_widget, 'diff_widget'):
+                        return
+                    if hasattr(active_widget, 'file_bar') and hasattr(active_widget.file_bar, 'pivot'):
+                        active_widget.file_bar.pivot.items["diff"].show()
+                        active_widget.file_bar.pivot.setCurrentItem('diff')
+                    worker = None
+                    if hasattr(active_widget, 'ssh_widget') and hasattr(active_widget.ssh_widget, 'bridge'):
+                        worker = active_widget.ssh_widget.bridge.worker
+                    if not worker:
+                        print("Error: SSH worker not found")
+                        return
+                    safe_path = shlex.quote(file_path)
+                    check_cmd = f"test -f {safe_path} && cat {safe_path} || echo ''"
+                    existing_content, _, _ = worker.execute_silent_command(check_cmd)
+                    new_content = replace_block.strip() if replace_block.strip() else ""
+                    active_widget.diff_widget.set_left_content(existing_content if existing_content else "")
+                    active_widget.diff_widget.set_right_content(new_content)
+                    if hasattr(active_widget.diff_widget, 'left_label'):
+                        label_text = f"原内容:{file_path}" if existing_content else f"新建文件:{file_path}"
+                        active_widget.diff_widget.left_label.setText(label_text)
+                    if hasattr(active_widget.diff_widget, 'right_label'):
+                        active_widget.diff_widget.right_label.setText(f"新内容:{file_path}")
+                    QTimer.singleShot(100, active_widget.diff_widget.compare_diff)
+                    result['success'] = True
+                    return
+                original_match = re.search(r'<originalcontent>(.*?)</originalcontent>', args_str, re.DOTALL)
+                if not original_match:
+                    print("Error: Missing <originalcontent> tag")
                     return
                 original_block = original_match.group(1)
-                replace_block = replace_match.group(1)
                 if not self.main_window:
                     return
                 active_widget = self.main_window.get_active_ssh_widget()
@@ -1256,7 +1222,7 @@ class AIBridge(QObject):
                     return
                 if hasattr(active_widget, 'file_bar') and hasattr(active_widget.file_bar, 'pivot'):
                     active_widget.file_bar.pivot.items["diff"].show()
-                    QTimer.singleShot(0, lambda: active_widget.file_bar.pivot.setCurrentItem('diff'))
+                    active_widget.file_bar.pivot.setCurrentItem('diff')
                 leading_whitespace = ""
                 if start_line <= len(lines):
                     first_line_of_block = lines[start_line - 1]
