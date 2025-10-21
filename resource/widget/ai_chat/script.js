@@ -764,7 +764,12 @@ class SystemBubble {
   }
   setResult(status, content) {
     this.statusIconElement.innerHTML = '';
-    this.toolCardElement.classList.add('collapsed');
+    setTimeout(() => {
+      if (this.toolCardElement.classList.contains('collapsed')) {
+        return;
+      }
+      this.toolCardElement.classList.add('collapsed');
+    }, 12000);
     if (status === 'approved') {
       this.resultContentElement.innerHTML = this._formatAndHighlight(content);
       this.resultContainer.style.display = 'block';
