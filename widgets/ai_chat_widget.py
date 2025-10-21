@@ -1129,7 +1129,7 @@ class AIBridge(QObject):
         func()
     
     def _do_show_diff_sync(self, args_str: str):
-        result = {'success': False}
+        result = {'success': True}
         def _show_diff():
             try:
                 path_match = re.search(r'<path>(.*?)</path>', args_str, re.DOTALL)

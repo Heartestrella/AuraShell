@@ -3,6 +3,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPlai
 from PyQt5.QtCore import Qt, pyqtSignal, QRect, QSize
 from PyQt5.QtGui import QTextCharFormat, QColor, QTextCursor, QFont, QPainter, QTextBlock
 import difflib
+import diff_match_patch as dmp_module
 
 class LineNumberArea(QWidget):
     def __init__(self, editor):
@@ -69,16 +70,7 @@ class CodeEditor(QPlainTextEdit):
             blockNumber += 1
 
     def highlightCurrentLine(self):
-        extraSelections = []
-        if not self.isReadOnly():
-            selection = QTextEdit.ExtraSelection()
-            lineColor = QColor(60, 60, 60)
-            selection.format.setBackground(lineColor)
-            selection.format.setProperty(QTextCharFormat.FullWidthSelection, True)
-            selection.cursor = self.textCursor()
-            selection.cursor.clearSelection()
-            extraSelections.append(selection)
-        self.setExtraSelections(extraSelections)
+        pass
 
 
 class DiffViewerWidget(QWidget):
@@ -144,6 +136,8 @@ class DiffViewerWidget(QWidget):
         self.right_editor = CodeEditor()
         self.right_editor.setPlaceholderText(self.tr("Enter or paste modified text here..."))
         self._setup_editor_style(self.right_editor)
+        self.left_editor.textChanged.connect(self._on_left_text_changed)
+        self.right_editor.textChanged.connect(self._on_right_text_changed)
         self._sync_scroll_enabled = True
         self.left_editor.verticalScrollBar().valueChanged.connect(
             lambda value: self._sync_scroll(self.left_editor, self.right_editor, value)
@@ -187,27 +181,117 @@ class DiffViewerWidget(QWidget):
     def set_right_content(self, content: str):
         self.right_content = content
         self.right_editor.setPlainText(content)
+    def _on_left_text_changed(self):
+        if hasattr(self, '_comparing'):
+            return
+        self.left_content = ""
+    def _on_right_text_changed(self):
+        if hasattr(self, '_comparing'):
+            return
+        self.right_content = ""
     def compare_diff(self):
-        left_text = self.left_editor.toPlainText()
-        right_text = self.right_editor.toPlainText()
+        self._comparing = True
+        if not self.left_content:
+            self.left_content = self.left_editor.toPlainText()
+        else:
+            self.left_editor.setPlainText(self.left_content)
+        if not self.right_content:
+            self.right_content = self.right_editor.toPlainText()
+        else:
+            self.right_editor.setPlainText(self.right_content)
+        left_text = self.left_content
+        right_text = self.right_content
         self._clear_highlights()
         left_lines = left_text.splitlines()
         right_lines = right_text.splitlines()
         differ = difflib.SequenceMatcher(None, left_lines, right_lines)
+        dmp = dmp_module.diff_match_patch()
         added = 0
         deleted = 0
         modified = 0
+        left_display = []
+        right_display = []
+        left_highlights = []
+        right_highlights = []
         for tag, i1, i2, j1, j2 in differ.get_opcodes():
-            if tag == 'delete':
+            if tag == 'equal':
+                for i in range(i1, i2):
+                    left_display.append(left_lines[i])
+                    right_display.append(right_lines[j1 + (i - i1)])
+            elif tag == 'delete':
                 deleted += (i2 - i1)
-                self._highlight_lines(self.left_editor, i1, i2, QColor(255, 100, 100, 80))
+                for i in range(i1, i2):
+                    line_idx = len(left_display)
+                    left_display.append(left_lines[i])
+                    right_display.append('')
+                    left_highlights.append((line_idx, None, QColor(255, 100, 100, 80)))
             elif tag == 'insert':
                 added += (j2 - j1)
-                self._highlight_lines(self.right_editor, j1, j2, QColor(100, 255, 100, 80))
+                for j in range(j1, j2):
+                    line_idx = len(right_display)
+                    left_display.append('')
+                    right_display.append(right_lines[j])
+                    right_highlights.append((line_idx, None, QColor(100, 255, 100, 80)))
             elif tag == 'replace':
-                modified += max(i2 - i1, j2 - j1)
-                self._highlight_lines(self.left_editor, i1, i2, QColor(255, 200, 100, 80))
-                self._highlight_lines(self.right_editor, j1, j2, QColor(255, 200, 100, 80))
+                num_deleted = i2 - i1
+                num_added = j2 - j1
+                if num_deleted == 1 and num_added == 1:
+                    line_idx = len(left_display)
+                    left_line = left_lines[i1]
+                    right_line = right_lines[j1]
+                    left_display.append(left_line)
+                    right_display.append(right_line)
+                    diffs = dmp.diff_main(left_line, right_line)
+                    dmp.diff_cleanupSemantic(diffs)
+                    left_pos = 0
+                    right_pos = 0
+                    left_char_ranges = []
+                    right_char_ranges = []
+                    for op, text in diffs:
+                        text_len = len(text)
+                        if op == -1:
+                            left_char_ranges.append((left_pos, left_pos + text_len))
+                            left_pos += text_len
+                        elif op == 1:
+                            right_char_ranges.append((right_pos, right_pos + text_len))
+                            right_pos += text_len
+                        else:
+                            left_pos += text_len
+                            right_pos += text_len
+                    if left_char_ranges and right_char_ranges:
+                        modified += 1
+                        left_highlights.append((line_idx, left_char_ranges, QColor(255, 100, 100, 120)))
+                        right_highlights.append((line_idx, right_char_ranges, QColor(100, 255, 100, 120)))
+                    else:
+                        deleted += 1
+                        added += 1
+                        left_highlights.append((line_idx, None, QColor(255, 100, 100, 80)))
+                        right_highlights.append((line_idx, None, QColor(100, 255, 100, 80)))
+                else:
+                    deleted += num_deleted
+                    added += num_added
+                    for i in range(i1, i2):
+                        line_idx = len(left_display)
+                        left_display.append(left_lines[i])
+                        right_display.append('')
+                        left_highlights.append((line_idx, None, QColor(255, 100, 100, 80)))
+                    for j in range(j1, j2):
+                        line_idx = len(left_display)
+                        left_display.append('')
+                        right_display.append(right_lines[j])
+                        right_highlights.append((line_idx, None, QColor(100, 255, 100, 80)))
+        self.left_editor.setPlainText('\n'.join(left_display))
+        self.right_editor.setPlainText('\n'.join(right_display))
+        for line_idx, char_ranges, color in left_highlights:
+            if char_ranges is None:
+                self._highlight_full_line(self.left_editor, line_idx, color)
+            else:
+                self._highlight_char_ranges(self.left_editor, line_idx, char_ranges, color)
+        for line_idx, char_ranges, color in right_highlights:
+            if char_ranges is None:
+                self._highlight_full_line(self.right_editor, line_idx, color)
+            else:
+                self._highlight_char_ranges(self.right_editor, line_idx, char_ranges, color)
         self._show_stats(added, deleted, modified)
     def _highlight_lines(self, editor, start_line, end_line, color):
         cursor = editor.textCursor()
@@ -226,6 +310,47 @@ class DiffViewerWidget(QWidget):
         fmt.setBackground(color)
         cursor.mergeCharFormat(fmt)
         cursor.clearSelection()
+    def _highlight_char_diff(self, editor, line_num, old_line, new_line, color, is_left):
+        s = difflib.SequenceMatcher(None, old_line, new_line, autojunk=False)
+        block = editor.document().findBlockByNumber(line_num)
+        if not block.isValid():
+            return
+        cursor = QTextCursor(block)
+        for tag, i1, i2, j1, j2 in s.get_opcodes():
+            if tag == 'equal':
+                continue
+            if is_left:
+                start_col, end_col = i1, i2
+            else:
+                start_col, end_col = j1, j2
+            if start_col >= end_col:
+                continue
+            cursor.setPosition(block.position() + start_col)
+            cursor.setPosition(block.position() + end_col, QTextCursor.KeepAnchor)
+            fmt = QTextCharFormat()
+            fmt.setBackground(color)
+            cursor.mergeCharFormat(fmt)
+    def _highlight_full_line(self, editor, line_num, color):
+        block = editor.document().findBlockByNumber(line_num)
+        if not block.isValid():
+            return
+        cursor = QTextCursor(block)
+        cursor.movePosition(QTextCursor.StartOfBlock)
+        cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+        fmt = QTextCharFormat()
+        fmt.setBackground(color)
+        cursor.mergeCharFormat(fmt)
+    def _highlight_char_ranges(self, editor, line_num, char_ranges, color):
+        block = editor.document().findBlockByNumber(line_num)
+        if not block.isValid():
+            return
+        for start_col, end_col in char_ranges:
+            cursor = QTextCursor(block)
+            cursor.setPosition(block.position() + start_col)
+            cursor.setPosition(block.position() + end_col, QTextCursor.KeepAnchor)
+            fmt = QTextCharFormat()
+            fmt.setBackground(color)
+            cursor.mergeCharFormat(fmt)
     def _clear_highlights(self):
         left_cursor = self.left_editor.textCursor()
         left_cursor.select(QTextCursor.Document)
@@ -251,7 +376,14 @@ class DiffViewerWidget(QWidget):
                 }
             """)
         else:
-            stats_text = self.tr(f"Differences: {added} added, {deleted} deleted, {modified} modified")
+            parts = []
+            if added > 0:
+                parts.append(self.tr(f"{added} added"))
+            if deleted > 0:
+                parts.append(self.tr(f"{deleted} deleted"))
+            if modified > 0:
+                parts.append(self.tr(f"{modified} modified"))
+            stats_text = self.tr("Differences: ") + ", ".join(parts)
             self.stats_label.setText(stats_text)
             self.stats_label.setStyleSheet("""
                 QLabel {
@@ -274,6 +406,8 @@ class DiffViewerWidget(QWidget):
         target_editor.verticalScrollBar().setValue(value)
         self._sync_scroll_enabled = True
     def clear_all(self):
+        self.left_content = ""
+        self.right_content = ""
         self.left_editor.clear()
         self.right_editor.clear()
         self.stats_label.hide()
