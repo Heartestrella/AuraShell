@@ -1352,8 +1352,15 @@ class AiChatWidget(QWidget):
         if self.browser and event.key() == Qt.Key_F5:
             self.browser.reload()
         elif event.key() == Qt.Key_F12:
-            if os.environ.get('QTWEBENGINE_REMOTE_DEBUGGING'):
-                QDesktopServices.openUrl(QUrl("http://localhost:" + str(os.environ['QTWEBENGINE_REMOTE_DEBUGGING'])))
+            is_debug = os.environ.get('QTWEBENGINE_REMOTE_DEBUGGING')
+            modifiers = event.modifiers()
+            should_open = False
+            if is_debug and modifiers == Qt.NoModifier:
+                should_open = True
+            elif not is_debug and modifiers == (Qt.ControlModifier | Qt.AltModifier | Qt.ShiftModifier):
+                should_open = True
+            if should_open and is_debug:
+                QDesktopServices.openUrl(QUrl("http://localhost:" + str(is_debug)))
         else:
             super().keyPressEvent(event)
             

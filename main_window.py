@@ -214,10 +214,6 @@ class Window(FramelessWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        if isDebugMode():
-            os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = '3354'
-            print('Debug mode enabled: http://localhost:' +
-                  os.environ['QTWEBENGINE_REMOTE_DEBUGGING'])
         self.icons = My_Icons()
         self.expander_bar_width = 8
         self.active_transfers = {}
@@ -1990,22 +1986,38 @@ def check_for_update_lock_and_recover():
         return True
 
 
-def has_chinese(text):
-    """判断文本是否包含中文"""
-    pattern = re.compile(r'[\u4e00-\u9fff]+')  # 匹配中文字符
-    return bool(pattern.search(text))
+def has_non_ascii(s):
+    try:
+        s.encode('ascii')
+    except UnicodeEncodeError:
+        return True
+    else:
+        return False
 
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--update', action='store_true', help='Run the updater.')
+    parser.add_argument('--remote-debugging-port', type=int, help='Enable remote debugging on a specified port.')
+    args, unknown = parser.parse_known_args()
+
+    if args.remote_debugging_port:
+        os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = str(args.remote_debugging_port)
+        print(f"Remote debugging enabled: http://localhost:{args.remote_debugging_port}")
+    elif isDebugMode():
+        os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = '3354'
+        print(f"Debug mode enabled: http://localhost:{os.environ['QTWEBENGINE_REMOTE_DEBUGGING']}")
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    if has_chinese(script_dir):
-        update_splash_progress("路径包含中文拒绝启动")
+    if has_non_ascii(script_dir):
+        update_splash_progress("包含非 ASCII 字符.请移动软件目录至不包含非 ASCII 字符或纯英文的路径.")
     else:
-        if len(sys.argv) > 1 and sys.argv[1] == '--update':
+        if args.update:
             if pyi_splash:
                 pyi_splash.close()
             from tools.updater import main as updater_main
-            updater_args = [sys.argv[0]] + sys.argv[2:]
+            updater_args = [sys.argv[0]] + unknown
             sys.argv = updater_args
             updater_main()
             sys.exit(0)
