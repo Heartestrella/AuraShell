@@ -821,7 +821,7 @@ class AIBridge(QObject):
     @pyqtSlot(result=str)
     def getDefaultModels(self):
         models = self.model_manager._get_default_models()
-        return json.dumps(models.get("AuraShellVip-深度思考"), ensure_ascii=False)
+        return json.dumps(models.get("NeoSSHVip-深度思考"), ensure_ascii=False)
 
     @pyqtSlot(str, result=str)
     def detectLanguage(self, text):
@@ -834,7 +834,7 @@ class AIBridge(QObject):
     @pyqtSlot(str, str, result=str)
     def translateText(self, text, target_language):
         try:
-            model_info = self.model_manager._get_default_models().get("AuraShellVip-深度思考")
+            model_info = self.model_manager._get_default_models().get("NeoSSHVip-深度思考")
             if not model_info: return "翻译模型未配置"
             api_url = model_info.get("api_url")
             model_name = model_info.get("model_name")

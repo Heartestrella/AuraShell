@@ -8,7 +8,7 @@ class AIModelManager:
         self.models_file = self.config_dir / "ai_models.json"
         self._ensure_config_dir()
         self.models_cache = self.load_models()
-        delModel = ["AuraShellVip"]
+        delModel = ["AuraShellVip", "AuraShellVip-深度思考", "AuraShellVip-非深度思考"]
         for model in delModel:
             if model in self.models_cache:
                 del self.models_cache[model]
@@ -19,14 +19,14 @@ class AIModelManager:
 
     def _get_default_models(self) -> Dict[str, Dict[str, Any]]:
         return {
-            "AuraShellVip-深度思考": {
+            "NeoSSHVip-深度思考": {
                 "api_url": "https://aurashell-aichatapi.beefuny.shop/v1",
-                "model_name": "AuraShellVip",
+                "model_name": "NeoSSHVip",
                 "key": "68*w&t7457#h8S*LS@*W1q8I%DMXMq!MT8#!"
             },
-            "AuraShellVip-非深度思考": {
+            "NeoSSHVip-非深度思考": {
                 "api_url": "https://aurashell-aichatapi.beefuny.shop/v1",
-                "model_name": "AuraShellVip-Fast",
+                "model_name": "NeoSSHVip-Fast",
                 "key": "68*w&t7457#h8S*LS@*W1q8I%DMXMq!MT8#!"
             }
         }

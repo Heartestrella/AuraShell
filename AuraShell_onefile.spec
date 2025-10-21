@@ -37,7 +37,7 @@ exe = EXE(
     splash,
     splash.binaries,
     [],
-    name='AuraShell',
+    name='NeoSSH',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

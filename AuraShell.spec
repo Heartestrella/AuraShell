@@ -37,7 +37,7 @@ exe = EXE(
     splash,
     splash.binaries,
     exclude_binaries=True,
-    name='AuraShell',
+    name='NeoSSH',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -57,5 +57,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='AuraShell',
+    name='NeoSSH',
 )
