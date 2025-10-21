@@ -332,11 +332,27 @@ body {
   }
 }
 .tool-call-body {
-  padding: 15px;
+  padding: 5px;
+  max-height: 500px;
+  overflow: hidden;
+  transition: max-height 0.4s linear, padding 0.4s linear;
 }
 .tool-call-body .code-block {
-  padding: 12px;
   font-size: 13px;
+}
+.tool-call-result {
+  border: 1px solid #014629;
+  max-height: 500px;
+  overflow: hidden;
+  transition: max-height 0.4s linear, padding 0.4s linear;
+}
+.tool-call-card.collapsed .tool-call-body,
+.tool-call-card.collapsed .tool-call-result {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top: none;
+  overflow: hidden;
 }
 .chat-footer {
   padding: 15px 20px;

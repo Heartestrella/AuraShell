@@ -764,23 +764,19 @@ class SystemBubble {
   }
   setResult(status, content) {
     this.statusIconElement.innerHTML = '';
-    this.bodyContainer.style.display = 'none';
+    this.toolCardElement.classList.add('collapsed');
     if (status === 'approved') {
       this.resultContentElement.innerHTML = this._formatAndHighlight(content);
+      this.resultContainer.style.display = 'block';
       this.statusIconElement.textContent = '▼';
       this.statusIconElement.classList.add('success');
       this.headerElement.addEventListener('click', () => {
-        const isCollapsed = this.bodyContainer.style.display === 'none';
-        const hasResult = this.resultContentElement.textContent.trim() !== '';
+        const isCollapsed = this.toolCardElement.classList.contains('collapsed');
         if (isCollapsed) {
-          this.bodyContainer.style.display = 'block';
-          if (hasResult) {
-            this.resultContainer.style.display = 'block';
-          }
+          this.toolCardElement.classList.remove('collapsed');
           this.statusIconElement.textContent = '▲';
         } else {
-          this.bodyContainer.style.display = 'none';
-          this.resultContainer.style.display = 'none';
+          this.toolCardElement.classList.add('collapsed');
           this.statusIconElement.textContent = '▼';
         }
       });
@@ -788,8 +784,12 @@ class SystemBubble {
       this.statusIconElement.textContent = '❌';
       this.resultContainer.style.display = 'none';
       this.headerElement.addEventListener('click', () => {
-        const isHidden = this.bodyContainer.style.display === 'none';
-        this.bodyContainer.style.display = isHidden ? 'block' : 'none';
+        const isCollapsed = this.toolCardElement.classList.contains('collapsed');
+        if (isCollapsed) {
+          this.toolCardElement.classList.remove('collapsed');
+        } else {
+          this.toolCardElement.classList.add('collapsed');
+        }
       });
     }
   }
