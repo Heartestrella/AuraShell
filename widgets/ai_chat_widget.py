@@ -353,7 +353,7 @@ class AIBridge(QObject):
                     return json.dumps({"status": "error", "content": f"Failed to read file(s): {e}"}, ensure_ascii=False)
             def edit_file(args:str = None, request_id: str = None):
                 """
-                <edit_file><path>{文件绝对路径(必填)}</path><start_line>{开始行号(必填)(-1为复写整个文件)}</start_line><end_line>{结束行号(必填)(-1为复写整个文件)}</end_line><originalcontent>{行范围内原始完整内容(行范围非-1时必填)}</originalcontent><replace>{新内容(必填)}</replace></edit_file>
+                <edit_file><path>{文件绝对路径(必填)}</path><start_line>{开始行号(必填)(-1为覆写整个文件)}</start_line><end_line>{结束行号(必填)(-1为覆写整个文件)}</end_line><originalcontent>{行范围内原始完整内容(行范围非-1时必填)}</originalcontent><replace>{新内容(必填)}</replace></edit_file>
                 """
                 if not args:
                     return json.dumps({"status": "error", "content": "No arguments provided for edit_file."}, ensure_ascii=False)
@@ -560,7 +560,7 @@ class AIBridge(QObject):
                 server_name="Linux终端",
                 tool_name="edit_file",
                 handler=edit_file,
-                description="新建文件内容/编辑文件内容",
+                description="覆写文件内容/编辑文件内容",
                 auto_approve=False
             )
             self.mcp_manager.register_tool_handler(
