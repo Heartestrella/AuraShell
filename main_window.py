@@ -8,7 +8,7 @@ from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter, QLabel
 from widgets.editor_widget import EditorWidget
 from qfluentwidgets import (NavigationInterface,  NavigationItemPosition, InfoBar,
-                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, NavigationAvatarWidget, MessageBoxBase, SubtitleLabel, CheckBox, Dialog)
+                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, IconWidget, NavigationAvatarWidget, MessageBoxBase, SubtitleLabel, CheckBox, Dialog)
 from tools.animation_manager import PageTransitionAnimator
 from qfluentwidgets.common.config import qconfig
 from qframelesswindow import FramelessWindow, StandardTitleBar
@@ -40,6 +40,7 @@ import pyperclip as cb
 import psutil
 from widgets.session_dialog import PasswordDialog
 import re
+from widgets.account_widget import AccountPage
 try:
     import ctypes
 except:
@@ -64,7 +65,8 @@ mime_types = [
 
 def isDebugMode():
     """Check if the application is running under a debugger."""
-    return sys.gettrace() is not None
+    return True
+    # return sys.gettrace() is not None
 
 
 class PermissionDialog(MessageBoxBase):
@@ -259,6 +261,8 @@ class Window(FramelessWindow):
             self, showMenuButton=True)
         self.stackWidget = QStackedWidget(self)
         self.sidePanel = SidePanelWidget(self, main_window=self)
+        self.sidePanel.aichat_widget.bridge.userinfo_got.connect(
+            lambda name, qid: self.account_widget.update_account_info(name, qid, email=f"{qid}@qq.com", avatar_url=f'http://q.qlogo.cn/headimg_dl?dst_uin={qid}&spec=640&img_type=png'))
         self.sidePanel.tabActivity.connect(self._ensure_side_panel_visible)
 
         # create sub interface
@@ -315,7 +319,7 @@ class Window(FramelessWindow):
         #     self.set_background_opacity)
         self._on_theme_changed(
             self.settingInterface.cfg.background_color.value)
-
+        self.init_account()
         self.initLayout()
         self.initNavigation()
 
@@ -326,7 +330,7 @@ class Window(FramelessWindow):
         self.initWindow()
         if setting_.read_config()["maximized"]:
             self.showMaximized()
-
+        # self.switchTo(self.MainInterface)
         self.checker = CheckUpdate()
         self.checker.start()
 
@@ -1399,12 +1403,33 @@ class Window(FramelessWindow):
             onClick=self._open_github,
             position=NavigationItemPosition.BOTTOM,
         )
+        self.navigationInterface.addWidget(
+            routeKey='account',
+            widget=NavigationAvatarWidget(
+                'Account', resource_path('resource/icons/avatar.jpg')),
+            onClick=lambda: (
+                self.switchTo(self.account_widget),
+                self.navigationInterface.setCurrentItem('account')
+            ),
+            position=NavigationItemPosition.BOTTOM,
+        )
 
+        # self.navigationInterface.addSeparator()
+        # self.addSubInterface(self.account_widget, FIF.PEOPLE, self.tr(
+        #     "Account"), position=NavigationItemPosition.BOTTOM)
         self.addSubInterface(self.settingInterface, FIF.SETTING,
                              self.tr("Setting"), NavigationItemPosition.BOTTOM)
+
         self.stackWidget.currentChanged.connect(self.onCurrentInterfaceChanged)
-        self.stackWidget.setCurrentIndex(0)
-        self.onCurrentInterfaceChanged(0)
+        self.stackWidget.setCurrentIndex(1)
+        self.onCurrentInterfaceChanged(1)
+
+    def init_account(self):
+        self.account_widget = AccountPage("Test", "12345", "1@neossh.top", resource_path(
+            'resource/icons/avatar.jpg'), "内测合作套餐 / 每月100K tokens")
+        self.account_widget.setObjectName("accountPage")
+        self.stackWidget.addWidget(self.account_widget)
+        # self.stackWidget.addWidget(self.account_widget)
 
     def _open_github(self):
         github_url = QUrl("https://github.com/Heartestrella/P-SSH")

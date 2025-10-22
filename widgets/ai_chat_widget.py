@@ -27,13 +27,15 @@ if typing.TYPE_CHECKING:
 
 CONFIGER = SCM()
 
+
 class AIBridge(QObject):
     toolResultReady = pyqtSignal(str, str)
     backendCallReady = pyqtSignal(str, str)
     streamChunkReceived = pyqtSignal(str, str)
     streamFinished = pyqtSignal(str, int, str, str)
     streamFailed = pyqtSignal(str, str)
-    
+    userinfo_got = pyqtSignal(str, str)  # username , qid
+
     def __init__(self, parent=None, main_window: 'Window' = None):
         super().__init__(parent)
         self.main_window = main_window
@@ -46,7 +48,8 @@ class AIBridge(QObject):
         self.qq_number = None
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            tokenizer_path = os.path.join(current_dir, '..', 'resource', 'models', 'tokenizer.json')
+            tokenizer_path = os.path.join(
+                current_dir, '..', 'resource', 'models', 'tokenizer.json')
             self.tokenizer = Tokenizer.from_file(tokenizer_path)
         except Exception as e:
             self.tokenizer = None
@@ -56,9 +59,11 @@ class AIBridge(QObject):
     def _register_tool_handlers(self):
         def 超级内容():
             ApiKey = "ctx7sk-e56f0c2f-317c-4da3-9aa7-0a207313118e"
+
             def _execute_context7_tool(tool_name: str, args: str, request_id: str):
                 if request_id:
                     self.active_requests[request_id] = {'cancelled': False}
+
                 def _worker():
                     try:
                         if self.active_requests.get(request_id, {}).get('cancelled'):
@@ -81,28 +86,38 @@ class AIBridge(QObject):
                                     if protocol.startswith('socks'):
                                         proxy_scheme = 'socks5h' if protocol == 'socks5' else protocol
                                         proxy_url = f"{proxy_scheme}://{auth}{host}:{port}"
-                                        proxies = {"http": proxy_url, "https": proxy_url}
+                                        proxies = {"http": proxy_url,
+                                                   "https": proxy_url}
                                     else:
-                                        proxies = {"http": proxy_url, "https": proxy_url}
+                                        proxies = {"http": proxy_url,
+                                                   "https": proxy_url}
                             except (json.JSONDecodeError, AttributeError):
                                 pass
                         headers = {
                             "Authorization": f"Bearer {ApiKey}"
                         }
                         if tool_name == "resolve-library-id":
-                            library_match = re.search(r'<libraryName>(.*?)</libraryName>', args, re.DOTALL)
+                            library_match = re.search(
+                                r'<libraryName>(.*?)</libraryName>', args, re.DOTALL)
                             if not library_match:
-                                raise ValueError("Missing libraryName parameter")
+                                raise ValueError(
+                                    "Missing libraryName parameter")
                             library_name = library_match.group(1).strip()
                             search_url = f"https://context7.com/api/v1/search?query={requests.utils.quote(library_name)}"
-                            response = requests.get(search_url, headers=headers, timeout=120, proxies=proxies)
+                            response = requests.get(
+                                search_url, headers=headers, timeout=120, proxies=proxies)
                         elif tool_name == "get-library-docs":
-                            library_id_match = re.search(r'<context7CompatibleLibraryID>(.*?)</context7CompatibleLibraryID>', args, re.DOTALL)
+                            library_id_match = re.search(
+                                r'<context7CompatibleLibraryID>(.*?)</context7CompatibleLibraryID>', args, re.DOTALL)
                             if not library_id_match:
-                                raise ValueError("Missing context7CompatibleLibraryID parameter")
-                            library_id = library_id_match.group(1).strip().lstrip('/')
-                            topic_match = re.search(r'<topic>(.*?)</topic>', args, re.DOTALL)
-                            tokens_match = re.search(r'<tokens>(\d+)</tokens>', args, re.DOTALL)
+                                raise ValueError(
+                                    "Missing context7CompatibleLibraryID parameter")
+                            library_id = library_id_match.group(
+                                1).strip().lstrip('/')
+                            topic_match = re.search(
+                                r'<topic>(.*?)</topic>', args, re.DOTALL)
+                            tokens_match = re.search(
+                                r'<tokens>(\d+)</tokens>', args, re.DOTALL)
                             params = {"type": "json"}
                             if topic_match:
                                 params["topic"] = topic_match.group(1).strip()
@@ -111,12 +126,14 @@ class AIBridge(QObject):
                             else:
                                 params["tokens"] = str(5000*4)
                             docs_url = f"https://context7.com/api/v1/{library_id}"
-                            response = requests.get(docs_url, headers=headers, params=params, timeout=120, proxies=proxies)
+                            response = requests.get(
+                                docs_url, headers=headers, params=params, timeout=120, proxies=proxies)
                         else:
                             raise ValueError(f"Unknown tool: {tool_name}")
                         response.raise_for_status()
                         if not self.active_requests.get(request_id, {}).get('cancelled'):
-                            self.toolResultReady.emit(request_id, response.text)
+                            self.toolResultReady.emit(
+                                request_id, response.text)
                     except requests.exceptions.RequestException as e:
                         if not self.active_requests.get(request_id, {}).get('cancelled'):
                             self.toolResultReady.emit(request_id, str(e))
@@ -136,14 +153,14 @@ class AIBridge(QObject):
                 <libraryName>Library name to search for and retrieve a Context7-compatible library ID.</libraryName>
                 """
                 return _execute_context7_tool("resolve-library-id", args, request_id)
-            
+
             def get_library_docs(args: str = '', request_id: str = None):
                 """
                 <context7CompatibleLibraryID>Exact Context7-compatible library ID (e.g., '/mongodb/docs', '/vercel/next.js', '/supabase/supabase', '/vercel/next.js/v14.3.0-canary.87') retrieved from 'resolve-library-id' or directly from user query in the format '/org/project' or '/org/project/version'.</context7CompatibleLibraryID>
                 <topic>Topic to focus documentation on (e.g., 'hooks', 'routing').</topic>
                 """
                 return _execute_context7_tool("get-library-docs", args, request_id)
-            
+
             self.mcp_manager.register_tool_handler(
                 server_name="超级内容",
                 tool_name="resolve_library_id",
@@ -158,11 +175,13 @@ class AIBridge(QObject):
                 description="Fetches up-to-date documentation for a library. You must call 'resolve-library-id' first to obtain the exact Context7-compatible library ID required to use this tool, UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.",
                 auto_approve=True
             )
+
         def 通用():
             def fetchWeb(url: str, method: str = "GET", body: str = None, headers: dict = None, only_body: bool = True, request_id: str = None) -> str:
                 effective_headers = headers.copy() if headers is not None else {}
                 if request_id:
                     self.active_requests[request_id] = {'cancelled': False}
+
                 def _fetch_worker():
                     try:
                         if self.active_requests.get(request_id, {}).get('cancelled'):
@@ -185,14 +204,17 @@ class AIBridge(QObject):
                                     if protocol.startswith('socks'):
                                         proxy_scheme = 'socks5h' if protocol == 'socks5' else protocol
                                         proxy_url = f"{proxy_scheme}://{auth}{host}:{port}"
-                                        proxies = {"http": proxy_url, "https": proxy_url}
+                                        proxies = {"http": proxy_url,
+                                                   "https": proxy_url}
                                     else:
-                                        proxies = {"http": proxy_url, "https": proxy_url}
+                                        proxies = {"http": proxy_url,
+                                                   "https": proxy_url}
                             except (json.JSONDecodeError, AttributeError):
                                 pass
                         if "User-Agent" not in effective_headers:
                             effective_headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-                        response = requests.request(method.upper(), url, headers=effective_headers, data=body, timeout=10, proxies=proxies, allow_redirects=True, stream=True)
+                        response = requests.request(method.upper(
+                        ), url, headers=effective_headers, data=body, timeout=10, proxies=proxies, allow_redirects=True, stream=True)
                         response.raise_for_status()
                         content_chunks = []
                         for chunk in response.iter_content(chunk_size=8192):
@@ -201,7 +223,8 @@ class AIBridge(QObject):
                             content_chunks.append(chunk)
                         if self.active_requests.get(request_id, {}).get('cancelled'):
                             return
-                        full_content = b''.join(content_chunks).decode('utf-8', errors='ignore')
+                        full_content = b''.join(content_chunks).decode(
+                            'utf-8', errors='ignore')
                         content = ""
                         if only_body:
                             soup = BeautifulSoup(full_content, 'html.parser')
@@ -233,18 +256,21 @@ class AIBridge(QObject):
                 description="获取网页内容",
                 auto_approve=True
             )
+
         def Linux终端():
             def _safe_quote(path):
                 if path is None:
                     return "''"
                 return shlex.quote(str(path))
+
             def _internal_execute_interactive_shell(command: str, cwd: str = '.', request_id: str = None):
                 full_command = "cd " + cwd + ";" + command
                 if not self.main_window:
                     return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
                 active_widget = None
                 if request_id and request_id in self.pending_tool_calls:
-                    active_widget = self.pending_tool_calls[request_id].get('widget')
+                    active_widget = self.pending_tool_calls[request_id].get(
+                        'widget')
                 if not active_widget:
                     active_widget = self.main_window.get_active_ssh_widget()
                 if not active_widget:
@@ -256,6 +282,7 @@ class AIBridge(QObject):
                     return json.dumps({"status": "error", "content": "Could not find the SSH worker for the active session."}, ensure_ascii=False)
                 if request_id:
                     self.pending_tool_calls[request_id]['worker'] = worker
+
                 def on_output_ready(result_str, code):
                     try:
                         if request_id in self.pending_tool_calls:
@@ -270,6 +297,7 @@ class AIBridge(QObject):
                 worker.command_output_ready.connect(on_output_ready)
                 active_widget.execute_command_and_capture(full_command)
                 return "Executing..."
+
             def _internal_execute_silent_shell(command: str, cwd: str = '.'):
                 full_command = "cd " + cwd + "; " + command if cwd != '.' else command
                 if not self.main_window:
@@ -284,11 +312,13 @@ class AIBridge(QObject):
                     return json.dumps({"status": "error", "content": "Could not find the SSH worker for the active session."}, ensure_ascii=False)
                 if not hasattr(worker, 'execute_silent_command'):
                     return json.dumps({"status": "error", "content": "SSH worker does not have 'execute_silent_command' method."}, ensure_ascii=False)
-                output, error, exit_code = worker.execute_silent_command(full_command)
+                output, error, exit_code = worker.execute_silent_command(
+                    full_command)
                 if exit_code == 0:
                     return output
                 else:
                     return json.dumps({"status": "error", "content": error, "exit_code": exit_code}, ensure_ascii=False)
+
             def exe_shell(args: str = '', request_id: str = None):
                 """
                 <exe_shell><shell>{要执行的命令}</shell><cwd>{工作目录}</cwd><reason>{简单且易懂的执行理由或原因或目的}</reason></exe_shell>
@@ -296,7 +326,8 @@ class AIBridge(QObject):
                 if not args:
                     return json.dumps({"status": "error", "content": "No arguments provided."}, ensure_ascii=False)
                 try:
-                    shell_match = re.search(r'<shell>([\s\S]*?)</shell>', args, re.DOTALL)
+                    shell_match = re.search(
+                        r'<shell>([\s\S]*?)</shell>', args, re.DOTALL)
                     if not shell_match:
                         return json.dumps({"status": "error", "content": "Missing or invalid <shell> tag."}, ensure_ascii=False)
                     shell = shell_match.group(1)
@@ -305,6 +336,7 @@ class AIBridge(QObject):
                     return _internal_execute_interactive_shell(shell, cwd, request_id)
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"An unexpected error occurred: {e}"}, ensure_ascii=False)
+
             def read_file(file_path: list = None, show_line: bool = False, start_line: int = None, end_line: int = None):
                 if not file_path:
                     return json.dumps({"status": "error", "content": "No file path provided or list is empty."}, ensure_ascii=False)
@@ -329,29 +361,36 @@ class AIBridge(QObject):
                             safe_path = _safe_quote(path)
                             if start_line is not None and end_line is not None:
                                 if start_line < 1 or end_line < start_line:
-                                    content = json.dumps({"status": "error", "content": "Invalid line range."}, ensure_ascii=False)
+                                    content = json.dumps(
+                                        {"status": "error", "content": "Invalid line range."}, ensure_ascii=False)
                                 elif show_line:
                                     command = f"sed -n '{start_line},{end_line}p' {safe_path} | awk '{{print NR+{start_line-1}\"|\" $0}}'"
-                                    content = _internal_execute_silent_shell(command)
+                                    content = _internal_execute_silent_shell(
+                                        command)
                                 else:
                                     command = f"sed -n '{start_line},{end_line}p' {safe_path}"
-                                    content = _internal_execute_silent_shell(command)
+                                    content = _internal_execute_silent_shell(
+                                        command)
                             else:
                                 command = f"cat {safe_path}"
                                 if show_line:
                                     command = f"awk '{{print NR\"|\" $0}}' {safe_path}"
-                                content = _internal_execute_silent_shell(command)
+                                content = _internal_execute_silent_shell(
+                                    command)
                             try:
                                 error_data = json.loads(content)
                                 if isinstance(error_data, dict) and error_data.get("status") == "error":
-                                    content = error_data.get("content", "Unknown error")
+                                    content = error_data.get(
+                                        "content", "Unknown error")
                             except (json.JSONDecodeError, TypeError):
                                 pass
-                            results.append(f"<filePath={path}>\n{content}\n<filePath>")
+                            results.append(
+                                f"<filePath={path}>\n{content}\n<filePath>")
                         return "\n".join(results)
                 except Exception as e:
                     return json.dumps({"status": "error", "content": f"Failed to read file(s): {e}"}, ensure_ascii=False)
-            def edit_file(args:str = None, request_id: str = None):
+
+            def edit_file(args: str = None, request_id: str = None):
                 """
                 <edit_file><path>{文件绝对路径(必填)}</path><start_line>{开始行号(必填)(-1为覆写整个文件)}</start_line><end_line>{结束行号(必填)(-1为覆写整个文件)}</end_line><originalcontent>{行范围内原始完整内容(行范围非-1时必填)}</originalcontent><replace>{新内容(必填)}</replace></edit_file>
                 """
@@ -364,15 +403,20 @@ class AIBridge(QObject):
                         'start_time': time.time(),
                         'widget': self.main_window.get_active_ssh_widget() if self.main_window else None
                     }
+
                 def _edit_worker():
                     try:
                         if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
                             return
-                        path_match = re.search(r'<path>(.*?)</path>', args, re.DOTALL)
-                        start_line_match = re.search(r'<start_line>(-?\d+)</start_line>', args)
-                        end_line_match = re.search(r'<end_line>(-?\d+)</end_line>', args)
+                        path_match = re.search(
+                            r'<path>(.*?)</path>', args, re.DOTALL)
+                        start_line_match = re.search(
+                            r'<start_line>(-?\d+)</start_line>', args)
+                        end_line_match = re.search(
+                            r'<end_line>(-?\d+)</end_line>', args)
                         if not (path_match and start_line_match and end_line_match):
-                            result = json.dumps({"status": "error", "content": "Missing or invalid path/start_line/end_line tags."}, ensure_ascii=False)
+                            result = json.dumps(
+                                {"status": "error", "content": "Missing or invalid path/start_line/end_line tags."}, ensure_ascii=False)
                             if request_id:
                                 self.toolResultReady.emit(request_id, result)
                             return result
@@ -382,11 +426,14 @@ class AIBridge(QObject):
                         if start_line == -1 and end_line == -1:
                             if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
                                 return
-                            replace_content = re.search(r'<replace>(.*?)</replace>', args, re.DOTALL)
+                            replace_content = re.search(
+                                r'<replace>(.*?)</replace>', args, re.DOTALL)
                             if replace_content is None:
-                                result = json.dumps({"status": "error", "content": "Missing <replace> tag."}, ensure_ascii=False)
+                                result = json.dumps(
+                                    {"status": "error", "content": "Missing <replace> tag."}, ensure_ascii=False)
                                 if request_id:
-                                    self.toolResultReady.emit(request_id, result)
+                                    self.toolResultReady.emit(
+                                        request_id, result)
                                 return result
                             replace_block = replace_content.group(1)
                             import os as os_module
@@ -396,7 +443,8 @@ class AIBridge(QObject):
                                 mkdir_command = f"mkdir -p {safe_parent_dir}"
                                 _internal_execute_silent_shell(mkdir_command)
                             new_content = replace_block.strip() if replace_block.strip() else ""
-                            encoded_content = base64.b64encode(new_content.encode('utf-8')).decode('utf-8')
+                            encoded_content = base64.b64encode(
+                                new_content.encode('utf-8')).decode('utf-8')
                             safe_path = _safe_quote(file_path)
                             command = f"echo '{encoded_content}' | base64 --decode > {safe_path}"
                             r = _internal_execute_silent_shell(command)
@@ -407,22 +455,28 @@ class AIBridge(QObject):
                                 if active_widget:
                                     widget_key = active_widget.objectName()
                                     self.main_window._refresh_paths(widget_key)
-                                result = json.dumps({"status": "success", "content": f"成功创建新文件: {file_path}", "action": "create"}, ensure_ascii=False)
+                                result = json.dumps(
+                                    {"status": "success", "content": f"成功创建新文件: {file_path}", "action": "create"}, ensure_ascii=False)
                             else:
-                                result = json.dumps({"status": "error", "content": f"创建文件失败: {r}"}, ensure_ascii=False)
+                                result = json.dumps(
+                                    {"status": "error", "content": f"创建文件失败: {r}"}, ensure_ascii=False)
                             if request_id:
                                 self.toolResultReady.emit(request_id, result)
                             return result
-                        search_content = re.search(r'<originalcontent>(.*?)</originalcontent>', args, re.DOTALL)
+                        search_content = re.search(
+                            r'<originalcontent>(.*?)</originalcontent>', args, re.DOTALL)
                         if search_content is None:
-                            result = json.dumps({"status": "error", "content": "Missing <originalcontent> tag."}, ensure_ascii=False)
+                            result = json.dumps(
+                                {"status": "error", "content": "Missing <originalcontent> tag."}, ensure_ascii=False)
                             if request_id:
                                 self.toolResultReady.emit(request_id, result)
                             return result
                         search_block = search_content.group(1)
-                        replace_content = re.search(r'<replace>(.*?)</replace>', args, re.DOTALL)
+                        replace_content = re.search(
+                            r'<replace>(.*?)</replace>', args, re.DOTALL)
                         if replace_content is None:
-                            result = json.dumps({"status": "error", "content": "Missing <replace> tag."}, ensure_ascii=False)
+                            result = json.dumps(
+                                {"status": "error", "content": "Missing <replace> tag."}, ensure_ascii=False)
                             if request_id:
                                 self.toolResultReady.emit(request_id, result)
                             return result
@@ -434,7 +488,8 @@ class AIBridge(QObject):
                             remote_data = json.loads(remote_content_json)
                             if remote_data.get("status") == "error":
                                 if request_id:
-                                    self.toolResultReady.emit(request_id, remote_content_json)
+                                    self.toolResultReady.emit(
+                                        request_id, remote_content_json)
                                 return remote_content_json
                             remote_content = remote_data.get("content", "")
                         except (json.JSONDecodeError, AttributeError):
@@ -444,7 +499,8 @@ class AIBridge(QObject):
                         remote_content = remote_content.replace('\r', '')
                         lines = remote_content.splitlines(True)
                         if not (1 <= start_line <= end_line <= len(lines)):
-                            result = json.dumps({"status": "error", "content": f"Line numbers out of bounds. File has {len(lines)} lines."}, ensure_ascii=False)
+                            result = json.dumps(
+                                {"status": "error", "content": f"Line numbers out of bounds. File has {len(lines)} lines."}, ensure_ascii=False)
                             if request_id:
                                 self.toolResultReady.emit(request_id, result)
                             return result
@@ -471,10 +527,13 @@ class AIBridge(QObject):
                         new_content_parts = []
                         if replace_block_stripped:
                             replace_lines = replace_block_stripped.splitlines()
-                            new_content_parts = [line + line_ending for line in replace_lines]
-                        new_lines = lines[:start_line - 1] + new_content_parts + lines[end_line:]
+                            new_content_parts = [
+                                line + line_ending for line in replace_lines]
+                        new_lines = lines[:start_line - 1] + \
+                            new_content_parts + lines[end_line:]
                         new_full_content = "".join(new_lines)
-                        encoded_content = base64.b64encode(new_full_content.encode('utf-8')).decode('utf-8')
+                        encoded_content = base64.b64encode(
+                            new_full_content.encode('utf-8')).decode('utf-8')
                         safe_path = _safe_quote(file_path)
                         command = f"echo '{encoded_content}' | base64 --decode > {safe_path}"
                         r = _internal_execute_silent_shell(command)
@@ -485,14 +544,17 @@ class AIBridge(QObject):
                             if active_widget:
                                 widget_key = active_widget.objectName()
                                 self.main_window._refresh_paths(widget_key)
-                            result = json.dumps({"status": "success", "content": f"{file_path} {start_line}-{end_line} {search_block} -> {replace_block}"}, ensure_ascii=False)
+                            result = json.dumps(
+                                {"status": "success", "content": f"{file_path} {start_line}-{end_line} {search_block} -> {replace_block}"}, ensure_ascii=False)
                         else:
-                            result = json.dumps({"status": "error", "content": r}, ensure_ascii=False)
+                            result = json.dumps(
+                                {"status": "error", "content": r}, ensure_ascii=False)
                         if request_id:
                             self.toolResultReady.emit(request_id, result)
                         return result
                     except Exception as e:
-                        result = json.dumps({"status": "error", "content": f"An unexpected error occurred during file edit: {e}"}, ensure_ascii=False)
+                        result = json.dumps(
+                            {"status": "error", "content": f"An unexpected error occurred during file edit: {e}"}, ensure_ascii=False)
                         if request_id:
                             self.toolResultReady.emit(request_id, result)
                         return result
@@ -506,7 +568,8 @@ class AIBridge(QObject):
                     return "Executing..."
                 else:
                     return _edit_worker()
-            def navigate_file_manager(path:str = None):
+
+            def navigate_file_manager(path: str = None):
                 if not path:
                     return json.dumps({"status": "error", "content": "No path provided."}, ensure_ascii=False)
                 if not self.main_window:
@@ -515,10 +578,12 @@ class AIBridge(QObject):
                 if not active_widget:
                     return json.dumps({"status": "error", "content": "No active SSH session found."}, ensure_ascii=False)
                 if hasattr(active_widget, '_set_file_bar'):
-                    QTimer.singleShot(0, lambda: active_widget._set_file_bar(path))
+                    QTimer.singleShot(
+                        0, lambda: active_widget._set_file_bar(path))
                     return json.dumps({"status": "success", "content": f"Navigated file manager to {path}"}, ensure_ascii=False)
                 else:
                     return json.dumps({"status": "error", "content": "File explorer update function not found in the active session."}, ensure_ascii=False)
+
             def get_terminal_output(count: int = 1):
                 if not self.main_window:
                     return json.dumps({"status": "error", "content": "Main window not available."}, ensure_ascii=False)
@@ -529,6 +594,7 @@ class AIBridge(QObject):
                     return active_widget.ssh_widget.get_latest_output(count)
                 else:
                     return json.dumps({"status": "error", "content": "Could not find the terminal output function."}, ensure_ascii=False)
+
             def list_dir(path: str = None, recursive: bool = False):
                 try:
                     safe_path = _safe_quote(path)
@@ -611,7 +677,8 @@ class AIBridge(QObject):
                 if isinstance(result, str):
                     self.backendCallReady.emit(request_id, result)
                 else:
-                    self.backendCallReady.emit(request_id, json.dumps(result, ensure_ascii=False))
+                    self.backendCallReady.emit(
+                        request_id, json.dumps(result, ensure_ascii=False))
             except Exception as e:
                 error_result = json.dumps({
                     "status": "error",
@@ -619,7 +686,7 @@ class AIBridge(QObject):
                     "method": method_name
                 }, ensure_ascii=False)
                 self.backendCallReady.emit(request_id, error_result)
-        
+
         thread = threading.Thread(target=_worker)
         thread.daemon = True
         thread.start()
@@ -629,7 +696,8 @@ class AIBridge(QObject):
     def getSystemPrompt(self):
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            prompt_path = os.path.join(current_dir, '..', 'resource', 'widget', 'ai_chat', 'system.md')
+            prompt_path = os.path.join(
+                current_dir, '..', 'resource', 'widget', 'ai_chat', 'system.md')
             with open(prompt_path, 'r', encoding='utf-8') as f:
                 prompt = f.read()
             prompt += "\n\n# 已连接的MCP服务器\n"
@@ -657,26 +725,29 @@ class AIBridge(QObject):
 
     def _execute_tool_async(self, server_name, tool_name, arguments, request_id):
         try:
-            result = self.mcp_manager.execute_tool(server_name, tool_name, arguments, request_id)
+            result = self.mcp_manager.execute_tool(
+                server_name, tool_name, arguments, request_id)
             result_str = str(result)
             if result_str != "Executing...":
                 self.toolResultReady.emit(request_id, result_str)
                 if request_id in self.pending_tool_calls:
                     del self.pending_tool_calls[request_id]
         except json.JSONDecodeError as e:
-            result_str = json.dumps({"status": "error", "content": f"Invalid arguments format: {e}"}, ensure_ascii=False)
+            result_str = json.dumps(
+                {"status": "error", "content": f"Invalid arguments format: {e}"}, ensure_ascii=False)
             self.toolResultReady.emit(request_id, result_str)
             if request_id in self.pending_tool_calls:
                 del self.pending_tool_calls[request_id]
         except Exception as e:
-            result_str = json.dumps({"status": "error", "content": f"Tool execution error: {e}"}, ensure_ascii=False)
+            result_str = json.dumps(
+                {"status": "error", "content": f"Tool execution error: {e}"}, ensure_ascii=False)
             self.toolResultReady.emit(request_id, result_str)
             if request_id in self.pending_tool_calls:
                 del self.pending_tool_calls[request_id]
-    
+
     @pyqtSlot(str, str, str, result=str)
     @pyqtSlot(str, str, str, str, result=str)
-    def executeMcpTool(self, server_name, tool_name, arguments:str, request_id=None):
+    def executeMcpTool(self, server_name, tool_name, arguments: str, request_id=None):
         if request_id:
             self.pending_tool_calls[request_id] = {
                 'server_name': server_name,
@@ -690,7 +761,8 @@ class AIBridge(QObject):
             return ""
         else:
             try:
-                result = self.mcp_manager.execute_tool(server_name, tool_name, arguments)
+                result = self.mcp_manager.execute_tool(
+                    server_name, tool_name, arguments)
                 return str(result)
             except json.JSONDecodeError as e:
                 return json.dumps({"status": "error", "content": f"Invalid arguments format: {e}"}, ensure_ascii=False)
@@ -710,8 +782,9 @@ class AIBridge(QObject):
             call_info['cancel_time'] = time.time()
             if worker:
                 worker.send_interrupt()
-            QTimer.singleShot(5000, lambda: self._force_cancel_timeout(request_id))
-    
+            QTimer.singleShot(
+                5000, lambda: self._force_cancel_timeout(request_id))
+
     def _force_cancel_timeout(self, request_id):
         if request_id in self.pending_tool_calls:
             call_info = self.pending_tool_calls[request_id]
@@ -769,13 +842,16 @@ class AIBridge(QObject):
     def translateText(self, text, target_language):
         try:
             model_info = self.model_manager._get_default_models().get("NeoSSHVip-深度思考")
-            if not model_info: return "翻译模型未配置"
+            if not model_info:
+                return "翻译模型未配置"
             api_url = model_info.get("api_url")
             model_name = model_info.get("model_name")
             api_key = model_info.get("key")
-            if not all([api_url, model_name, api_key]): return "翻译模型配置不完整"
+            if not all([api_url, model_name, api_key]):
+                return "翻译模型配置不完整"
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            translation_rules_path = os.path.join(current_dir, '..', 'resource', 'widget', 'ai_chat', 'translation.md')
+            translation_rules_path = os.path.join(
+                current_dir, '..', 'resource', 'widget', 'ai_chat', 'translation.md')
             try:
                 with open(translation_rules_path, 'r', encoding='utf-8') as f:
                     translation_rules = f.read()
@@ -791,8 +867,10 @@ class AIBridge(QObject):
                 {"role": "system", "content": translation_rules},
                 {"role": "user", "content": f"请将以下文本翻译成{target_language}：\n\n{text}"}
             ]
-            payload = {"model": model_name, "messages": messages, "stream": True}
-            options = {"method": "POST", "headers": headers, "body": json.dumps(payload)}
+            payload = {"model": model_name,
+                       "messages": messages, "stream": True}
+            options = {"method": "POST", "headers": headers,
+                       "body": json.dumps(payload)}
         except Exception as e:
             return f"翻译时发生意外错误: {str(e)}"
         while True:
@@ -804,20 +882,24 @@ class AIBridge(QObject):
                     "buffer": "",
                     "error": ""
                 }
+
                 def on_chunk(req_id, chunk):
-                    if req_id != request_id: return
+                    if req_id != request_id:
+                        return
                     result_data["buffer"] += chunk
                     lines = result_data["buffer"].split('\n')
                     result_data["buffer"] = lines.pop()
                     for line in lines:
                         if line.startswith('data: '):
                             data_str = line[6:].strip()
-                            if data_str == '[DONE]': continue
+                            if data_str == '[DONE]':
+                                continue
                             try:
                                 data = json.loads(data_str)
                                 if 'error' in data:
                                     error_info = data.get('error', {})
-                                    error_message = str(error_info.get('message', error_info))
+                                    error_message = str(
+                                        error_info.get('message', error_info))
                                     result_data["error"] += error_message
                                     continue
                                 choices = data.get('choices')
@@ -828,11 +910,13 @@ class AIBridge(QObject):
                                         result_data["text"] += content_chunk
                             except json.JSONDecodeError:
                                 continue
+
                 def on_finished(req_id, status_code, reason, headers_json):
                     if req_id == request_id:
                         if status_code != 200:
                             result_data["error"] = f"翻译失败: {status_code} {reason}"
                         loop.quit()
+
                 def on_failed(req_id, error):
                     if req_id == request_id:
                         result_data["error"] = f"翻译网络错误: {error}"
@@ -840,7 +924,8 @@ class AIBridge(QObject):
                 self.streamChunkReceived.connect(on_chunk)
                 self.streamFinished.connect(on_finished)
                 self.streamFailed.connect(on_failed)
-                self.proxiedFetch(request_id, f"{api_url}/chat/completions", json.dumps(options))
+                self.proxiedFetch(
+                    request_id, f"{api_url}/chat/completions", json.dumps(options))
                 loop.exec_()
                 self.streamChunkReceived.disconnect(on_chunk)
                 self.streamFinished.disconnect(on_finished)
@@ -951,7 +1036,8 @@ class AIBridge(QObject):
         command = f"cd {safe_path}; ls -Ap | grep -v /"
         output, error, exit_code = worker.execute_silent_command(command)
         if exit_code == 0:
-            files = [line.strip() for line in output.strip().split('\n') if line.strip()]
+            files = [line.strip()
+                     for line in output.strip().split('\n') if line.strip()]
             return json.dumps({"status": "success", "files": files}, ensure_ascii=False)
         elif exit_code == 1 and not output.strip():
             return json.dumps({"status": "success", "files": []}, ensure_ascii=False)
@@ -975,7 +1061,8 @@ class AIBridge(QObject):
         command = f"cd {safe_path}; ls -Ap | grep /"
         output, error, exit_code = worker.execute_silent_command(command)
         if exit_code == 0:
-            dirs = [line.strip().rstrip('/') for line in output.strip().split('\n') if line.strip()]
+            dirs = [line.strip().rstrip('/')
+                    for line in output.strip().split('\n') if line.strip()]
             return json.dumps({"status": "success", "dirs": dirs}, ensure_ascii=False)
         elif exit_code == 1 and not output.strip():
             return json.dumps({"status": "success", "dirs": []}, ensure_ascii=False)
@@ -1016,7 +1103,8 @@ class AIBridge(QObject):
                 elif key == 'OS':
                     info['os'] = value
                 elif key == 'CPU':
-                    info['cpu_model'] = value.replace('Model name:', '').strip()
+                    info['cpu_model'] = value.replace(
+                        'Model name:', '').strip()
         except Exception as e:
             return json.dumps({"status": "error", "content": f"Failed to parse system info: {e}\nRaw output:\n{output}"}, ensure_ascii=False)
         return json.dumps({"status": "success", "content": info}, ensure_ascii=False)
@@ -1029,6 +1117,7 @@ class AIBridge(QObject):
     @pyqtSlot(str, str, str)
     def proxiedFetch(self, request_id, url, options_json):
         self.active_requests[request_id] = {'cancelled': False}
+
         def run():
             try:
                 options = json.loads(options_json)
@@ -1062,16 +1151,20 @@ class AIBridge(QObject):
                             if self.active_requests.get(request_id, {}).get('cancelled'):
                                 break
                             if chunk:
-                                self.streamChunkReceived.emit(request_id, chunk.decode('utf-8', errors='ignore'))
+                                self.streamChunkReceived.emit(
+                                    request_id, chunk.decode('utf-8', errors='ignore'))
                         if not self.active_requests.get(request_id, {}).get('cancelled'):
                             response_headers = dict(r.headers)
-                            self.streamFinished.emit(request_id, r.status_code, r.reason, json.dumps(response_headers))
+                            self.streamFinished.emit(
+                                request_id, r.status_code, r.reason, json.dumps(response_headers))
                 else:
-                    r = requests.request(method, url, headers=headers, data=body, proxies=proxies, timeout=300)
+                    r = requests.request(
+                        method, url, headers=headers, data=body, proxies=proxies, timeout=300)
                     if not self.active_requests.get(request_id, {}).get('cancelled'):
                         self.streamChunkReceived.emit(request_id, r.text)
                         response_headers = dict(r.headers)
-                        self.streamFinished.emit(request_id, r.status_code, r.reason, json.dumps(response_headers))
+                        self.streamFinished.emit(
+                            request_id, r.status_code, r.reason, json.dumps(response_headers))
             except Exception as e:
                 if not self.active_requests.get(request_id, {}).get('cancelled'):
                     self.streamFailed.emit(request_id, str(e))
@@ -1096,13 +1189,15 @@ class AIBridge(QObject):
             elif isinstance(content, list):
                 for part in content:
                     if isinstance(part, dict) and part.get('type') == 'text' and 'text' in part:
-                        total_tokens += len(self.tokenizer.encode(part['text']).ids)
+                        total_tokens += len(
+                            self.tokenizer.encode(part['text']).ids)
         return str(total_tokens)
 
     @pyqtSlot(str, str)
     def setQQUserInfo(self, qq_name, qq_number):
         self.qq_name = qq_name
         self.qq_number = qq_number
+        self.userinfo_got.emit(qq_name, qq_number)
         parent = self.parent()
         if parent:
             if hasattr(parent, 'browser') and parent.browser:
@@ -1119,32 +1214,39 @@ class AIBridge(QObject):
     def showFileDiff(self, args_str: str):
         from PyQt5.QtCore import QMetaObject, Qt, Q_RETURN_ARG, Q_ARG
         result = [False]
+
         def _execute():
             result[0] = self._do_show_diff_sync(args_str)
-        QMetaObject.invokeMethod(self, "_execute_in_main_thread", Qt.BlockingQueuedConnection, Q_ARG(object, _execute))
+        QMetaObject.invokeMethod(self, "_execute_in_main_thread",
+                                 Qt.BlockingQueuedConnection, Q_ARG(object, _execute))
         return result[0]
-    
+
     @pyqtSlot(object)
     def _execute_in_main_thread(self, func):
         func()
-    
+
     def _do_show_diff_sync(self, args_str: str):
         result = {'success': True}
+
         def _show_diff():
             try:
-                path_match = re.search(r'<path>(.*?)</path>', args_str, re.DOTALL)
+                path_match = re.search(
+                    r'<path>(.*?)</path>', args_str, re.DOTALL)
                 if not path_match:
                     print("Error: Missing <path> tag")
                     return
                 file_path = path_match.group(1).strip()
-                start_match = re.search(r'<start_line>(-?\d+)</start_line>', args_str)
-                end_match = re.search(r'<end_line>(-?\d+)</end_line>', args_str)
+                start_match = re.search(
+                    r'<start_line>(-?\d+)</start_line>', args_str)
+                end_match = re.search(
+                    r'<end_line>(-?\d+)</end_line>', args_str)
                 if not (start_match and end_match):
                     print("Error: Missing line number tags")
                     return
                 start_line = int(start_match.group(1))
                 end_line = int(end_match.group(1))
-                replace_match = re.search(r'<replace>(.*?)</replace>', args_str, re.DOTALL)
+                replace_match = re.search(
+                    r'<replace>(.*?)</replace>', args_str, re.DOTALL)
                 if not replace_match:
                     print("Error: Missing <replace> tag")
                     return
@@ -1166,19 +1268,24 @@ class AIBridge(QObject):
                         return
                     safe_path = shlex.quote(file_path)
                     check_cmd = f"test -f {safe_path} && cat {safe_path} || echo ''"
-                    existing_content, _, _ = worker.execute_silent_command(check_cmd)
+                    existing_content, _, _ = worker.execute_silent_command(
+                        check_cmd)
                     new_content = replace_block.strip() if replace_block.strip() else ""
-                    active_widget.diff_widget.set_left_content(existing_content if existing_content else "")
+                    active_widget.diff_widget.set_left_content(
+                        existing_content if existing_content else "")
                     active_widget.diff_widget.set_right_content(new_content)
                     if hasattr(active_widget.diff_widget, 'left_label'):
                         label_text = f"原内容:{file_path}" if existing_content else f"新建文件:{file_path}"
-                        active_widget.diff_widget.left_label.setText(label_text)
+                        active_widget.diff_widget.left_label.setText(
+                            label_text)
                     if hasattr(active_widget.diff_widget, 'right_label'):
-                        active_widget.diff_widget.right_label.setText(f"新内容:{file_path}")
+                        active_widget.diff_widget.right_label.setText(
+                            f"新内容:{file_path}")
                     active_widget.diff_widget.compare_diff()
                     result['success'] = True
                     return
-                original_match = re.search(r'<originalcontent>(.*?)</originalcontent>', args_str, re.DOTALL)
+                original_match = re.search(
+                    r'<originalcontent>(.*?)</originalcontent>', args_str, re.DOTALL)
                 if not original_match:
                     print("Error: Missing <originalcontent> tag")
                     return
@@ -1196,7 +1303,8 @@ class AIBridge(QObject):
                     return
                 safe_path = shlex.quote(file_path)
                 file_size_cmd = f"stat -c%s {safe_path} 2>/dev/null || stat -f%z {safe_path} 2>/dev/null"
-                size_output, size_error, size_exit_code = worker.execute_silent_command(file_size_cmd)
+                size_output, size_error, size_exit_code = worker.execute_silent_command(
+                    file_size_cmd)
                 if size_exit_code == 0:
                     try:
                         file_size = int(size_output.strip())
@@ -1208,7 +1316,8 @@ class AIBridge(QObject):
                         return
                 read_file_handler = None
                 if hasattr(self.mcp_manager, 'tools') and 'Linux终端' in self.mcp_manager.tools:
-                    read_file_handler = self.mcp_manager.tools['Linux终端'].get('read_file', {}).get('handler')
+                    read_file_handler = self.mcp_manager.tools['Linux终端'].get(
+                        'read_file', {}).get('handler')
                 if not read_file_handler:
                     print("Error: read_file handler not found")
                     return
@@ -1216,7 +1325,8 @@ class AIBridge(QObject):
                 try:
                     remote_data = json.loads(remote_content_result)
                     if remote_data.get("status") == "error":
-                        print(f"Error reading file: {remote_data.get('content')}")
+                        print(
+                            f"Error reading file: {remote_data.get('content')}")
                         return
                     remote_full_content = remote_data.get("content", "")
                 except (json.JSONDecodeError, AttributeError):
@@ -1224,13 +1334,15 @@ class AIBridge(QObject):
                 remote_full_content = remote_full_content.replace('\r', '')
                 lines = remote_full_content.splitlines(True)
                 if not (1 <= start_line <= end_line <= len(lines)):
-                    print(f"Error: Line numbers out of bounds. File has {len(lines)} lines.")
+                    print(
+                        f"Error: Line numbers out of bounds. File has {len(lines)} lines.")
                     return
                 actual_block = "".join(lines[start_line - 1:end_line])
                 search_block_stripped = original_block.strip()
                 actual_block_stripped = actual_block.strip()
                 if actual_block_stripped != search_block_stripped:
-                    print(f"Error: Content verification failed. Expected:\n{search_block_stripped}\n\nActual:\n{actual_block_stripped}")
+                    print(
+                        f"Error: Content verification failed. Expected:\n{search_block_stripped}\n\nActual:\n{actual_block_stripped}")
                     return
                 if hasattr(active_widget, 'file_bar') and hasattr(active_widget.file_bar, 'pivot'):
                     active_widget.file_bar.pivot.items["diff"].show()
@@ -1238,20 +1350,26 @@ class AIBridge(QObject):
                 leading_whitespace = ""
                 if start_line <= len(lines):
                     first_line_of_block = lines[start_line - 1]
-                    leading_whitespace = first_line_of_block[:len(first_line_of_block) - len(first_line_of_block.lstrip())]
+                    leading_whitespace = first_line_of_block[:len(
+                        first_line_of_block) - len(first_line_of_block.lstrip())]
                 line_ending = '\n'
                 new_content_parts = []
                 if replace_block and not replace_block.isspace():
                     replace_lines = replace_block.strip('\n\r').splitlines()
-                    new_content_parts = [leading_whitespace + line.lstrip() + line_ending for line in replace_lines]
-                modified_lines = lines[:start_line - 1] + new_content_parts + lines[end_line:]
+                    new_content_parts = [
+                        leading_whitespace + line.lstrip() + line_ending for line in replace_lines]
+                modified_lines = lines[:start_line - 1] + \
+                    new_content_parts + lines[end_line:]
                 modified_full_content = "".join(modified_lines)
                 active_widget.diff_widget.set_left_content(remote_full_content)
-                active_widget.diff_widget.set_right_content(modified_full_content)
+                active_widget.diff_widget.set_right_content(
+                    modified_full_content)
                 if hasattr(active_widget.diff_widget, 'left_label'):
-                    active_widget.diff_widget.left_label.setText(f"原内容:{file_path}")
+                    active_widget.diff_widget.left_label.setText(
+                        f"原内容:{file_path}")
                 if hasattr(active_widget.diff_widget, 'right_label'):
-                    active_widget.diff_widget.right_label.setText(f"修改后:{file_path}")
+                    active_widget.diff_widget.right_label.setText(
+                        f"修改后:{file_path}")
                 active_widget.diff_widget.compare_diff()
                 result['success'] = True
             except Exception as e:
@@ -1260,6 +1378,7 @@ class AIBridge(QObject):
                 traceback.print_exc()
         _show_diff()
         return result['success']
+
 
 class AiChatWidget(QWidget):
 
@@ -1270,8 +1389,10 @@ class AiChatWidget(QWidget):
         self.qq_login_browser = QWebEngineView(self)
         self.qq_login_browser.hide()
         self.qq_login_browser.page().setWebChannel(self.channel)
-        self.qq_login_browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
-        self.qq_login_browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
+        self.qq_login_browser.settings().setAttribute(
+            QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+        self.qq_login_browser.settings().setAttribute(
+            QWebEngineSettings.LocalContentCanAccessFileUrls, True)
         self.qq_login_browser.setContextMenuPolicy(Qt.NoContextMenu)
         self.qq_login_browser.resize(1024, 768)
         self.qq_login_browser.setUrl(QUrl(qqLoginUrl))
@@ -1279,7 +1400,8 @@ class AiChatWidget(QWidget):
             def on_load(ok):
                 if not ok:
                     return
-                qq_login_js_path = os.path.join(os.path.dirname(__file__), '..', 'resource', 'widget', 'ai_chat', 'qq_login.js')
+                qq_login_js_path = os.path.join(os.path.dirname(
+                    __file__), '..', 'resource', 'widget', 'ai_chat', 'qq_login.js')
                 with open(qq_login_js_path, 'r', encoding='utf-8') as f:
                     qq_login_js_code = f.read()
                 injection_js = f"""
@@ -1321,19 +1443,24 @@ class AiChatWidget(QWidget):
             self.channel.registerObject('backend', self.bridge)
             self.browser = QWebEngineView()
             self.browser.page().setWebChannel(self.channel)
-            self.browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
-            self.browser.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
+            self.browser.settings().setAttribute(
+                QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+            self.browser.settings().setAttribute(
+                QWebEngineSettings.LocalContentCanAccessFileUrls, True)
             self.browser.setContextMenuPolicy(Qt.NoContextMenu)
             self.layout.addWidget(self.browser)
-            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-            index_html_path = os.path.join(project_root, 'resource', 'widget', 'ai_chat', 'index.html')
+            project_root = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), '..'))
+            index_html_path = os.path.join(
+                project_root, 'resource', 'widget', 'ai_chat', 'index.html')
             self.browser.setUrl(QUrl.fromLocalFile(index_html_path))
 
             self.qqLoginUrlBrowser()
         else:
             self.layout.setAlignment(Qt.AlignCenter)
             icon_label = QLabel()
-            icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'resource', 'icons', 'ai_disabled.svg'))
+            icon_path = os.path.abspath(os.path.join(os.path.dirname(
+                __file__), '..', 'resource', 'icons', 'ai_disabled.svg'))
             renderer = QSvgRenderer(icon_path)
             pixmap = QPixmap(128, 128)
             pixmap.fill(Qt.transparent)
@@ -1353,10 +1480,11 @@ class AiChatWidget(QWidget):
             self.browser.reload()
         elif event.key() == Qt.Key_F12:
             if os.environ.get('QTWEBENGINE_REMOTE_DEBUGGING'):
-                QDesktopServices.openUrl(QUrl("http://localhost:" + str(os.environ['QTWEBENGINE_REMOTE_DEBUGGING'])))
+                QDesktopServices.openUrl(
+                    QUrl("http://localhost:" + str(os.environ['QTWEBENGINE_REMOTE_DEBUGGING'])))
         else:
             super().keyPressEvent(event)
-            
+
     def set_tab_id(self, tab_id):
         self.tab_id = tab_id
 

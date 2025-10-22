@@ -84,8 +84,9 @@ class SidePanelWidget(QWidget):
         self.main_layout.addWidget(self.tab_bar_container)
         self.page_stack = QStackedWidget(self)
         self.main_layout.addWidget(self.page_stack)
-        self.add_new_tab(AiChatWidget(
-            main_window=self.main_window), "AI Chat", {})
+        self.aichat_widget = AiChatWidget(
+            main_window=self.main_window)
+        self.add_new_tab(self.aichat_widget, "AI Chat", {})
         self._update_tab_bar_visibility()
         self.setStyleSheet(self._get_style_sheet())
 
