@@ -1,9 +1,53 @@
-
 import random
+import re
 from PyQt5.QtCore import Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, pyqtSignal
-from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QVBoxLayout, QWidget, QHeaderView
-from qfluentwidgets import TableView, setTheme, FluentIcon, RoundMenu, LineEdit, Action
+from qfluentwidgets import TableView,  FluentIcon, RoundMenu, LineEdit, Action
+
+
+class NetConnectionProxyModel(QSortFilterProxyModel):
+    def lessThan(self, left, right):
+        column = left.column()
+
+        left_data = left.data(Qt.DisplayRole)
+        right_data = right.data(Qt.DisplayRole)
+
+        if left_data is None:
+            left_data = ""
+        if right_data is None:
+            right_data = ""
+
+        if column in [1, 2, 4, 5]:  # PID, Local Port, Remote Port, Connections
+            try:
+                left_num = float(str(left_data)) if str(
+                    left_data).strip() else 0
+                right_num = float(str(right_data)) if str(
+                    right_data).strip() else 0
+                return left_num < right_num
+            except (ValueError, TypeError):
+                pass
+
+        elif column == 6:
+            try:
+                left_upload = self._extract_kb_value(str(left_data))
+                right_upload = self._extract_kb_value(str(right_data))
+                return left_upload < right_upload
+            except (ValueError, TypeError):
+                pass
+
+        left_str = str(left_data).lower()
+        right_str = str(right_data).lower()
+        return left_str < right_str
+
+    def _extract_kb_value(self, text):
+        """从上传/下载字符串中提取数字值"""
+        if not text:
+            return 0
+
+        match = re.search(r'(\d+)\s*KB', str(text))
+        if match:
+            return float(match.group(1))
+        return 0
 
 
 class NetConnectionModel(QAbstractTableModel):
@@ -72,8 +116,6 @@ class NetProcessMonitor(QWidget):
         self.setWindowTitle(self.tr("Process Network Connections Monitor"))
         self.resize(1000, 600)
 
-        # setTheme(Theme.DARK)
-
         self.headers = [
             self.tr("Process Name"),
             self.tr("PID"),
@@ -85,8 +127,6 @@ class NetProcessMonitor(QWidget):
         ]
 
         self.initUI()
-
-        # self.generateSampleData()
 
     def initUI(self):
         self.setAttribute(Qt.WA_TranslucentBackground, True)
@@ -106,158 +146,136 @@ class NetProcessMonitor(QWidget):
         self.filter_input.textChanged.connect(self.filterData)
         self.filter_input.setStyleSheet("""
             LineEdit {
-            /* 毛玻璃背景 */
             background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);           /* 毛玻璃模糊 */
-            -webkit-backdrop-filter: blur(10px);   /* WebKit 兼容 */
-            
-            /* 半透明边框 */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 20px;                   /* 圆角 */
-            
-            /* 文字和图标颜色 */
+            border-radius: 20px;
             color: rgba(255, 255, 255, 0.9);
-            padding: 12px 16px;                    /* 内边距 */
+            padding: 12px 16px;
             font-size: 13px;
             min-height: 20px;
-            
-            /* 聚焦效果 */
         }
         LineEdit:focus {
             background: rgba(255, 255, 255, 0.15);
             border: 1px solid rgba(0, 120, 212, 0.5);
             color: white;
-            box-shadow: 0 0 20px rgba(0, 120, 212, 0.2);  /* 聚焦发光 */
+            box-shadow: 0 0 20px rgba(0, 120, 212, 0.2);
         }
         LineEdit::placeholder {
             color: rgba(255, 255, 255, 0.5);
         }
-        
-        /* 光标样式 */
-        LineEdit QCursor {
-            color: rgba(255, 255, 255, 0.7);
-        }
         """)
         control_layout.addWidget(self.filter_input)
 
-        # 创建表格视图
         self.source_model = NetConnectionModel(self.headers)
-        self.proxy_model = QSortFilterProxyModel(self)
+        self.proxy_model = NetConnectionProxyModel(self)
         self.proxy_model.setSourceModel(self.source_model)
         self.proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
-        self.proxy_model.setFilterKeyColumn(-1)  # 过滤所有列
+        self.proxy_model.setFilterKeyColumn(-1)
 
         self.table_view = TableView(self)
         self.table_view.setModel(self.proxy_model)
 
-        # 设置表格为透明
         self.table_view.setAttribute(Qt.WA_TranslucentBackground, True)
         self.table_view.viewport().setAttribute(Qt.WA_TranslucentBackground, True)
 
-        # 表格透明样式
         self.table_view.setStyleSheet("""
             TableView {
-        background: transparent;
-        border: none;
-        gridline-color: rgba(255, 255, 255, 0.1);
-        color: rgba(255, 255, 255, 0.9);
-        font-family: 'Consolas', 'SF Mono', monospace;
-        font-size: 12px;
-        selection-background-color: rgba(0, 120, 212, 0.3);
-        selection-color: white;
-        alternate-background-color: transparent;
-        show-decoration-selected: 1;  /* 启用选中装饰 */
-    }
-    
-    /* 关键：设置行间距 */
-    TableView::item {
-        padding: 8px 8px;           /* 单元格内边距 */
-        margin: 2px 0;              /* 行间距：上下各2px */
-        border: none;
-        color: rgba(255, 255, 255, 0.8);
-        background: transparent;    /* 确保透明 */
-    }
-    
-    TableView::item:selected {
-        background: rgba(0, 120, 212, 0.2);
-        color: white;
-        border: none;
-        margin: 2px 0;              /* 选中状态也保持间距 */
-    }
-    
-    TableView::item:hover {
-        background: rgba(255, 255, 255, 0.05);
-        color: rgba(255, 255, 255, 0.9);
-        margin: 2px 0;
-    }
-    
-    TableView::pane {
-        border: none;
-        background: transparent;
-        margin: 0;
-    }
-    
-    /* 表头样式 */
-    QHeaderView::section {
-        background: transparent;
-        border: none;
-        padding: 10px 8px;
-        color: rgba(255, 255, 255, 0.9);
-        font-weight: 600;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        margin: 0;
-    }
-        """)
-
-        # 表头透明样式
-        self.table_view.horizontalHeader().setStyleSheet("""
+                background: transparent;
+                border: none;
+                gridline-color: rgba(255, 255, 255, 0.1);
+                color: rgba(255, 255, 255, 0.9);
+                font-family: 'Consolas', 'SF Mono', monospace;
+                font-size: 12px;
+                selection-background-color: rgba(0, 120, 212, 0.3);
+                selection-color: white;
+                alternate-background-color: transparent;
+                show-decoration-selected: 1;
+            }
+            TableView::item {
+                padding: 8px 8px;
+                margin: 2px 0;
+                border: none;
+                color: rgba(255, 255, 255, 0.8);
+                background: transparent;
+            }
+            TableView::item:selected {
+                background: rgba(0, 120, 212, 0.2);
+                color: white;
+                border: none;
+                margin: 2px 0;
+            }
+            TableView::item:hover {
+                background: rgba(255, 255, 255, 0.05);
+                color: rgba(255, 255, 255, 0.9);
+                margin: 2px 0;
+            }
+            TableView::pane {
+                border: none;
+                background: transparent;
+                margin: 0;
+            }
             QHeaderView::section {
                 background: transparent;
                 border: none;
-                padding: 8px;
+                padding: 10px 8px;
                 color: rgba(255, 255, 255, 0.9);
                 font-weight: 600;
                 border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            }
-            QHeaderView::section:hover {
-                background: rgba(255, 255, 255, 0.05);
-            }
-            QHeaderView::section:selected {
-                background: rgba(0, 120, 212, 0.2);
+                margin: 0;
             }
         """)
 
-        # 设置表格属性
         self.table_view.setBorderVisible(False)
         self.table_view.setBorderRadius(0)
         self.table_view.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-        self.table_view.setAlternatingRowColors(False)  # 移除交替颜色
+        self.table_view.setAlternatingRowColors(False)
         self.table_view.setSortingEnabled(True)
         self.table_view.verticalHeader().setVisible(False)
         self.table_view.verticalHeader().setDefaultSectionSize(0)
 
-        # 设置列宽
         header = self.table_view.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)  # 进程名自适应
-        header.resizeSection(1, 80)   # PID
-        header.resizeSection(2, 100)  # 本地端口
-        header.resizeSection(3, 120)  # 本地IP
-        header.resizeSection(4, 100)  # 远程端口
-        header.resizeSection(5, 100)  # 连接数
-        header.resizeSection(6, 200)  # 上传/下载
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.resizeSection(1, 80)
+        header.resizeSection(2, 100)
+        header.resizeSection(3, 120)
+        header.resizeSection(4, 100)
+        header.resizeSection(5, 100)
+        header.resizeSection(6, 200)
 
-        # 添加到布局
         layout.addLayout(control_layout)
         layout.addWidget(self.table_view, 1)
 
-        # 设置整体布局透明
         self.setStyleSheet("background: transparent;")
         self.table_view.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table_view.customContextMenuRequested.connect(
             self.showContextMenu)
 
+    def filterData(self, text):
+        self.proxy_model.setFilterRegExp(text)
+
+    def updateProcessData(self, process_data):
+        self.source_model.updateData(
+            self.convert_connections_for_api(process_data))
+        self.dataRefreshed.emit()
+
+    def convert_connections_for_api(self, connections):
+        api_data = []
+        for conn in connections:
+            api_item = {
+                "Process Name": conn.get("name", ""),
+                "PID": conn.get("pid", 0),
+                "Local Port": conn.get("local_port", 0),
+                "Local IP": conn.get("local_ip", ""),
+                "Remote Port": conn.get("remote_port", 0),
+                "Connections": conn.get("connections", 0),
+                "Upload/Download": f"{conn.get('upload_kbps', 0)} KB / {conn.get('download_kbps', 0)} KB"
+            }
+            api_data.append(api_item)
+        return api_data
+
     def generateSampleData(self):
-        """生成示例数据"""
         processes = [
             "chrome.exe", "firefox.exe", "explorer.exe", "svchost.exe",
             "python.exe", "code.exe", "steam.exe", "discord.exe",
@@ -291,7 +309,6 @@ class NetProcessMonitor(QWidget):
                 "Upload/Download": upload_download
             })
 
-        # 更新表格数据
         self.source_model.updateData(sample_data)
 
     def filterData(self, text):
@@ -299,7 +316,6 @@ class NetProcessMonitor(QWidget):
         self.proxy_model.setFilterRegExp(text)
 
     def sortData(self, text):
-        """根据选择排序数据"""
         col = -1
         order = Qt.AscendingOrder
 
@@ -309,7 +325,7 @@ class NetProcessMonitor(QWidget):
             col = 0
         elif text == self.tr("Sort by Connections"):
             col = 5
-            order = Qt.DescendingOrder  # 默认降序
+            order = Qt.DescendingOrder
 
         if col >= 0:
             self.proxy_model.sort(col, order)

@@ -169,7 +169,7 @@ class SSHWorker(QThread):
                 except (socket.timeout, paramiko.SSHException) as e:
                     error_msg = self.tr(
                         f"Target server connection failed: {e}")
-                    self.auth_error.emit(error_msg)
+                    self.error_occurred.emit(error_msg)
                     self._cleanup()
                     return
 
@@ -204,7 +204,7 @@ class SSHWorker(QThread):
                     return
                 except (socket.timeout, paramiko.SSHException) as e:
                     error_msg = self.tr(f"Connection failed: {e}")
-                    self.auth_error.emit(error_msg)
+                    self.error_occurred.emit(error_msg)
                     self._cleanup()
                     return
 

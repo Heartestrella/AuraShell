@@ -4,6 +4,33 @@ from PyQt5.QtWidgets import QVBoxLayout, QWidget, QHeaderView
 from qfluentwidgets import TableView, LineEdit, RoundMenu, FluentIcon, Action
 
 
+class ProcessProxyModel(QSortFilterProxyModel):
+    def lessThan(self, left, right):
+        column = left.column()
+
+        left_data = left.data(Qt.DisplayRole)
+        right_data = right.data(Qt.DisplayRole)
+
+        if left_data is None:
+            left_data = ""
+        if right_data is None:
+            right_data = ""
+
+        if column in [1, 3, 4]:  # PID, CPU %, Mem %
+            try:
+                left_num = float(str(left_data)) if str(
+                    left_data).strip() else 0
+                right_num = float(str(right_data)) if str(
+                    right_data).strip() else 0
+                return left_num < right_num
+            except (ValueError, TypeError):
+                pass
+
+        left_str = str(left_data).lower()
+        right_str = str(right_data).lower()
+        return left_str < right_str
+
+
 class ProcessTableModel(QAbstractTableModel):
     def __init__(self, headers, data=None):
         super().__init__()
@@ -78,9 +105,9 @@ class ProcessMonitor(QWidget):
         self.filter_input.textChanged.connect(self.filterData)
         layout.addWidget(self.filter_input)
 
-        # 模型
+        # 模型 - 使用自定义的 ProxyModel
         self.source_model = ProcessTableModel(self.headers)
-        self.proxy_model = QSortFilterProxyModel(self)
+        self.proxy_model = ProcessProxyModel(self)  # 使用自定义排序
         self.proxy_model.setSourceModel(self.source_model)
         self.proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
         self.proxy_model.setFilterKeyColumn(-1)  # 所有列都可过滤
