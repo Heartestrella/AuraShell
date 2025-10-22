@@ -1195,6 +1195,8 @@ class AIBridge(QObject):
 
     @pyqtSlot(str, str)
     def setQQUserInfo(self, qq_name, qq_number):
+        if (not qq_name or qq_name == '') and (not qq_number or qq_number == ''):
+            return
         self.qq_name = qq_name
         self.qq_number = qq_number
         self.userinfo_got.emit(qq_name, qq_number)
