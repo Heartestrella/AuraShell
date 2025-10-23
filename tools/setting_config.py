@@ -46,7 +46,8 @@ class SCM:
             "page_animation": "slide_fade",
             "right_panel_ai_chat": True,
             "file_tree_single_click": False,
-            "update_channel": "none"
+            "update_channel": "none",
+            "account": {"user": "Guest", "avatar_url": r"resource\icons\guest.png", "combo": "", "qid": "", "email": ""}
         }
         self.config_path = config_dir / "setting-config.json"
         if not os.path.exists(self.config_path):

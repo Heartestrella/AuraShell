@@ -262,7 +262,9 @@ class Window(FramelessWindow):
         self.stackWidget = QStackedWidget(self)
         self.sidePanel = SidePanelWidget(self, main_window=self)
         self.sidePanel.aichat_widget.bridge.userinfo_got.connect(
-            lambda name, qid: self.account_widget.update_account_info(name, qid, email=f"{qid}@qq.com", avatar_url=f'http://q.qlogo.cn/headimg_dl?dst_uin={qid}&spec=640&img_type=png'))
+            self.update_user_info)
+        # self.sidePanel.aichat_widget.bridge.userinfo_got.connect(
+        #     lambda name, qid: self.account_widget.update_account_info(name, qid, email=f"{qid}@qq.com", avatar_url=f'http://q.qlogo.cn/headimg_dl?dst_uin={qid}&spec=640&img_type=png'))
         self.sidePanel.tabActivity.connect(self._ensure_side_panel_visible)
 
         # create sub interface
@@ -670,6 +672,14 @@ class Window(FramelessWindow):
                 data["type"] = "completed"
             session_widget.transfer_progress.update_transfer_item(
                 file_id, data)
+
+    def update_user_info(self, name, qid):
+        self.account_widget.update_account_info(
+            username=name,
+            qid=qid,
+            email=f"{qid}@qq.com",
+            avatar_url=f'http://q.qlogo.cn/headimg_dl?dst_uin={qid}&spec=640&img_type=png'
+        )
 
     def _open_downloaded_file(self, local_path: str, widget_key: str, remote_path: str):
         """打开下载的文件"""
@@ -1425,8 +1435,17 @@ class Window(FramelessWindow):
         self.onCurrentInterfaceChanged(1)
 
     def init_account(self):
-        self.account_widget = AccountPage("Test", "12345", "1@neossh.top", resource_path(
-            'resource/icons/avatar.jpg'), "内测合作套餐 / 每月100K tokens")
+        config = configer.read_config().get("account", {
+            "user": "Guest", "avatar_url": r"resource\icons\guest.png", "combo": "", "qid": "", "email": ""})
+
+        self.account_widget = AccountPage(
+            username=config["user"],
+            qid=config["qid"],
+            email=config["email"],
+            avatar_url=resource_path(
+                config["avatar_url"]),
+            combo=config["combo"]
+        )
         self.account_widget.setObjectName("accountPage")
         self.stackWidget.addWidget(self.account_widget)
         # self.stackWidget.addWidget(self.account_widget)

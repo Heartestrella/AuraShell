@@ -1088,8 +1088,8 @@ class AIBridge(QObject):
             'echo "---CPU---"; lscpu | grep "Model name:"'
         )
         output, error, exit_code = worker.execute_silent_command(command)
-        if exit_code != 0:
-            return json.dumps({"status": "error", "content": error, "exit_code": exit_code}, ensure_ascii=False)
+        # if exit_code != 0:
+        #     return json.dumps({"status": "error", "content": error, "exit_code": exit_code}, ensure_ascii=False)
         info = {}
         try:
             parts = output.split('---')

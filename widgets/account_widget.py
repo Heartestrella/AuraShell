@@ -84,27 +84,17 @@ class AccountInfoCard(SimpleCardWidget):
         info_layout.setContentsMargins(0, 5, 0, 5)
 
         name = username or "游客"
-        self.name_label = TitleLabel(name)
+        self.name_label = TitleLabel(name, self)
         self.name_label.setStyleSheet("font-size: 18px; font-weight: 600;")
 
-        self.qid_label = CaptionLabel(f"QID: {qid}" if qid else "")
-        if not qid:
-            self.qid_label.hide()
-
-        self.email_label = CaptionLabel(email or "")
+        self.qid_label = CaptionLabel(f"QID: {qid}" if qid else "QID: ", self)
+        self.email_label = CaptionLabel(email or "", self)
         self.email_label.setStyleSheet("color: #666;")
-        if not email:
-            self.email_label.hide()
-
-        self.combo = CaptionLabel(f"{combo}" if combo else "")
-        if not combo:
-            self.combo.hide()
+        self.combo = CaptionLabel(f"{combo}" if combo else "", self)
 
         info_layout.addWidget(self.name_label)
-        if qid:
-            info_layout.addWidget(self.qid_label)
-        if email:
-            info_layout.addWidget(self.email_label)
+        info_layout.addWidget(self.qid_label)
+        info_layout.addWidget(self.email_label)
         info_layout.addWidget(self.combo)
         info_layout.addStretch(1)
 
@@ -117,6 +107,10 @@ class AccountInfoCard(SimpleCardWidget):
         button_layout.addWidget(self.upgrade_btn)
         button_layout.addStretch(1)
         layout.addLayout(button_layout)
+
+        self.qid_label.setVisible(bool(qid))
+        self.email_label.setVisible(bool(email))
+        self.combo.setVisible(bool(combo))
 
         self._network_manager = QNetworkAccessManager()
         self._tmp_avatar_file = None
@@ -170,21 +164,25 @@ class AccountInfoCard(SimpleCardWidget):
 
     def update_account_info(self, username=None, qid=None, email=None, combo=None, avatar_url=None):
         self.name_label.setText(username or "游客")
+
         if qid:
             self.qid_label.setText(f"QID: {qid}")
-            self.qid_label.show()
+            self.qid_label.setVisible(True)  # 使用 setVisible
         else:
-            self.qid_label.hide()
+            self.qid_label.setVisible(False)
+
         if email:
             self.email_label.setText(email)
-            self.email_label.show()
+            self.email_label.setVisible(True)
         else:
-            self.email_label.hide()
+            self.email_label.setVisible(False)
+
         if combo:
-            self.combo.setText(combo)
-            self.combo.show()
+            self.combo.setText(str(combo))
+            self.combo.setVisible(True)
         else:
-            self.combo.hide()
+            self.combo.setVisible(False)
+
         self.upgrade_btn.setText("升级账户" if username else "登录")
         self._set_avatar(username, avatar_url)
 
