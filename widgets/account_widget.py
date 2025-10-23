@@ -25,14 +25,16 @@ class ApiUsageCard(CardWidget):
         text_layout = QVBoxLayout()
         text_layout.setAlignment(Qt.AlignLeft)
 
-        self.title_label = TitleLabel(title)
+        self.title_label = TitleLabel(self.tr(title))
         self.title_label.setStyleSheet("TitleLabel { font-size: 16px; }")
 
-        self.usage_label = BodyLabel(f"{self.used} / {self.total} {self.unit}")
+        self.usage_label = BodyLabel(
+            self.tr(f"{self.used} / {self.total} {self.unit}"))
         self.usage_label.setStyleSheet(
             "BodyLabel { color: #666; font-size: 14px; }")
 
-        self.percent_label = StrongBodyLabel(f"{self.get_percentage():.1f}%")
+        self.percent_label = StrongBodyLabel(
+            self.tr(f"{self.get_percentage():.1f}%"))
         self.percent_label.setStyleSheet(
             "StrongBodyLabel { font-size: 18px; color: #0078d4; }")
 
@@ -56,8 +58,9 @@ class ApiUsageCard(CardWidget):
         return (self.used / self.total) * 100 if self.total else 0
 
     def update_display(self):
-        self.usage_label.setText(f"{self.used:,} / {self.total:,} {self.unit}")
-        self.percent_label.setText(f"{self.get_percentage():.1f}%")
+        self.usage_label.setText(
+            self.tr(f"{self.used:,} / {self.total:,} {self.unit}"))
+        self.percent_label.setText(self.tr(f"{self.get_percentage():.1f}%"))
         self.progress_ring.setValue(int(self.get_percentage()))
         p = self.get_percentage()
         color = "#d13438" if p > 90 else "#ffaa44" if p > 70 else "#0078d4"
@@ -83,14 +86,17 @@ class AccountInfoCard(SimpleCardWidget):
         info_layout.setSpacing(8)
         info_layout.setContentsMargins(0, 5, 0, 5)
 
-        name = username or "游客"
+        name = username or self.tr("Guest")
+        upgrade_text = self.tr("Login") if username == self.tr(
+            "Guest") else self.tr("Upgrade")
         self.name_label = TitleLabel(name, self)
         self.name_label.setStyleSheet("font-size: 18px; font-weight: 600;")
 
-        self.qid_label = CaptionLabel(f"QID: {qid}" if qid else "QID: ", self)
+        self.qid_label = CaptionLabel(
+            self.tr(f"QID: {qid}") if qid else self.tr("QID: "), self)
         self.email_label = CaptionLabel(email or "", self)
         self.email_label.setStyleSheet("color: #666;")
-        self.combo = CaptionLabel(f"{combo}" if combo else "", self)
+        self.combo = CaptionLabel(self.tr(f"{combo}") if combo else "", self)
 
         info_layout.addWidget(self.name_label)
         info_layout.addWidget(self.qid_label)
@@ -102,7 +108,7 @@ class AccountInfoCard(SimpleCardWidget):
 
         button_layout = QVBoxLayout()
         button_layout.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.upgrade_btn = PillPushButton("升级账户" if username else "登录")
+        self.upgrade_btn = PillPushButton(upgrade_text)
         self.upgrade_btn.setFixedWidth(110)
         button_layout.addWidget(self.upgrade_btn)
         button_layout.addStretch(1)
@@ -117,6 +123,7 @@ class AccountInfoCard(SimpleCardWidget):
         self._set_avatar(username, avatar_url)
 
     def _set_avatar(self, username, avatar_url):
+        print(avatar_url)
         if self._tmp_avatar_file and os.path.exists(self._tmp_avatar_file):
             try:
                 os.remove(self._tmp_avatar_file)
@@ -127,6 +134,7 @@ class AccountInfoCard(SimpleCardWidget):
         if avatar_url and avatar_url.startswith("http"):
             request = QNetworkRequest(QUrl(avatar_url))
             reply = self._network_manager.get(request)
+            self._current_reply = reply
             reply.finished.connect(
                 lambda r=reply, u=username: self._on_avatar_downloaded(r, u))
         elif avatar_url and os.path.exists(avatar_url):
@@ -135,6 +143,8 @@ class AccountInfoCard(SimpleCardWidget):
             self._set_default_avatar(username)
 
     def _on_avatar_downloaded(self, reply, username):
+        if hasattr(self, '_current_reply') and self._current_reply == reply:
+            self._current_reply = None
         if reply.error():
             self._set_default_avatar(username)
             reply.deleteLater()
@@ -163,11 +173,11 @@ class AccountInfoCard(SimpleCardWidget):
         self.avatar.setPixmap(pixmap)
 
     def update_account_info(self, username=None, qid=None, email=None, combo=None, avatar_url=None):
-        self.name_label.setText(username or "游客")
+        self.name_label.setText(username or self.tr("Guest"))
 
         if qid:
-            self.qid_label.setText(f"QID: {qid}")
-            self.qid_label.setVisible(True)  # 使用 setVisible
+            self.qid_label.setText(self.tr(f"QID: {qid}"))
+            self.qid_label.setVisible(True)
         else:
             self.qid_label.setVisible(False)
 
@@ -178,12 +188,13 @@ class AccountInfoCard(SimpleCardWidget):
             self.email_label.setVisible(False)
 
         if combo:
-            self.combo.setText(str(combo))
+            self.combo.setText(self.tr(str(combo)))
             self.combo.setVisible(True)
         else:
             self.combo.setVisible(False)
 
-        self.upgrade_btn.setText("升级账户" if username else "登录")
+        self.upgrade_btn.setText(self.tr("Login") if username == self.tr(
+            "Guest") else self.tr("Upgrade"))
         self._set_avatar(username, avatar_url)
 
 
@@ -194,21 +205,21 @@ class BillingCard(CardWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 15, 20, 15)
 
-        title_label = TitleLabel("账户余额")
+        title_label = TitleLabel(self.tr("Account Balance"))
         title_label.setStyleSheet("TitleLabel { font-size: 16px; }")
 
         balance_layout = QHBoxLayout()
-        self.balance_label = StrongBodyLabel("¥ 0.00")
+        self.balance_label = StrongBodyLabel(self.tr("¥ 0.00"))
         self.balance_label.setStyleSheet(
             "StrongBodyLabel { font-size: 24px; color: #107c10; }")
-        self.recharge_btn = PrimaryPushButton("立即充值")
-        self.recharge_btn.setFixedWidth(100)
+        # self.recharge_btn = PrimaryPushButton(self.tr("Recharge Now"))
+        # self.recharge_btn.setFixedWidth(100)
 
         balance_layout.addWidget(self.balance_label)
         balance_layout.addStretch(1)
-        balance_layout.addWidget(self.recharge_btn)
+        # balance_layout.addWidget(self.recharge_btn)
 
-        self.billing_label = CaptionLabel("下次结算日期: 无")
+        self.billing_label = CaptionLabel(self.tr("Next billing date: None"))
         self.billing_label.setStyleSheet("CaptionLabel { color: #666; }")
 
         layout.addWidget(title_label)
@@ -236,7 +247,7 @@ class AccountPage(QWidget):
         layout.setSpacing(10)
         layout.setContentsMargins(30, 20, 30, 20)
 
-        title_label = TitleLabel("账户信息")
+        title_label = TitleLabel(self.tr("Account Information"))
         title_label.setStyleSheet(
             "TitleLabel { font-size: 24px; padding: 10px 0; }")
 
@@ -247,8 +258,8 @@ class AccountPage(QWidget):
         usage_grid = QGridLayout()
         usage_grid.setSpacing(15)
         self.api_cards = [
-            ApiUsageCard("API 调用次数", 1250, 5000, "次"),
-            ApiUsageCard("Tokens 使用", 850000, 1000000, "tokens"),
+            ApiUsageCard("API Calls", 1250, 5000, "times"),
+            ApiUsageCard("Tokens Usage", 850000, 1000000, "tokens"),
         ]
         for i, card in enumerate(self.api_cards):
             row, col = divmod(i, 2)
@@ -265,20 +276,23 @@ class AccountPage(QWidget):
         self.connect_signals()
 
     def connect_signals(self):
-        self.billing_card.recharge_btn.clicked.connect(
-            self.show_recharge_dialog)
+        # self.billing_card.recharge_btn.clicked.connect(
+        #     self.show_recharge_dialog)
         self.account_card.upgrade_btn.clicked.connect(self.show_upgrade_dialog)
 
     def show_recharge_dialog(self):
         InfoBar.info(
-            title="充值功能", content="充值功能开发中...",
+            title=self.tr("Recharge Function"),
+            content=self.tr("Recharge function is under development..."),
             orient=Qt.Horizontal, isClosable=True,
             position=InfoBarPosition.TOP, duration=2000, parent=self
         )
 
     def show_upgrade_dialog(self):
         InfoBar.info(
-            title="升级账户", content="账户升级功能开发中...",
+            title=self.tr("Upgrade Account"),
+            content=self.tr(
+                "Account upgrade function is under development..."),
             orient=Qt.Horizontal, isClosable=True,
             position=InfoBarPosition.TOP, duration=2000, parent=self
         )
@@ -288,13 +302,15 @@ class AccountPage(QWidget):
             increment = random.randint(1, 10)
             card.used = min(card.used + increment, card.total)
             card.update_display()
-        current_balance_text = self.billing_card.balance_label.text().replace("¥ ", "")
+        current_balance_text = self.billing_card.balance_label.text().replace(
+            "¥ ", "").replace(self.tr("¥ "), "")
         try:
             current_balance = float(current_balance_text)
             new_balance = current_balance + random.uniform(0.01, 0.1)
-            self.billing_card.balance_label.setText(f"¥ {new_balance:.2f}")
+            self.billing_card.balance_label.setText(
+                self.tr(f"¥ {new_balance:.2f}"))
         except ValueError:
-            self.billing_card.balance_label.setText("¥ 0.00")
+            self.billing_card.balance_label.setText(self.tr("¥ 0.00"))
 
     def update_account_info(self, username=None, qid=None, email=None, combo=None, avatar_url=None):
         self.username, self.qid, self.email, self.avatar_url = username, qid, email, avatar_url
