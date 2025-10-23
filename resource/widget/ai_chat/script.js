@@ -1497,6 +1497,14 @@ document.addEventListener('DOMContentLoaded', function () {
     return name.substring(0, 16);
   }
   async function sendMessage() {
+    const approvalContainer = document.getElementById('approve-reject-buttons');
+    if (approvalContainer && approvalContainer.style.display === 'flex') {
+      const rejectBtn = approvalContainer.querySelector('.reject-button');
+      if (rejectBtn) {
+        rejectBtn.click();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
     if (isRequesting) {
       return;
     }
@@ -1507,14 +1515,6 @@ document.addEventListener('DOMContentLoaded', function () {
     let sshCwd = cwdResult.cwd;
     let fileManagerCwd = fileManagerResult.cwd;
     let systemInfo = JSON.stringify(systemInfoResult.content);
-    const approvalContainer = document.getElementById('approve-reject-buttons');
-    if (approvalContainer && approvalContainer.style.display === 'flex') {
-      const rejectBtn = approvalContainer.querySelector('.reject-button');
-      if (rejectBtn) {
-        rejectBtn.click();
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-    }
     const message = messageInput.value;
     if (message || pastedImageDataUrls.length > 0) {
       chatHistoryContainer.style.display = 'none';
