@@ -71,7 +71,7 @@ class MonitorBar(QWidget):
         #     "background:#141414; border-radius:6px; padding:6px;")
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 4, 10, 4)
-        layout.setSpacing(12)
+        layout.setSpacing(10)
 
         self._font_family = "Segoe UI"
         # Uptime & load
@@ -84,7 +84,7 @@ class MonitorBar(QWidget):
         self.cpu_dot = small_dot("#00bcd4")
         self.cpu_label = QLabel("CPU")
         self.cpu_label.setStyleSheet("color:#cfcfcf; font-size:12px;")
-        self.cpu_bar = ThinProgressBar(color="#00bcd4", width=90)
+        self.cpu_bar = ThinProgressBar(color="#00bcd4", width=80)
         self.cpu_text = QLabel("-")
         self.cpu_text.setStyleSheet(
             "color:#cfcfcf; font-size:12px; min-width:44px;")
@@ -93,19 +93,19 @@ class MonitorBar(QWidget):
         self.ram_dot = small_dot("#ff9800")
         self.ram_label = QLabel("内存")
         self.ram_label.setStyleSheet("color:#cfcfcf; font-size:12px;")
-        self.ram_bar = ThinProgressBar(color="#ff9800", width=90)
+        self.ram_bar = ThinProgressBar(color="#ff9800", width=80)
         self.ram_text = QLabel("-")
         self.ram_text.setStyleSheet(
             "color:#cfcfcf; font-size:12px; min-width:44px;")
 
         # Disk
-        self.disk_dot = small_dot("#4caf50")
-        self.disk_label = QLabel("磁盘")
-        self.disk_label.setStyleSheet("color:#cfcfcf; font-size:12px;")
-        self.disk_bar = ThinProgressBar(color="#4caf50", width=90)
-        self.disk_text = QLabel("-")
-        self.disk_text.setStyleSheet(
-            "color:#cfcfcf; font-size:12px; min-width:44px;")
+        # self.disk_dot = small_dot("#4caf50")
+        # self.disk_label = QLabel("磁盘")
+        # self.disk_label.setStyleSheet("color:#cfcfcf; font-size:12px;")
+        # self.disk_bar = ThinProgressBar(color="#4caf50", width=90)
+        # self.disk_text = QLabel("-")
+        # self.disk_text.setStyleSheet(
+        #     "color:#cfcfcf; font-size:12px; min-width:44px;")
 
         # Network
         self.net_dot = small_dot("#9c27b0")
@@ -134,12 +134,12 @@ class MonitorBar(QWidget):
         layout.addWidget(self.ram_text)
         layout.addWidget(vline())
 
-        # Disk block
-        layout.addWidget(self.disk_dot)
-        layout.addWidget(self.disk_label)
-        layout.addWidget(self.disk_bar)
-        layout.addWidget(self.disk_text)
-        layout.addWidget(vline())
+        # # Disk block
+        # layout.addWidget(self.disk_dot)
+        # layout.addWidget(self.disk_label)
+        # layout.addWidget(self.disk_bar)
+        # layout.addWidget(self.disk_text)
+        # layout.addWidget(vline())
 
         # Net block
         layout.addWidget(self.net_dot)
@@ -203,7 +203,7 @@ class MonitorBar(QWidget):
 
         self.cpu_text.setText(f"{cpu:.0f}%")
         self.ram_text.setText(f"{ram:.0f}%")
-        self.disk_text.setText(f"{disk:.0f}%")
+        # self.disk_text.setText(f"{disk:.0f}%")
 
         # net
         up = self._last.get("net_up_kbps", 0.0) or 0.0
@@ -220,19 +220,19 @@ class MonitorBar(QWidget):
 
         self.cpu_bar.set_chunk_color(cpu_color)
         self.ram_bar.set_chunk_color(ram_color)
-        self.disk_bar.set_chunk_color(disk_color)
+        # self.disk_bar.set_chunk_color(disk_color)
 
         self.cpu_bar.setValue(int(max(0, min(100, cpu))))
         self.ram_bar.setValue(int(max(0, min(100, ram))))
-        self.disk_bar.setValue(int(max(0, min(100, disk))))
+        # self.disk_bar.setValue(int(max(0, min(100, disk))))
 
         # dynamic dot colors (reflect "health" quickly)
         self.cpu_dot.setStyleSheet(
             f"background:{cpu_color}; border-radius:5px;")
         self.ram_dot.setStyleSheet(
             f"background:{ram_color}; border-radius:5px;")
-        self.disk_dot.setStyleSheet(
-            f"background:{disk_color}; border-radius:5px;")
+        # self.disk_dot.setStyleSheet(
+        #     f"background:{disk_color}; border-radius:5px;")
         # net dot purple stays constant for clarity
 
     def set_font_family(self, font_family: str):
