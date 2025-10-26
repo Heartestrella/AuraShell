@@ -2101,13 +2101,27 @@ function setupWebSocket() {
         }
         if (message.action === 'allUser') {
           try {
-            const data = JSON.parse(message.data);
-            if (data == null) {
+            const userList = JSON.parse(message.data);
+            if (!Array.isArray(userList)) {
               return;
             }
-            window.OnlineUser = data;
-            iframeWindow.allUser(data);
-          } catch (e) {}
+            window.OnlineUser = {};
+            if (iframeWindow.allUser) {
+              iframeWindow.allUser([]);
+            }
+            for (const user of userList) {
+              if (user && user.qq_number && user.qq_name) {
+                const qq_number = user.qq_number.toString();
+                const qq_name = user.qq_name;
+                window.OnlineUser[qq_number] = qq_name;
+                if (iframeWindow.addUser) {
+                  iframeWindow.addUser(qq_number, qq_name);
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Error processing allUser message:', e);
+          }
         }
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
