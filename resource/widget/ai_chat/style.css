@@ -151,9 +151,6 @@ body {
   color: white;
   flex-shrink: 0;
 }
-.message-group.user .message-sender .icon {
-  /* background-color: var(--user-avatar-bg); */
-}
 .message-group.ai .message-sender .icon {
   background-color: var(--ai-avatar-bg);
 }
@@ -1045,7 +1042,8 @@ body {
   outline: 2px solid var(--accent-color-red);
 }
 @keyframes mentionPulse {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
   }
   50% {
@@ -1256,4 +1254,81 @@ body {
   100% {
     transform: rotate(360deg);
   }
+}
+.list-options-container {
+  background-color: var(--message-bg-color);
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  width: 100%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+.list-options-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  background-color: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+}
+.list-options-title {
+  font-weight: bold;
+  font-size: 18px;
+  color: var(--text-color-light);
+}
+.list-options-toggle {
+  background: none;
+  border: none;
+  color: var(--text-color-light);
+  font-size: 16px;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+  padding: 0;
+  line-height: 1;
+}
+.list-options-content {
+  padding-right: 10px;
+  padding-left: 10px;
+  padding-bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+}
+.list-option-item {
+  background-color: var(--message-bg-color);
+  border: 2px solid var(--border-color);
+  border-radius: 16px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s;
+  font-size: 18px;
+  color: white;
+  flex-shrink: 0;
+  margin-right: 10px;
+  margin-top: 10px;
+}
+.list-option-item:hover {
+  background-color: var(--accent-color-grey);
+  color: var(--text-color);
+  transform: translateY(-1px);
+}
+.list-options-container.collapsed .list-options-content {
+  display: none;
+}
+.list-options-container.collapsed .list-options-toggle {
+  transform: rotate(180deg);
+}
+.code-block::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.code-block::-webkit-scrollbar-track {
+  background: var(--code-bg-color);
+}
+.code-block::-webkit-scrollbar-thumb {
+  background-color: var(--accent-color-grey);
+  border-radius: 4px;
+  border: 2px solid var(--code-bg-color);
+}
+.code-block::-webkit-scrollbar-thumb:hover {
+  background-color: #7a7a7a;
 }

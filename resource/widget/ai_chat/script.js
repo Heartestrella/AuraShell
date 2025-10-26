@@ -79,9 +79,11 @@ function setQQUserInfo(qq_name, qq_number) {
   if (window.ws.readyState === WebSocket.CONNECTING) {
     return;
   }
+  if (qq_name == null || qq_number == null || qq_name == '' || qq_number == '') {
+    return;
+  }
   window.ws.send(JSON.stringify({ action: 'setQQUser', data: JSON.stringify({ qq_name, qq_number, id: messageId }) }));
   const avatarUrl = 'http://q.qlogo.cn/headimg_dl?dst_uin=' + qq_number + '&spec=640&img_type=png';
-  window.currentUserInfo = { name: qq_name, avatarUrl: avatarUrl };
   document.querySelectorAll('.message-group.user').forEach((groupDiv) => {
     const iconSpan = groupDiv.querySelector(':scope > .icon');
     const senderDiv = groupDiv.querySelector('.message-sender');
@@ -220,11 +222,14 @@ class ChatController {
     }, 100);
   }
   addUserBubble(text, imageUrls, messageIndex = -1, historyIndex = -1) {
-    const bubble = new UserBubble(this.chatBody, messageIndex, historyIndex);
-    bubble.setContent(text, imageUrls);
-    this.userHasScrolled = false;
-    this.scrollToBottom();
-    return bubble;
+    return new Promise(async (resolve) => {
+      const bubble = new UserBubble();
+      await bubble.init(this.chatBody, messageIndex, historyIndex);
+      bubble.setContent(text, imageUrls);
+      this.userHasScrolled = false;
+      this.scrollToBottom();
+      resolve(bubble);
+    });
   }
   addAIBubble(messageIndex = -1, historyIndex = -1) {
     const bubble = new AIBubble(this.chatBody, this, messageIndex, historyIndex);
@@ -237,10 +242,15 @@ class ChatController {
   }
 }
 class UserBubble {
-  constructor(container, messageIndex = -1, historyIndex = -1) {
-    const senderName = window.currentUserInfo.name;
-    const senderIcon = window.currentUserInfo.avatarUrl ? `<img src="${window.currentUserInfo.avatarUrl}" style="width:64px;height:64px; border-radius: 50%; object-fit: cover;" />` : '<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path></svg>';
-    const template = `<div class="message-group user"${messageIndex >= 0 ? ` data-message-index="${messageIndex}"` : ''}${historyIndex >= 0 ? ` data-history-index="${historyIndex}"` : ''}>
+  init(container, messageIndex = -1, historyIndex = -1) {
+    return new Promise(async (resolve) => {
+      if (typeof window.getQQUserInfo === 'function') {
+        await getQQUserInfo();
+        getQQUserInfo = null;
+      }
+      const senderName = window.currentUserInfo.name;
+      const senderIcon = window.currentUserInfo.avatarUrl ? `<img src="${window.currentUserInfo.avatarUrl}" style="width:64px;height:64px; border-radius: 50%; object-fit: cover;" />` : '<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path></svg>';
+      const template = `<div class="message-group user"${messageIndex >= 0 ? ` data-message-index="${messageIndex}"` : ''}${historyIndex >= 0 ? ` data-history-index="${historyIndex}"` : ''}>
               <div class="message-wrapper">
                 <div class="message-sender">
                   <div class="message-actions">
@@ -274,12 +284,14 @@ class UserBubble {
               </div>
               <span class="icon">${senderIcon}</span>
             </div>`;
-    container.insertAdjacentHTML('beforeend', template);
-    this.element = container.lastElementChild;
-    this.contentElement = this.element.querySelector('.user-response');
-    this.messageIndex = messageIndex;
-    this.historyIndex = historyIndex;
-    this.bindEventListeners();
+      container.insertAdjacentHTML('beforeend', template);
+      this.element = container.lastElementChild;
+      this.contentElement = this.element.querySelector('.user-response');
+      this.messageIndex = messageIndex;
+      this.historyIndex = historyIndex;
+      this.bindEventListeners();
+      resolve();
+    });
   }
   bindEventListeners() {
     const copyBtn = this.element.querySelector('.copy-button');
@@ -365,6 +377,13 @@ class AIBubble {
                 <div class="thinking-content"></div>
               </div>
               <div class="message-content"></div>
+              <div class="list-options-container" style="display: none;">
+                <div class="list-options-header">
+                  <span class="list-options-title path-value"></span>
+                  <button class="list-options-toggle">▲</button>
+                </div>
+                <div class="list-options-content"></div>
+              </div>
             </div>`;
     container.insertAdjacentHTML('beforeend', template);
     this.element = container.lastElementChild;
@@ -374,6 +393,11 @@ class AIBubble {
     this.thinkingHeader = this.element.querySelector('.thinking-header');
     this.thinkingContent = this.element.querySelector('.thinking-content');
     this.thinkingToggle = this.element.querySelector('.thinking-toggle');
+    this.listOptionsContainer = this.element.querySelector('.list-options-container');
+    this.listOptionsHeader = this.element.querySelector('.list-options-header');
+    this.listOptionsTitle = this.element.querySelector('.list-options-title');
+    this.listOptionsContent = this.element.querySelector('.list-options-content');
+    this.listOptionsToggle = this.element.querySelector('.list-options-toggle');
     this.requestStartTime = null;
     this.durationInterval = null;
     this.finalDuration = null;
@@ -416,6 +440,9 @@ class AIBubble {
         const isAtBottom = this.thinkingContent.scrollHeight - this.thinkingContent.scrollTop - this.thinkingContent.clientHeight < threshold;
         this.thinkingUserHasScrolled = !isAtBottom;
       });
+    }
+    if (this.listOptionsHeader) {
+      this.listOptionsHeader.addEventListener('click', () => this.toggleListOptions());
     }
   }
   updateThinking(chunk) {
@@ -622,6 +649,37 @@ class AIBubble {
   getDuration() {
     return this.finalDuration;
   }
+  setListOptions(title = '快速回复', options) {
+    if (!options || options.length === 0) {
+      return;
+    }
+    this.listOptionsTitle.textContent = title;
+    this.listOptionsContent.innerHTML = '';
+    options.forEach((optionText) => {
+      const optionElement = document.createElement('div');
+      optionElement.className = 'list-option-item';
+      optionElement.textContent = optionText;
+      this.listOptionsContent.appendChild(optionElement);
+      optionElement.addEventListener('click', () => {
+        const messageInput = document.querySelector('#message-input');
+        if (messageInput) {
+          messageInput.value = optionText;
+        }
+        const sendButton = document.querySelector('.send-button');
+        if (sendButton) {
+          sendButton.click();
+        }
+        this.listOptionsContainer.style.display = 'none';
+      });
+    });
+    this.listOptionsContainer.style.display = 'block';
+    if (this.chatController && !this.chatController.userHasScrolled) {
+      this.chatController.scrollToBottom();
+    }
+  }
+  toggleListOptions() {
+    this.listOptionsContainer.classList.toggle('collapsed');
+  }
 }
 class SystemBubble {
   constructor(container, relatedMessageIndex = -1, historyIndex = -1) {
@@ -649,6 +707,10 @@ class SystemBubble {
     this.resultContentElement = this.element.querySelector('.tool-call-result .code-block');
     this.headerElement = this.element.querySelector('.tool-call-header');
     this.statusIconElement = this.element.querySelector('.tool-status-icon');
+    this.detailElement.style.maxHeight = '400px';
+    this.detailElement.style.overflow = 'auto';
+    this.resultContentElement.style.maxHeight = '400px';
+    this.resultContentElement.style.overflow = 'auto';
   }
   isDangerousTool(toolName, detail) {
     if (!toolName.toLowerCase().includes('exe_shell')) {
@@ -777,7 +839,15 @@ class SystemBubble {
       this.toolCardElement.classList.add('collapsed');
     }, 12000);
     if (status === 'approved') {
-      this.resultContentElement.innerHTML = this._formatAndHighlight(content);
+      let longContent = false;
+      if (content.length > 10000) {
+        longContent = true;
+      }
+      if (!longContent) {
+        this.resultContentElement.innerHTML = this._formatAndHighlight(content);
+      } else {
+        this.resultContentElement.textContent = content;
+      }
       this.resultContainer.style.display = 'block';
       this.statusIconElement.textContent = '▼';
       this.statusIconElement.classList.add('success');
@@ -833,6 +903,22 @@ class SystemBubble {
       );
     });
   }
+}
+function getQQUserInfo() {
+  return new Promise((resolve) => {
+    initializeBackendConnection(async (backendObject) => {
+      if (backendObject) {
+        let qqInfo = await callBackend(backendObject, 'getQQUserInfo');
+        if (qqInfo && qqInfo.qq_name && qqInfo.qq_number && qqInfo.qq_name != '' && qqInfo.qq_number != '') {
+          const avatarUrl = 'http://q.qlogo.cn/headimg_dl?dst_uin=' + qqInfo.qq_number + '&spec=640&img_type=png';
+          window.currentUserInfo = { name: qqInfo.qq_name, avatarUrl: avatarUrl };
+        }
+        resolve(qqInfo);
+      } else {
+        resolve({});
+      }
+    });
+  });
 }
 let pastedImageDataUrls = [];
 function editUserMessage(bubbleElement) {
@@ -1016,6 +1102,20 @@ function createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, contr
             sendButton.disabled = true;
             try {
               const executionResultStr = await executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments), toolRequestId);
+              try {
+                const executionResult = JSON.parse(executionResultStr);
+                if (executionResult.action === 'provideListOptions' && executionResult.options) {
+                  systemBubble.element.style.display = 'none';
+                  aiBubble.setListOptions(executionResult.title, executionResult.options);
+                  mcpToolContainer.style.display = 'none';
+                  abortToolButton.removeEventListener('click', abortToolHandler);
+                  continueButton.removeEventListener('click', continueHandler);
+                  if (onComplete) {
+                    onComplete();
+                  }
+                  return;
+                }
+              } catch (e) {}
               systemBubble.setResult('approved', executionResultStr);
               let mcpMessages = {
                 role: 'user',
@@ -1327,7 +1427,7 @@ window.loadHistory = function (filename) {
         } else {
           userText = item.messages.content;
         }
-        chat.addUserBubble(userText, imageUrls, messageIndex, i);
+        await chat.addUserBubble(userText, imageUrls, messageIndex, i);
       } else if (item.messages.role === 'assistant') {
         const aiBubble = chat.addAIBubble(messageIndex, i);
         let aiContent = item.messages.content;
@@ -1363,6 +1463,18 @@ window.loadHistory = function (filename) {
                   newContent = toolCall.server_name + ' -> ' + toolCall.tool_name;
                 }
                 aiBubble.setHTML(newContent);
+              }
+              if (toolCall.tool_name == 'provideListOptions') {
+                if (i === window.messagesHistory.length - 1) {
+                  const executionResultStr = await executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments));
+                  try {
+                    const executionResult = JSON.parse(executionResultStr);
+                    if (executionResult.options) {
+                      aiBubble.setListOptions(executionResult.title, executionResult.options);
+                    }
+                  } catch (e) {}
+                }
+                continue;
               }
               const toolName = `${toolCall.server_name} -> ${toolCall.tool_name}`;
               const toolArgsStr = JSON.stringify(toolCall.arguments, null, 2);
@@ -1524,7 +1636,7 @@ document.addEventListener('DOMContentLoaded', function () {
       chat.chatBody.classList.add('request-in-progress');
       const currentMessageIndex = aiChatApiOptionsBody.messages.length;
       const currentHistoryIndex = messagesHistory.length;
-      chat.addUserBubble(message, [...pastedImageDataUrls], currentMessageIndex, currentHistoryIndex);
+      await chat.addUserBubble(message, [...pastedImageDataUrls], currentMessageIndex, currentHistoryIndex);
       const userMessageContent = [];
       if (message) {
         userMessageContent.push({
