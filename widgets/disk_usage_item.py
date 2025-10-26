@@ -156,17 +156,15 @@ class DiskCard(QFrame):
         mount = data.get("mount", "")
         self._mount_path = mount
 
-        if mount:
-            if mount == "/":
-                display_mount = "/"
-            else:
-                parts = mount.rstrip("/").split("/")
-                display_mount = parts[-1] if parts[-1] else parts[-2] if len(
-                    parts) > 1 else mount
+        if len(mount) > 40:
+            start = mount[:20]
+            end = mount[-20:]
+            display_mount = f"{start}...{end}"
         else:
-            display_mount = "unknown"
+            display_mount = mount
 
         self._mount_text = display_mount
+        self.mount_label.setText(display_mount)
         self.mount_label.setToolTip(mount)
 
         used_percent = data.get("used_percent", 0)

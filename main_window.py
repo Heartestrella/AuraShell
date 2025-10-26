@@ -451,6 +451,7 @@ class Window(FramelessWindow):
                         widget.task_detaile.updateProcessData(all_processes)
                     if disk_usage:
                         for disk in disk_usage:
+                            # print(disk)
                             device = disk.get("device", "")
                             mount = disk.get("mount", "")
                             # 唯一ID
@@ -628,6 +629,13 @@ class Window(FramelessWindow):
                 else:
                     title = self.tr(
                         f"Failed to create directory {path}\n{msg}")
+                    duration = -1
+            elif type_ == "mkfile":
+                if status:
+                    title = self.tr(f"Created file {path} successfully")
+                else:
+                    title = self.tr(
+                        f"Failed to create file {path}\n{msg}")
                     duration = -1
             elif type_ == "kill":
                 if status:
@@ -1129,6 +1137,10 @@ class Window(FramelessWindow):
         elif action_type == "mkdir":
             if full_path:
                 file_manager.mkdir(full_path)
+        elif action_type == "mkfile":
+            print(f"mkfile", full_path)
+            if full_path:
+                file_manager.mkfile(full_path)
 
     def _process_pending_downloads(self):
         """Process the accumulated download paths after the debounce delay."""

@@ -294,7 +294,7 @@ Files are marked with the string "is_file"; directories are marked with a dict.
             self._restore_expanded_paths(expanded_paths)
         end_time = time.perf_counter()
         print(f"刷新文件树耗时: {end_time - start_time:.4f} 秒")
-    print("Refresh tree complete")
+        print("Refresh tree complete")
 
     def _populate_tree(self, node_dict: Dict, parent_item, parent_path: str):
         """

@@ -188,6 +188,8 @@ class FileItem(QWidget):
     rename_action = pyqtSignal(str, str, str, str)
     # new_dir_name
     mkdir_action = pyqtSignal(str)
+    # new file name
+    mkfile_action = pyqtSignal(str)
 
     def __init__(self, name, is_dir, parent=None, explorer=None):
         super().__init__(parent)
@@ -196,6 +198,7 @@ class FileItem(QWidget):
         self.selected = False
         self.parent_explorer = explorer
         self.mkdir = False
+        self.mkfile = False
         icons = self._get_icons()
         self.icon = icons.Folder_Icon if is_dir else icons.File_Icon
         self.setMinimumSize(self.WIDTH, self.HEIGHT)
@@ -351,6 +354,11 @@ class FileItem(QWidget):
             self.mkdir = False
             self.rename_edit.hide()
             self.update()
+        if self.mkfile:
+            self.mkfile_action.emit(new_name)
+            self.mkfile = False
+            self.rename_edit.hide()
+            self.update()
         else:
 
             if new_name and new_name != self.name:
@@ -471,6 +479,7 @@ class DetailItem(QWidget):
         self.details_model.dataChanged.connect(self._on_data_changed)
         self._rename_old_name = None
         self.is_mkdir = False
+        self.is_mkfile = False
         self._editing_index = None
         self.details_view.itemDelegate().closeEditor.connect(
             lambda editor, hint: self._on_editor_closed(editor, hint))
@@ -604,6 +613,12 @@ class DetailItem(QWidget):
             model.removeRow(row)
             if new_name:
                 self.action_triggered.emit("mkdir", new_name, True, "")
+        if self.is_mkfile:
+            self.is_mkfile = False
+            model.removeRow(row)
+            if new_name:
+                self.action_triggered.emit("mkfile", new_name, True, "")
+
         elif old_name and new_name and new_name != old_name:
             is_dir = item.data(Qt.UserRole)
             self.apply_rename(old_name, new_name, is_dir)
@@ -615,7 +630,7 @@ class DetailItem(QWidget):
 
     def _on_editor_closed(self, editor, hint):
         """Handle editor closing, for mkdir when name is not changed."""
-        if not self._editing_index or not self.is_mkdir:
+        if not self._editing_index or not self.is_mkdir or not self.is_mkfile:
             return
 
         index_row = self._editing_index.row()
@@ -625,6 +640,7 @@ class DetailItem(QWidget):
         if hint == QAbstractItemDelegate.RevertModelCache:
             self.details_model.removeRow(index_row)
             self.is_mkdir = False
+            self.is_mkfile = False
             return
 
         # Handle submit when name is unchanged (dataChanged won't fire)
@@ -637,9 +653,14 @@ class DetailItem(QWidget):
 
         if new_name == old_name:
             self.details_model.removeRow(index_row)
-            self.is_mkdir = False
-            if new_name:
-                self.action_triggered.emit("mkdir", new_name, True, "")
+            if self.is_mkdir:
+                self.is_mkdir = False
+                if new_name:
+                    self.action_triggered.emit("mkdir", new_name, True, "")
+            elif self.is_mkfile:
+                self.is_mkfile = False
+                if new_name:
+                    self.action_triggered.emit("mkfile", new_name, True, "")
 
     # def _show_general_context_menu_on_blank(self, pos):
     #     """Show general context menu when clicking on a blank area of the details view."""
@@ -780,6 +801,71 @@ class FileExplorer(QWidget):
             self.details.is_mkdir = True
             self.details.rename_selected_item()
 
+    def _handle_mkfile(self):
+        """Create a new file placeholder and enter rename mode."""
+        new_file_name = "NewFile.txt"
+
+        if self.view_mode == "icon":
+            existing_names = {self.flow_layout.itemAt(
+                i).widget().name for i in range(self.flow_layout.count())}
+            counter = 1
+            candidate_name = new_file_name
+            while candidate_name in existing_names:
+                candidate_name = f"NewFile ({counter}).txt"
+                counter += 1
+
+            # 添加文件，第四个参数为 False 表示文件
+            self.add_files([(candidate_name, False)], clear_old=False)
+
+            new_item = self.flow_layout.itemAt(
+                self.flow_layout.count() - 1).widget()
+
+            self.select_item(new_item)
+            new_item.mkfile = True  # 标记为新建文件
+            new_item._start_rename()
+        else:  # Details view
+            model = self.details.details_model
+            existing_names = {model.item(
+                i, 0).text() for i in range(model.rowCount())}
+            counter = 1
+            candidate_name = new_file_name
+            while candidate_name in existing_names:
+                candidate_name = f"NewFile ({counter}).txt"
+                counter += 1
+
+            item_name = QStandardItem(candidate_name)
+            item_name.setData(False, Qt.UserRole)  # is_dir = False
+
+            row_items = [
+                item_name, QStandardItem(""), QStandardItem(""),
+                QStandardItem(""), QStandardItem("")
+            ]
+
+            # Maintain sort order: insert at the correct position
+            entries = []
+            for r in range(model.rowCount()):
+                name = model.item(r, 0).text()
+                is_dir = model.item(r, 0).data(Qt.UserRole)
+                entries.append((name, is_dir))
+
+            entries.append((candidate_name, False))
+            entries.sort(key=lambda x: (not x[1], x[0].lower()))
+            new_row_index = entries.index((candidate_name, False))
+
+            model.insertRow(new_row_index, row_items)
+            new_item_index = model.index(new_row_index, 0)
+
+            # Select and scroll to the new item
+            selection_model = self.details.details_view.selectionModel()
+            selection_model.clearSelection()
+            selection_model.select(
+                new_item_index, selection_model.Select | selection_model.Rows)
+            self.details.details_view.scrollTo(new_item_index)
+
+            # Start the renaming process
+            self.details.is_mkfile = True
+            self.details.rename_selected_item()
+
     def _create_file_op_actions(self):
         """Creates a dictionary of file operation actions."""
         return {
@@ -850,6 +936,10 @@ class FileExplorer(QWidget):
             item_widget.mkdir_action.connect(
                 lambda new_dir_name: self._handle_file_action(
                     action_type="mkdir", file_name=new_dir_name))
+            item_widget.mkfile_action.connect(
+                lambda new_file_name: self._handle_file_action(
+                    action_type="mkfile", file_name=new_file_name)
+            )
             item_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
             self.flow_layout.addWidget(item_widget)
 
@@ -920,11 +1010,13 @@ class FileExplorer(QWidget):
                 self.copy_file_path = []  # Reset after paste
             return
 
-        if action_type in ["rename", "mkdir"]:
+        if action_type in ["rename", "mkdir", "mkfile"]:
             full_path = full_path
             if action_type == "rename" and new_name:
                 self.file_action.emit(action_type, full_path, new_name, False)
             elif action_type == "mkdir" and file_name:
+                self.file_action.emit(action_type, full_path, "", False)
+            elif action_type == "mkfile" and file_name:
                 self.file_action.emit(action_type, full_path, "", False)
             return
         print(action_type, full_path, new_name, )
@@ -1041,6 +1133,7 @@ class FileExplorer(QWidget):
         self.icon_view_action = Action(FIF.APPLICATION, self.tr('Icon View'))
         self.paste = Action(FIF.PASTE, self.tr("Paste"))
         self.make_dir = Action(FIF.FOLDER_ADD, self.tr("New Folder"))
+        self.make_file = Action(FIF.DOCUMENT, self.tr("New file"))
         self.upload_mode_switch = Action(
             FIF.UP, self.tr("Upload files(compression mode)"), checkable=True)
         self.upload_mode_switch.setChecked(
@@ -1065,6 +1158,7 @@ class FileExplorer(QWidget):
         self.paste.triggered.connect(
             lambda: self._handle_file_action("paste", "", ""))
         self.make_dir.triggered.connect(self._handle_mkdir)
+        self.make_file.triggered.connect(self._handle_mkfile)
         self.upload_mode_switch.toggled.connect(lambda checked:
                                                 configer.revise_config("compress_upload", checked))
 
@@ -1077,7 +1171,7 @@ class FileExplorer(QWidget):
     def _get_menus(self):
         menu = CheckableMenu(parent=self)
         menu.addActions(
-            [self.refreshaction, self.paste, self.make_dir, self.upload_mode_switch])
+            [self.refreshaction, self.paste, self.make_dir, self.make_file, self.upload_mode_switch])
 
         submenu = CheckableMenu(self.tr("Open mode"), self)
         submenu.setIcon(FIF.SEND)

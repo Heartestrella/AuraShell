@@ -50,6 +50,8 @@ class RemoteFileManager(QThread):
     file_type_ready = pyqtSignal(str, str)
     # path , status , error_msg
     mkdir_finished = pyqtSignal(str, bool, str)
+    # path, success, error_message
+    mkfile_finished = pyqtSignal(str, bool, str)
     # target_zip_path
     start_to_compression = pyqtSignal(str)
     # remote_path_path
@@ -328,6 +330,10 @@ class RemoteFileManager(QThread):
                         elif ttype == 'mkdir':
                             self._handle_mkdir_task(
                                 task['path'], task.get('callback'))
+                        elif ttype == "mkfile":
+                            self._handle_mkfile_task(
+                                task["path"], task.get('callback')
+                            )
                         else:
                             print(f"Unknown task type: {ttype}")
                     except Exception as e:
@@ -561,6 +567,16 @@ class RemoteFileManager(QThread):
         self.mutex.lock()
         self._tasks.append({
             'type': 'mkdir',
+            'path': path,
+            "callback": callback,
+        })
+        self.condition.wakeAll()
+        self.mutex.unlock()
+
+    def mkfile(self, path: str, callback=None):
+        self.mutex.lock()
+        self._tasks.append({
+            'type': 'mkfile',
             'path': path,
             "callback": callback,
         })
@@ -878,7 +894,7 @@ class RemoteFileManager(QThread):
                         or mime_out.startswith("application/x-sharedlib")
                         or "x-mach-binary" in mime_out
                         or "pe" in mime_out  # covers various PE-like mimes
-                        ):
+                    ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
 
@@ -978,6 +994,83 @@ class RemoteFileManager(QThread):
             import traceback
             traceback.print_exc()
             self.mkdir_finished.emit(path, False, error_msg)
+            if callback:
+                callback(False, error_msg)
+
+    def _handle_mkfile_task(self, path: str, callback=None):
+        """
+        Asynchronously create a remote file (touch behavior) via SFTP.
+
+        Emits:
+            mkfile_finished(path, status, error_msg)
+        """
+        if self.sftp is None:
+            error_msg = "SFTP connection not ready"
+            print(f"❌ Mkfile failed - {error_msg}: {path}")
+            self.mkfile_finished.emit(path, False, error_msg)
+            if callback:
+                callback(False, error_msg)
+            return
+
+        try:
+            # Check if parent directory exists, create if necessary
+            parent_dir = os.path.dirname(path)
+            if parent_dir and parent_dir != "/":
+                # Recursively create parent directories like 'mkdir -p'
+                parts = parent_dir.strip("/").split("/")
+                current_path = ""
+                for part in parts:
+                    current_path += f"/{part}"
+                    try:
+                        self.sftp.stat(current_path)
+                    except FileNotFoundError:
+                        try:
+                            self.sftp.mkdir(current_path)
+                            print(
+                                f"✅ Created parent directory: {current_path}")
+                        except Exception as mkdir_exc:
+                            error_msg = f"Failed to create parent directory {current_path}: {mkdir_exc}"
+                            print(f"❌ Mkfile failed - {error_msg}")
+                            self.mkfile_finished.emit(path, False, error_msg)
+                            if callback:
+                                callback(False, error_msg)
+                            return
+
+            # Create the file
+            try:
+                # Check if file already exists
+                try:
+                    self.sftp.stat(path)
+                    # File exists, we can either overwrite or return error
+                    # Here we choose to overwrite empty file
+                    print(f"⚠️ File already exists, overwriting: {path}")
+                except FileNotFoundError:
+                    pass  # File doesn't exist, proceed to create
+
+                # Create empty file by opening in write mode and closing immediately
+                with self.sftp.open(path, 'w') as f:
+                    f.write('')  # Write empty content
+                print(f"✅ Created file: {path}")
+
+                # Success
+                self.mkfile_finished.emit(path, True, "")
+                if callback:
+                    callback(True, "")
+
+            except Exception as file_exc:
+                error_msg = f"Failed to create file {path}: {file_exc}"
+                print(f"❌ Mkfile failed - {error_msg}")
+                self.mkfile_finished.emit(path, False, error_msg)
+                if callback:
+                    callback(False, error_msg)
+                return
+
+        except Exception as e:
+            error_msg = f"Error during mkfile: {str(e)}"
+            print(f"❌ Mkfile failed - {error_msg}")
+            import traceback
+            traceback.print_exc()
+            self.mkfile_finished.emit(path, False, error_msg)
             if callback:
                 callback(False, error_msg)
 
@@ -1942,6 +2035,8 @@ class FileManagerHandler:
         fm.file_type_ready.connect(self._on_file_type_ready)
         fm.file_info_ready.connect(self._on_file_info_ready)
         fm.mkdir_finished.connect(partial(self._wrap_show_info, type_="mkdir"))
+        fm.mkfile_finished.connect(
+            partial(self._wrap_show_info, type_="mkfile"))
         fm.permission_got.connect(
             partial(self.parent._on_permission_info_got, file_manager=fm))
         # fm.start_to_compression.connect(

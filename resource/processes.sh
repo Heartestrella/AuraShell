@@ -133,7 +133,14 @@ while true; do
     # --- 磁盘使用情况 + 读写速率 ---
     disks="["
     while read -r filesystem size used avail usep mount; do
+        # 过滤掉不需要的文件系统类型，但保留 merged
         [[ "$filesystem" == "tmpfs" || "$filesystem" == "udev" ]] && continue
+        
+        # 为 merged 文件系统添加特殊标识
+        device_type="physical"
+        if [[ "$filesystem" == *"merged"* ]]; then
+            device_type="docker_overlay"
+        fi
 
         dev=$(basename "$filesystem")
 
@@ -154,8 +161,8 @@ while true; do
         disk_read_old[$dev]=$read_sectors
         disk_write_old[$dev]=$write_sectors
 
-        disks+="{\"device\":\"$filesystem\",\"mount\":\"$mount\",\"size_kb\":$size,\"used_kb\":$used,\"avail_kb\":$avail,\"used_percent\":\"$usep\",\"read_kbps\":$read_kbps,\"write_kbps\":$write_kbps},"
-    done < <(df -k --output=source,size,used,avail,pcent,target | tail -n +2 | head -10)  # 限制磁盘数量
+        disks+="{\"device\":\"$filesystem\",\"mount\":\"$mount\",\"type\":\"$device_type\",\"size_kb\":$size,\"used_kb\":$used,\"avail_kb\":$avail,\"used_percent\":\"$usep\",\"read_kbps\":$read_kbps,\"write_kbps\":$write_kbps},"
+    done < <(df -k --output=source,size,used,avail,pcent,target | tail -n +2 | head -15)  # 增加限制数量
 
     disks=$(echo "$disks" | sed 's/,$//')"]"
 
