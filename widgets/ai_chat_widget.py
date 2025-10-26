@@ -177,6 +177,19 @@ class AIBridge(QObject):
             )
 
         def 通用():
+            def provideListOptions(args: str = '') -> str:
+                """<title>标题(仅支持纯字符串格式)(必填)</title><options>每行一个选项(仅支持纯字符串格式)(必填)</options>"""
+                options_match = re.search(r'<options>(.*?)</options>', args, re.DOTALL)
+                if not options_match:
+                    return json.dumps({"status": "error", "content": "未提供选项列表"}, ensure_ascii=False)
+                title_match = re.search(r'<title>(.*?)</title>', args)
+                title = title_match.group(1).strip() if title_match else '快速回复'
+                options_text = options_match.group(1).strip()
+                if not options_text:
+                    return json.dumps({"status": "error", "content": "未提供选项列表"}, ensure_ascii=False)
+                options = [line.strip() for line in options_text.split('\n') if line.strip()]
+                return json.dumps({"status": "success", "action": "provideListOptions", "title": title,"options": options}, ensure_ascii=False)
+
             def fetchWeb(url: str, method: str = "GET", body: str = None, headers: dict = None, only_body: bool = True, request_id: str = None) -> str:
                 effective_headers = headers.copy() if headers is not None else {}
                 if request_id:
@@ -254,6 +267,13 @@ class AIBridge(QObject):
                 tool_name="fetchWeb",
                 handler=fetchWeb,
                 description="获取网页内容",
+                auto_approve=True
+            )
+            self.mcp_manager.register_tool_handler(
+                server_name="通用",
+                tool_name="provideListOptions",
+                handler=provideListOptions,
+                description="提供用户快速回复选项",
                 auto_approve=True
             )
 
