@@ -98,36 +98,52 @@ while true; do
         | sed 's/,$//')
     processes="[$processes]"
 
+    processes=$(ps -eo pid,comm,%cpu,rss --sort=-%cpu \
+    | awk -v top_n="$TOP_N" '
+    NR>1 && $2 !~ /^kworker/ && $2 !~ /^rcu_/ {
+        count++
+        if (count <= top_n) {
+            # 将 RSS 从 KB 转换为 MB，保留1位小数
+            mem_mb = $4 / 1024
+            printf "{\"pid\":%s,\"name\":\"%s\",\"cpu\":%s,\"mem_mb\":%.1f},",$1,$2,$3,mem_mb
+        }
+    }' \
+    | sed 's/,$//')
+    processes="[$processes]"
+
     # --- 全部进程 --- (修复版本)
     all_processes="["
     # 使用临时文件避免子shell问题
     temp_file=$(mktemp)
-    ps -eo user,pid,%cpu,%mem,comm,cmd --no-headers --sort=-%cpu | head -50 > "$temp_file"
-    
+    ps -eo user,pid,%cpu,rss,comm,cmd --no-headers --sort=-%cpu | head -50 > "$temp_file"
+
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
         
         # 使用正则表达式精确匹配
-        if [[ $line =~ ^([[:alnum:]]+)[[:space:]]+([0-9]+)[[:space:]]+([0-9.]+)[[:space:]]+([0-9.]+)[[:space:]]+([^[:space:]]+)[[:space:]]+(.*)$ ]]; then
+        if [[ $line =~ ^([[:alnum:]]+)[[:space:]]+([0-9]+)[[:space:]]+([0-9.]+)[[:space:]]+([0-9]+)[[:space:]]+([^[:space:]]+)[[:space:]]+(.*)$ ]]; then
             user="${BASH_REMATCH[1]}"
             pid="${BASH_REMATCH[2]}"
             cpu="${BASH_REMATCH[3]}"
-            mem="${BASH_REMATCH[4]}"
+            rss_kb="${BASH_REMATCH[4]}"  # RSS 内存（KB）
             comm="${BASH_REMATCH[5]}"
             cmd="${BASH_REMATCH[6]}"
+            
+            # 将 RSS 从 KB 转换为 MB，保留1位小数
+            mem_mb=$(echo "scale=1; $rss_kb / 1024" | bc)
             
             # 转义 JSON 特殊字符
             cmd_escaped=$(escape_json "$cmd")
             comm_escaped=$(escape_json "$comm")
             user_escaped=$(escape_json "$user")
             
-            all_processes+="{\"user\":\"$user_escaped\",\"pid\":$pid,\"name\":\"$comm_escaped\",\"cpu\":$cpu,\"mem\":$mem,\"command\":\"$cmd_escaped\"},"
+            all_processes+="{\"user\":\"$user_escaped\",\"pid\":$pid,\"name\":\"$comm_escaped\",\"cpu\":$cpu,\"mem_mb\":$mem_mb,\"command\":\"$cmd_escaped\"},"
         else
             echo "无法解析行: $line" >&2
         fi
     done < "$temp_file"
     rm -f "$temp_file"
-    
+
     all_processes=$(echo "$all_processes" | sed 's/,$//')"]"
 
     # --- 磁盘使用情况 + 读写速率 ---

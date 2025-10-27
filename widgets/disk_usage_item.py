@@ -48,10 +48,11 @@ class DiskCard(QFrame):
         self.device_label.setMaximumWidth(60)
 
         self.mount_label = QLabel()
+
         mount_font = QFont()
         mount_font.setPointSize(9)
         self.mount_label.setFont(mount_font)
-        self.mount_label.setStyleSheet("color: rgba(255,255,255,0.8);")
+        # self.mount_label.setStyleSheet("color: rgba(255,255,255,0.8);")
         self.mount_label.setMinimumWidth(50)
         self.mount_label.setMaximumWidth(120)
 

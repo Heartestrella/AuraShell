@@ -194,7 +194,7 @@ class SSHWidget(QWidget):
         # """)
 
         # Task
-        self.task = Tasks(self.leftSplitter)
+        self.task = Tasks(font_name, self.leftSplitter)
         self.task.sysinfo_button.clicked.connect(self._sys_info_dialog)
         self.task.set_text_color(config["ssh_widget_text_color"])
         self.task.setObjectName("task")

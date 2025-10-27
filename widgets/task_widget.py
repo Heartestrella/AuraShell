@@ -6,7 +6,7 @@ from widgets.network_widget import NetMonitor
 
 
 class Tasks(QFrame):
-    def __init__(self, parent=None):
+    def __init__(self, font, parent=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.NoFrame)
         self.setStyleSheet("background: transparent;")
@@ -23,7 +23,7 @@ class Tasks(QFrame):
                     border-radius: 6px;
                 }
             """)
-
+        self.font_ = font
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -85,30 +85,39 @@ class Tasks(QFrame):
     def set_text_color(self, color_hex: str):
         self.text_color = color_hex
 
-    def add_row(self, mem, cpu, cmd):
-        # 如果行数超过5，清空
+    def add_row(self, mem_mb, cpu, cmd):
         if self.model.rowCount() >= 4:
             self.model.removeRows(0, self.model.rowCount())
 
         items = []
 
         # RAM
-        mem_item = QStandardItem(str(mem))
+        try:
+            mem_value = float(mem_mb)
+            if mem_value >= 1024:
+                mem_formatted = f"{mem_value / 1024:.1f}G"
+            else:
+                mem_formatted = f"{mem_value:.1f}M"
+        except (ValueError, TypeError):
+            mem_formatted = str(mem_mb)
+
+        mem_item = QStandardItem(mem_formatted)
         mem_item.setTextAlignment(Qt.AlignCenter)
-        mem_item.setFont(self._bold_font())
+        mem_item.setFont(QFont(self.font_))
         mem_item.setForeground(QColor(self.text_color))
         items.append(mem_item)
 
         # CPU
-        cpu_item = QStandardItem(str(cpu))
+        cpu_item = QStandardItem(str(f"{cpu} %"))
         cpu_item.setTextAlignment(Qt.AlignCenter)
-        cpu_item.setFont(self._bold_font())
+        cpu_item.setFont(QFont(self.font_))
         cpu_item.setForeground(QColor(self.text_color))
         items.append(cpu_item)
 
         # NAME / Command
         cmd_item = QStandardItem(str(cmd))
         cmd_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        cmd_item.setFont(QFont(self.font_))
         cmd_item.setForeground(QColor(self.text_color))
         items.append(cmd_item)
 

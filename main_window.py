@@ -438,7 +438,7 @@ class Window(FramelessWindow):
                     for processes in top_processes:
                         processes_cpu_percent = processes["cpu"]
                         processes_name = processes["name"]
-                        processes_mem = processes["mem"]
+                        processes_mem = processes["mem_mb"]
                         widget.task.add_row(
                             f"{processes_mem:.1f}",
                             f"{processes_cpu_percent:.1f}",
@@ -2118,7 +2118,6 @@ if __name__ == '__main__':
             QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
 
             app = QApplication(sys.argv)
-
             # 步骤3: 设置应用属性
             update_splash_progress(3, 8, "设置应用属性")
             try:
