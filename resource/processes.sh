@@ -86,6 +86,8 @@ while true; do
     # --- 内存使用率 ---
     mem_percent=$(free | head -2 | tail -1 | awk '{printf("%.1f\n", $3/$2 * 100)}')
 
+    mem_used=$(free -m | awk 'NR==2{print $3}')
+
     # --- 前 N 个进程 ---
     processes=$(ps -eo pid,comm,%cpu,%mem --sort=-%cpu \
         | awk -v top_n="$TOP_N" '
@@ -278,8 +280,8 @@ while true; do
     load_json="[$la1,$la5,$la15]"
 
     # --- 输出 JSON ---
-    printf '///Start{"uptime_seconds":%d,"load":%s,"cpu_percent":%.1f,"mem_percent":%.1f,"top_processes":%s,"all_processes":%s,"disk_usage":%s,"net_usage":%s,"connections":%s}End///\n' \
-        "$uptime_seconds" "$load_json" "$cpu_percent" "$mem_percent" "$processes" "$all_processes" "$disks" "$net_devs" "$connections"
+    printf '///Start{"uptime_seconds":%d,"load":%s,"cpu_percent":%.1f,"mem_percent":%.1f,"mem_used":%s,"top_processes":%s,"all_processes":%s,"disk_usage":%s,"net_usage":%s,"connections":%s}End///\n' \
+        "$uptime_seconds" "$load_json" "$cpu_percent" "$mem_percent" "$mem_used" "$processes" "$all_processes" "$disks" "$net_devs" "$connections"
 
     sleep $INTERVAL
 done

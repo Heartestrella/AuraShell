@@ -157,6 +157,7 @@ class MonitorBar(QWidget):
             "load": None,
             "cpu_percent": 0.0,
             "ram_percent": 0.0,
+            "ram_used_mb": 0.0,
             "disk_percent": 0.0,
             "net_up_kbps": 0.0,
             "net_down_kbps": 0.0
@@ -199,10 +200,13 @@ class MonitorBar(QWidget):
         # cpu / ram / disk
         cpu = self._last.get("cpu_percent", 0.0) or 0.0
         ram = self._last.get("ram_percent", 0.0) or 0.0
+        ram_used_mb = self._last.get("ram_used_mb", 0.0) or 0.0
         disk = self._last.get("disk_percent", 0.0) or 0.0
+        # print(ram_used_mb)
+        ram_used_show = f"{ram_used_mb/1024:.1f}GB" if ram_used_mb >= 1024 else f"{ram_used_mb:.0f}MB"
 
         self.cpu_text.setText(f"{cpu:.0f}%")
-        self.ram_text.setText(f"{ram:.0f}%")
+        self.ram_text.setText(f"{ram:.0f}% ({ram_used_show})")
         # self.disk_text.setText(f"{disk:.0f}%")
 
         # net

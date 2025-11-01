@@ -386,6 +386,8 @@ class Window(FramelessWindow):
                     connections = result["connections"]
                     cpu_percent = result["cpu_percent"]
                     mem_percent = result["mem_percent"]
+                    mem_used = result["mem_used"]
+                    # print(f'memused : {mem_used}')
                     net_usage = result["net_usage"]
                     top_processes = result["top_processes"]
                     all_processes = result["all_processes"]
@@ -480,6 +482,7 @@ class Window(FramelessWindow):
                         "load": load,
                         "cpu_percent": cpu_percent,
                         "ram_percent": mem_percent,
+                        "ram_used_mb": mem_used,
                         "disk_percent": disk_usage,
                         "net_up_kbps": upload,
                         "net_down_kbps": download,
@@ -869,7 +872,7 @@ class Window(FramelessWindow):
         session = self.sessionmanager.get_session_by_name(parent_key)
         jumpbox = None
         worker = None
-
+        session_widget = self.session_widgets[widget_key]
         if session.jump_server != "None" and session.jump_server:
             print(f"{session.name} use Jumpbox")
             jumpbox = self.sessionmanager.get_session_by_name(
@@ -914,7 +917,7 @@ class Window(FramelessWindow):
 
         def start_real_connection():
             nonlocal worker
-            session_widget = self.session_widgets[widget_key]
+
             # processes = SSHWorker(session, for_resources=True)
             # processes.key_verification.connect(key_verification)
             worker.sys_resource.connect(
@@ -952,15 +955,15 @@ class Window(FramelessWindow):
             self.file_tree_object[widget_key] = file_manager
             self.file_tree_object[f"{widget_key}-handler"] = handler
 
-            worker.connected.connect(
-                lambda success, msg: self._on_ssh_connected(success, msg))
-            worker.connected.connect(
-                lambda s, m: session_widget.status_icon.setIcon(
-                    resource_path(os.path.join("resource", "icons", "green.png")))
-            )
-            worker.error_occurred.connect(lambda e: self._on_ssh_error(e))
-            worker.error_occurred.connect(lambda s, : session_widget.status_icon.setIcon(
-                resource_path(os.path.join("resource", "icons", "red.png"))))
+            # worker.connected.connect(
+            #     lambda success, msg: self._on_ssh_connected(success, msg))
+            # worker.connected.connect(
+            #     lambda s, m: session_widget.status_icon.setIcon(
+            #         resource_path(os.path.join("resource", "icons", "green.png")))
+            # )
+            # worker.error_occurred.connect(lambda e: self._on_ssh_error(e))
+            # worker.error_occurred.connect(lambda s, : session_widget.status_icon.setIcon(
+            #     resource_path(os.path.join("resource", "icons", "red.png"))))
 
             try:
                 child_widget = self.session_widgets[widget_key]
@@ -983,6 +986,14 @@ class Window(FramelessWindow):
             nonlocal worker
             worker = SSHWorker(session, jumpbox=jumpbox)
             worker.auth_error.connect(lambda e: on_auth_error(e))
+            worker.connected.connect(self._on_ssh_connected)
+            worker.error_occurred.connect(self._on_ssh_error)
+            worker.error_occurred.connect(lambda s, : session_widget.status_icon.setIcon(
+                resource_path(os.path.join("resource", "icons", "red.png"))))
+            worker.connected.connect(
+                lambda s, m: session_widget.status_icon.setIcon(
+                    resource_path(os.path.join("resource", "icons", "green.png")))
+            )
             self.ssh_session[widget_key] = worker
             worker.key_verification.connect(key_verification)
             worker.start()
@@ -1987,7 +1998,7 @@ def language_code_to_locale(code: str) -> str:
     CN -> zh_CN
     JP -> ja_JP
     RU -> ru_RU
-    system -> 
+    system ->
     """
     mapping = {
         "EN": "en_US",

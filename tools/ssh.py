@@ -218,6 +218,8 @@ class SSHWorker(QThread):
             self.resources_channel = transport.open_session()
             self.resources_channel.get_pty(term='xterm', width=120, height=30)
             self.resources_channel.invoke_shell()
+
+            time.sleep(1)
             # ---------- resources handling ----------
             try:
                 self.sftp = self.conn.open_sftp()
