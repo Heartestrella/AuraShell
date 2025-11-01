@@ -9,7 +9,8 @@ import py7zr
 from pathlib import Path
 from PyQt5.QtCore import pyqtSignal
 
-BASE_URL = "https://sync.beefuny.shop"
+# BASE_URL = "https://sync.beefuny.shop"
+BASE_URL = "https://sync.neossh.top/"
 
 
 class DownloadThread(QThread):
@@ -32,7 +33,7 @@ class DownloadThread(QThread):
         从服务器下载ZIP文件
         返回: {"status": "success/error", "message": str}
         """
-        url = f"{BASE_URL}/download"
+        url = f"{BASE_URL}/download_sync"
         data = {"username": self.username, "password": self.password}
 
         try:
@@ -85,7 +86,7 @@ class UploadThread(QThread):
         if not os.path.isfile(self.zip_path):
             return {"status": "error", "message": f"File not found: {self.zip_path}"}
 
-        url = f"{BASE_URL}/upload"
+        url = f"{BASE_URL}/upload_sync"
 
         try:
             with open(self.zip_path, "rb") as f:

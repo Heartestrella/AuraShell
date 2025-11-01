@@ -260,13 +260,15 @@ class Window(FramelessWindow):
         self.navigationInterface = NavigationInterface(
             self, showMenuButton=True)
         self.stackWidget = QStackedWidget(self)
-        self.sidePanel = SidePanelWidget(self, main_window=self)
-        self.sidePanel.aichat_widget.bridge.userinfo_got.connect(
-            partial(self.update_user_info, local=True))
-        # self.sidePanel.aichat_widget.bridge.userinfo_got.connect(
-        #     lambda name, qid: self.account_widget.update_account_info(name, qid, email=f"{qid}@qq.com", avatar_url=f'http://q.qlogo.cn/headimg_dl?dst_uin={qid}&spec=640&img_type=png'))
-        self.sidePanel.tabActivity.connect(self._ensure_side_panel_visible)
-
+        try:
+            self.sidePanel = SidePanelWidget(self, main_window=self)
+            self.sidePanel.aichat_widget.bridge.userinfo_got.connect(
+                partial(self.update_user_info, local=True))
+            # self.sidePanel.aichat_widget.bridge.userinfo_got.connect(
+            #     lambda name, qid: self.account_widget.update_account_info(name, qid, email=f"{qid}@qq.com", avatar_url=f'http://q.qlogo.cn/headimg_dl?dst_uin={qid}&spec=640&img_type=png'))
+            self.sidePanel.tabActivity.connect(self._ensure_side_panel_visible)
+        except:  # 关闭后会有报错
+            pass
         # create sub interface
         self.MainInterface = MainInterface(self)
         self.MainInterface.sessionClicked.connect(self._on_session_selected)
@@ -866,7 +868,7 @@ class Window(FramelessWindow):
         parent_key = widget_key.split("-")[0].strip()
         session = self.sessionmanager.get_session_by_name(parent_key)
         jumpbox = None
-        processes = None
+        worker = None
 
         if session.jump_server != "None" and session.jump_server:
             print(f"{session.name} use Jumpbox")
@@ -911,14 +913,12 @@ class Window(FramelessWindow):
                 start_real_connection()
 
         def start_real_connection():
-            nonlocal processes
+            nonlocal worker
             session_widget = self.session_widgets[widget_key]
             # processes = SSHWorker(session, for_resources=True)
             # processes.key_verification.connect(key_verification)
-            self.ssh_session[f'{widget_key}-processes'] = processes
-            processes.sys_resource.connect(
+            worker.sys_resource.connect(
                 lambda usage, key=widget_key: self._set_usage(key, usage))
-            processes.start()
 
             file_manager = RemoteFileManager(session)
             handler = FileManagerHandler(
@@ -952,8 +952,6 @@ class Window(FramelessWindow):
             self.file_tree_object[widget_key] = file_manager
             self.file_tree_object[f"{widget_key}-handler"] = handler
 
-            worker = SSHWorker(session, for_resources=False, jumpbox=jumpbox)
-            self.ssh_session[widget_key] = worker
             worker.connected.connect(
                 lambda success, msg: self._on_ssh_connected(success, msg))
             worker.connected.connect(
@@ -974,7 +972,6 @@ class Window(FramelessWindow):
             except Exception as e:
                 print("Injecting worker failed:", e)
 
-            worker.start()
             session_widget.ssh_widget.directoryChanged.connect(
                 lambda path: file_manager.check_path_async(path)
             )
@@ -983,12 +980,12 @@ class Window(FramelessWindow):
             )
 
         def start_processes():
-            nonlocal processes
-            processes = SSHWorker(session, for_resources=True, jumpbox=jumpbox)
-            processes.auth_error.connect(lambda e: on_auth_error(e))
-            self.ssh_session[f'{widget_key}-processes'] = processes
-            processes.key_verification.connect(key_verification)
-            processes.start()
+            nonlocal worker
+            worker = SSHWorker(session, jumpbox=jumpbox)
+            worker.auth_error.connect(lambda e: on_auth_error(e))
+            self.ssh_session[widget_key] = worker
+            worker.key_verification.connect(key_verification)
+            worker.start()
 
         start_processes()
 

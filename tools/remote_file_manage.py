@@ -239,8 +239,8 @@ class RemoteFileManager(QThread):
         try:
             # Create all three connections at the start
             self.conn = self._create_ssh_connection()
-            self.upload_conn = self._create_ssh_connection()
-            self.download_conn = self._create_ssh_connection()
+            # self.upload_conn = self._create_ssh_connection()
+            # self.download_conn = self._create_ssh_connection()
 
             self.sftp = self.conn.open_sftp()
             self.sftp_ready.emit()
@@ -366,10 +366,10 @@ class RemoteFileManager(QThread):
         try:
             if self.conn:
                 self.conn.close()
-            if self.upload_conn:
-                self.upload_conn.close()
-            if self.download_conn:
-                self.download_conn.close()
+            # if self.upload_conn:
+            #     self.upload_conn.close()
+            # if self.download_conn:
+            #     self.download_conn.close()
         except Exception:
             pass
 
@@ -412,8 +412,10 @@ class RemoteFileManager(QThread):
         """Handles dispatching of upload tasks, expanding directories if necessary."""
         # If compression is on and we have a list of paths, treat it as a single batch job.
         if compression and isinstance(local_path, list):
+            # self._create_and_start_worker(
+            #     'upload', self.upload_conn, local_path, remote_path, compression, open_it, task_id=task_id)
             self._create_and_start_worker(
-                'upload', self.upload_conn, local_path, remote_path, compression, open_it, task_id=task_id)
+                'upload', self.conn, local_path, remote_path, compression, open_it, task_id=task_id)
             return
 
         # Fallback to original logic for single items or non-compressed lists.
@@ -428,12 +430,16 @@ class RemoteFileManager(QThread):
                 all_files = self._list_local_files_recursive(path_item)
                 for file_path in all_files:
                     # For each file, we pass the original directory as 'context'
+                    # self._create_and_start_worker(
+                    #     'upload', self.upload_conn, file_path, remote_path, compression, open_it, upload_context=path_item)
                     self._create_and_start_worker(
-                        'upload', self.upload_conn, file_path, remote_path, compression, open_it, upload_context=path_item)
+                        'upload', self.conn, file_path, remote_path, compression, open_it, upload_context=path_item)
             else:
                 # It's a single file, a list of files, or a compressed directory
+                # self._create_and_start_worker(
+                #     'upload', self.upload_conn, path_item, remote_path, compression, open_it)
                 self._create_and_start_worker(
-                    'upload', self.upload_conn, path_item, remote_path, compression, open_it)
+                    'upload', self.conn, path_item, remote_path, compression, open_it)
 
     def _dispatch_download_task(self, remote_path, compression, open_it, session_id=None):
         """Handles dispatching of download tasks, expanding directories if necessary."""
@@ -442,8 +448,10 @@ class RemoteFileManager(QThread):
         print(f"paths_to_process : {paths_to_process}")
         if compression:
             # compression all files to a tar
+            # self._create_and_start_worker(
+            #     'download', self.download_conn, None, paths_to_process, compression, open_it, session_id=session_id)
             self._create_and_start_worker(
-                'download', self.download_conn, None, paths_to_process, compression, open_it, session_id=session_id)
+                'download', self.conn, None, paths_to_process, compression, open_it, session_id=session_id)
         else:
             for path_item in paths_to_process:
                 print(f"非压缩下载 {path_item}")
@@ -456,12 +464,16 @@ class RemoteFileManager(QThread):
                     for file_path in all_files:
                         # For each file, we pass the original directory as 'context'
                         print(f"添加 {file_path} 到任务")
+                        # self._create_and_start_worker(
+                        #     'download', self.download_conn, None, file_path, compression, open_it, download_context=path_item, session_id=session_id)
                         self._create_and_start_worker(
-                            'download', self.download_conn, None, file_path, compression, open_it, download_context=path_item, session_id=session_id)
+                            'download', self.conn, None, file_path, compression, open_it, download_context=path_item, session_id=session_id)
                 else:
                     # It's a single file, a list of files, or a compressed directory
+                    # self._create_and_start_worker(
+                    #     'download', self.download_conn, None, path_item, compression, open_it, session_id=session_id)
                     self._create_and_start_worker(
-                        'download', self.download_conn, None, path_item, compression, open_it, session_id=session_id)
+                        'download', self.conn, None, path_item, compression, open_it, session_id=session_id)
 
     def _list_remote_files_recursive(self, remote_path):
         """Recursively lists all files in a remote directory. Returns a tuple of (file_paths, dir_paths)."""
@@ -890,11 +902,11 @@ class RemoteFileManager(QThread):
 
                 # common executable-related MIME strings
                 if ("executable" in mime_out
-                        or "x-executable" in mime_out
-                        or mime_out.startswith("application/x-sharedlib")
-                        or "x-mach-binary" in mime_out
-                        or "pe" in mime_out  # covers various PE-like mimes
-                    ):
+                            or "x-executable" in mime_out
+                            or mime_out.startswith("application/x-sharedlib")
+                            or "x-mach-binary" in mime_out
+                            or "pe" in mime_out  # covers various PE-like mimes
+                        ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
 

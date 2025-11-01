@@ -249,7 +249,7 @@ class WebTerminal(QWidget):
     """
     directoryChanged = pyqtSignal(str)
 
-    def __init__(self, parent=None, cols=120, rows=30, text_color="white", bg_color="transparent", text_shadow=False, font_name=None, user_name=None, devmode=False):
+    def __init__(self, parent=None, cols=120, rows=30, text_color="white", bg_color="transparent", text_shadow=False, font_name=None, user_name=None, devmode=True):
         super().__init__(parent)
         self._rows = int(rows)
         self._cols = cols
@@ -636,13 +636,13 @@ class WebTerminal(QWidget):
         if self.bridge and self.bridge.worker:
             self.bridge.worker.execute_command_and_capture(command)
 
-
     def get_latest_output(self, count=1):
         if not self.terminal_texts:
             return "<results></results>"
         prompt_re = re.compile(r"[\w\d\._-]+@[\w\d\.-]+:.*[#\$]")
         lines = self.terminal_texts.splitlines()
-        prompt_indices = [i for i, line in enumerate(lines) if prompt_re.search(line)]
+        prompt_indices = [i for i, line in enumerate(
+            lines) if prompt_re.search(line)]
         results_xml = "<results>"
         num_possible_outputs = len(prompt_indices) - 1
         if num_possible_outputs < 1:
